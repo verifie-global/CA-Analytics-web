@@ -132,9 +132,11 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
     status: readString(record, "status") ?? "Unknown",
     transcript:
-      readString(record, "redactedTranscript", "transcript") ??
+      readString(record, "transcript") ??
       readString(rawAnalysis, "summary", "rawTranscript") ??
       segments.map((segment) => segment.text).join("\n"),
+    redactedTranscript: readString(record, "redactedTranscript"),
+    summary: readString(rawAnalysis, "summary"),
     sentiment: readString(record, "sentiment") ?? readString(rawAnalysis, "sentiment"),
     satisfactionScore:
       readNumber(record, "satisfactionScore") ?? readNumber(rawAnalysis, "satisfactionScore"),

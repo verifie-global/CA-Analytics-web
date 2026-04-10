@@ -42,6 +42,8 @@ export type CallDetail = {
   conversationId: string;
   status: string;
   transcript?: string | null;
+  redactedTranscript?: string | null;
+  summary?: string | null;
   sentiment?: Sentiment;
   satisfactionScore?: number | null;
   durationSeconds?: number | null;

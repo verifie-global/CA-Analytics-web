@@ -50,6 +50,17 @@ const classForSentiment = (value?: string) => {
   return `tag sentiment-${value.toLowerCase()}`;
 };
 
+const renderRedactedTranscript = (value: string) =>
+  value.split(/(\[REDACTED\])/g).map((part, index) =>
+    part === "[REDACTED]" ? (
+      <span key={`redacted-${index}`} className="redacted-token">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+
 function App() {
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -244,6 +255,8 @@ function App() {
   };
 
   const transcript = detail?.transcript?.trim();
+  const redactedTranscript = detail?.redactedTranscript?.trim();
+  const summary = detail?.summary?.trim();
 
   if (!isAuthorized) {
     return (
@@ -586,9 +599,9 @@ function App() {
 
                   <div className="detail-panels">
                     <section>
-                      <h4>Transcript</h4>
+                      <h4>Summarization</h4>
                       <div className="scroll-panel prose-block">
-                        {transcript ? transcript : "No transcript available yet."}
+                        {summary ? summary : "No summary available yet."}
                       </div>
                     </section>
 
@@ -619,6 +632,22 @@ function App() {
                             </article>
                           ))
                         )}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4>Original transcription</h4>
+                      <div className="scroll-panel prose-block">
+                        {transcript ? transcript : "No original transcription available yet."}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4>Redacted transcription</h4>
+                      <div className="scroll-panel prose-block redacted-panel">
+                        {redactedTranscript
+                          ? renderRedactedTranscript(redactedTranscript)
+                          : "No redacted transcription available yet."}
                       </div>
                     </section>
 

@@ -413,6 +413,17 @@ select:focus {
   white-space: pre-wrap;
 }
 
+.redacted-panel {
+  color: #ffd5ca;
+  background: rgba(255, 122, 89, 0.12);
+  border-color: rgba(255, 122, 89, 0.28);
+}
+
+.redacted-panel .redacted-token {
+  color: #ff8d73;
+  font-weight: 700;
+}
+
 .segment-card {
   padding: 0.85rem;
 }
