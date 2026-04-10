@@ -540,7 +540,6 @@ function App() {
                 onChange={(event) =>
                   setDraftSettings((current) => ({ ...current, companyId: event.target.value }))
                 }
-                placeholder="1"
               />
             </label>
 
