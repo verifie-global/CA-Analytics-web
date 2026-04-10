@@ -12,7 +12,7 @@ const defaultSettings: AppSettings = {
 
 const defaultFilters: CallFilters = {
   page: 1,
-  pageSize: 10,
+  pageSize: 100,
   search: "",
   conversationId: "",
   status: "",
@@ -147,7 +147,7 @@ function App() {
       return;
     }
 
-    void refreshCalls();
+    void refreshCalls(settings, { silent: true });
   }, [isAuthorized]);
 
   useEffect(
@@ -172,7 +172,7 @@ function App() {
     }
 
     const timer = window.setInterval(() => {
-      void refreshCalls();
+      void refreshCalls(settings, { silent: true });
       if (selectedId) {
         void handleLoadDetail(selectedId);
       }
@@ -204,13 +204,18 @@ function App() {
     [settings],
   );
 
-  const refreshCalls = async (activeSettings: AppSettings = settings) => {
+  const refreshCalls = async (
+    activeSettings: AppSettings = settings,
+    options?: { silent?: boolean },
+  ) => {
     if (!activeSettings.baseUrl || !activeSettings.companyId || !activeSettings.token) {
       setErrorMessage("Add a base URL, company ID, and bearer token before loading calls.");
       return;
     }
 
-    setCallsLoading(true);
+    if (!options?.silent) {
+      setCallsLoading(true);
+    }
     setErrorMessage("");
 
     try {
@@ -225,7 +230,9 @@ function App() {
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load calls.");
     } finally {
-      setCallsLoading(false);
+      if (!options?.silent) {
+        setCallsLoading(false);
+      }
     }
   };
 
@@ -331,6 +338,19 @@ function App() {
   const transcript = detail?.transcript?.trim();
   const redactedTranscript = detail?.redactedTranscript?.trim();
   const summary = detail?.summary?.trim();
+  const completedCount = calls.filter((call) => call.status?.toLowerCase() === "completed").length;
+  const inProgressCount = calls.filter((call) => isInProgressStatus(call.status)).length;
+  const failedCount = calls.filter((call) => call.status?.toLowerCase() === "failed").length;
+  const avgScore = (() => {
+    const scoredCalls = calls.filter((call) => typeof call.satisfactionScore === "number");
+    if (scoredCalls.length === 0) {
+      return null;
+    }
+
+    const total = scoredCalls.reduce((sum, call) => sum + (call.satisfactionScore ?? 0), 0);
+    return (total / scoredCalls.length).toFixed(1);
+  })();
+  const maxCount = Math.max(completedCount, inProgressCount, failedCount, 1);
 
   if (!isAuthorized) {
     return (
@@ -402,6 +422,44 @@ function App() {
             Upload audio, monitor processing, and inspect transcripts, diarization, sentiment,
             and satisfaction scores from your backend.
           </p>
+          <div className="hero-graphic">
+            <div className="hero-bars" aria-label="Call status overview">
+              <div className="hero-bar-group">
+                <span
+                  className="hero-bar hero-bar-completed"
+                  style={{ height: `${(completedCount / maxCount) * 100}%` }}
+                />
+                <label>Completed</label>
+                <strong>{completedCount}</strong>
+              </div>
+              <div className="hero-bar-group">
+                <span
+                  className="hero-bar hero-bar-progress"
+                  style={{ height: `${(inProgressCount / maxCount) * 100}%` }}
+                />
+                <label>In progress</label>
+                <strong>{inProgressCount}</strong>
+              </div>
+              <div className="hero-bar-group">
+                <span
+                  className="hero-bar hero-bar-failed"
+                  style={{ height: `${(failedCount / maxCount) * 100}%` }}
+                />
+                <label>Failed</label>
+                <strong>{failedCount}</strong>
+              </div>
+            </div>
+            <div className="hero-summary">
+              <div>
+                <span>Average score</span>
+                <strong>{avgScore ?? "-"}</strong>
+              </div>
+              <div>
+                <span>Total calls</span>
+                <strong>{calls.length}</strong>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="hero-card">
           <div className="hero-stat">
@@ -488,7 +546,7 @@ function App() {
               max="100"
               value={filters.pageSize}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, pageSize: Number(event.target.value) || 10 }))
+                setFilters((current) => ({ ...current, pageSize: Number(event.target.value) || 100 }))
               }
               placeholder="Page size"
             />
@@ -563,7 +621,7 @@ function App() {
                     </div>
                     <span className="tag">
                       {audioLoading
-                        ? "Preparing playback"
+                        ? "Preparing audio playback"
                         : audioUrl
                           ? "Playback ready"
                           : "No audio yet"}
@@ -595,9 +653,16 @@ function App() {
                     <audio controls src={audioUrl} className="audio-player" />
                   ) : (
                     <div className="audio-placeholder">
-                      {detail.status === "Completed"
-                        ? "Preparing audio playback..."
-                        : "Audio playback will appear when the call is completed."}
+                      {audioLoading ? (
+                        <span className="status-inline">
+                          <span className="status-pulse" />
+                          Preparing audio file for playback...
+                        </span>
+                      ) : detail.status === "Completed" ? (
+                        "Preparing audio file for playback..."
+                      ) : (
+                        "Audio playback will appear when the call is completed."
+                      )}
                     </div>
                   )}
 

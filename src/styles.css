@@ -190,6 +190,82 @@ select:focus {
   color: var(--theme-text-muted);
 }
 
+.hero-graphic {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.hero-bars {
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  min-height: 140px;
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.hero-bar-group {
+  display: grid;
+  justify-items: center;
+  align-content: end;
+  gap: 0.45rem;
+  flex: 1;
+  height: 100%;
+}
+
+.hero-bar-group label {
+  color: var(--theme-text-muted);
+  font-size: 0.78rem;
+}
+
+.hero-bar-group strong {
+  font-size: 1rem;
+}
+
+.hero-bar {
+  display: block;
+  width: 100%;
+  min-height: 12px;
+  border-radius: 999px 999px 14px 14px;
+}
+
+.hero-bar-completed {
+  background: linear-gradient(180deg, #53a336, #4d9d30);
+}
+
+.hero-bar-progress {
+  background: linear-gradient(180deg, #ffc83d, #dbb138);
+}
+
+.hero-bar-failed {
+  background: linear-gradient(180deg, #db3700, #b82f00);
+}
+
+.hero-summary {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.hero-summary div {
+  padding: 1rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.hero-summary span {
+  display: block;
+  color: var(--theme-text-muted);
+  font-size: 0.82rem;
+  margin-bottom: 0.3rem;
+}
+
+.hero-summary strong {
+  font-size: 1.5rem;
+}
+
 .hero-card,
 .panel {
   border: 1px solid var(--theme-border);
@@ -595,6 +671,7 @@ select:focus {
 
 @media (max-width: 1100px) {
   .hero,
+  .hero-graphic,
   .workspace,
   .detail-panels,
   .filters,
