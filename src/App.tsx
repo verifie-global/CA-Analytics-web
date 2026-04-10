@@ -61,6 +61,9 @@ const renderRedactedTranscript = (value: string) =>
     ),
   );
 
+const generateConversationId = () =>
+  `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
 function App() {
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -78,15 +81,18 @@ function App() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [detail, setDetail] = useState<CallDetail | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>("");
+  const [audioRequestedFor, setAudioRequestedFor] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("Enter your company ID and API token to get started.");
   const [callsLoading, setCallsLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [authChecking, setAuthChecking] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [uploadState, setUploadState] = useState({
-    conversationId: "",
+    conversationId: generateConversationId(),
     url: "",
     file: null as File | null,
   });
@@ -139,6 +145,36 @@ function App() {
     },
     [audioUrl],
   );
+
+  useEffect(() => {
+    if (!isAuthorized) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshCalls();
+    }, 5000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isAuthorized, settings, filters]);
+
+  useEffect(() => {
+    if (
+      !selectedId ||
+      !detail ||
+      detail.status !== "Completed" ||
+      audioUrl ||
+      audioLoading ||
+      audioRequestedFor === selectedId
+    ) {
+      return;
+    }
+
+    setAudioRequestedFor(selectedId);
+    void handleAudioLoad(selectedId);
+  }, [selectedId, detail, audioUrl, audioLoading, audioRequestedFor]);
 
   const canQueryApi = useMemo(
     () => Boolean(settings.baseUrl && settings.companyId && settings.token),
@@ -201,6 +237,7 @@ function App() {
       URL.revokeObjectURL(audioUrl);
       setAudioUrl("");
     }
+    setAudioRequestedFor("");
 
     try {
       const nextDetail = await fetchCallDetail(settings, conversationId);
@@ -213,8 +250,17 @@ function App() {
     }
   };
 
-  const handleAudioLoad = async () => {
-    if (!selectedId) return;
+  const openUploadModal = () => {
+    setUploadState({
+      conversationId: generateConversationId(),
+      url: "",
+      file: null,
+    });
+    setIsUploadModalOpen(true);
+  };
+
+  const handleAudioLoad = async (conversationId: string) => {
+    if (!conversationId) return;
 
     setAudioLoading(true);
     setErrorMessage("");
@@ -224,7 +270,7 @@ function App() {
         URL.revokeObjectURL(audioUrl);
       }
 
-      const blob = await fetchAudioBlob(settings, selectedId);
+      const blob = await fetchAudioBlob(settings, conversationId);
       setAudioUrl(URL.createObjectURL(blob));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load audio.");
@@ -242,15 +288,20 @@ function App() {
     }
 
     setErrorMessage("");
+    setUploadSubmitting(true);
     setStatusMessage("Uploading call and queuing analysis...");
 
     try {
       await uploadCall(settings, uploadState);
-      setStatusMessage("Upload accepted. The backend has queued the call for analysis.");
-      setUploadState({ conversationId: "", url: "", file: null });
+      setStatusMessage(`Upload accepted. ${uploadState.conversationId} is now queued for analysis.`);
+      setIsUploadModalOpen(false);
+      setUploadState({ conversationId: generateConversationId(), url: "", file: null });
       await refreshCalls();
+      await handleLoadDetail(uploadState.conversationId);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to upload the call.");
+    } finally {
+      setUploadSubmitting(false);
     }
   };
 
@@ -338,59 +389,13 @@ function App() {
             <span>{detail?.status ?? "Idle"}</span>
             <label>selected status</label>
           </div>
+          <button type="button" className="secondary-button" onClick={openUploadModal}>
+            Upload call
+          </button>
         </div>
       </header>
 
       <main className="layout">
-        <section className="panel">
-          <div className="section-heading">
-            <h2>Upload call</h2>
-            <p>Use either a presigned URL or upload a local audio file directly.</p>
-          </div>
-
-          <form className="grid-form" onSubmit={handleUpload}>
-            <label>
-              Conversation ID
-              <input
-                value={uploadState.conversationId}
-                onChange={(event) =>
-                  setUploadState((current) => ({ ...current, conversationId: event.target.value }))
-                }
-                placeholder="conv-001"
-              />
-            </label>
-
-            <label className="full-width">
-              Presigned URL
-              <input
-                value={uploadState.url}
-                onChange={(event) =>
-                  setUploadState((current) => ({ ...current, url: event.target.value }))
-                }
-                placeholder="https://storage.example.com/call.wav?signature=..."
-              />
-            </label>
-
-            <label className="full-width">
-              Local audio file
-              <input
-                type="file"
-                accept="audio/*"
-                onChange={(event) =>
-                  setUploadState((current) => ({
-                    ...current,
-                    file: event.target.files?.[0] ?? null,
-                  }))
-                }
-              />
-            </label>
-
-            <button type="submit" disabled={!canQueryApi}>
-              Queue analysis
-            </button>
-          </form>
-        </section>
-
         <section className="panel">
           <div className="section-heading">
             <h2>Call explorer</h2>
@@ -524,9 +529,13 @@ function App() {
                       <p className="eyebrow">Conversation</p>
                       <h3>{detail.conversationId}</h3>
                     </div>
-                    <button type="button" onClick={() => void handleAudioLoad()} disabled={audioLoading}>
-                      {audioLoading ? "Loading audio..." : "Load audio"}
-                    </button>
+                    <span className="tag">
+                      {audioLoading
+                        ? "Preparing playback"
+                        : audioUrl
+                          ? "Playback ready"
+                          : "No audio yet"}
+                    </span>
                   </div>
 
                   <div className="stat-grid">
@@ -548,7 +557,15 @@ function App() {
                     </article>
                   </div>
 
-                  {audioUrl ? <audio controls src={audioUrl} className="audio-player" /> : null}
+                  {audioUrl ? (
+                    <audio controls src={audioUrl} className="audio-player" />
+                  ) : (
+                    <div className="audio-placeholder">
+                      {detail.status === "Completed"
+                        ? "Preparing audio playback..."
+                        : "Audio playback will appear when the call is completed."}
+                    </div>
+                  )}
 
                   <div className="detail-panels">
                     <section>
@@ -631,6 +648,78 @@ function App() {
           </div>
         </section>
       </main>
+
+      {isUploadModalOpen ? (
+        <div className="modal-backdrop" onClick={() => setIsUploadModalOpen(false)}>
+          <section className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="section-heading">
+              <h2>Upload call</h2>
+              <p>The conversation ID is generated automatically for each upload.</p>
+            </div>
+
+            <form className="grid-form" onSubmit={handleUpload}>
+              <label>
+                Conversation ID
+                <input value={uploadState.conversationId} readOnly />
+              </label>
+
+              <label>
+                Generate new ID
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() =>
+                    setUploadState((current) => ({
+                      ...current,
+                      conversationId: generateConversationId(),
+                    }))
+                  }
+                >
+                  Regenerate
+                </button>
+              </label>
+
+              <label className="full-width">
+                Presigned URL
+                <input
+                  value={uploadState.url}
+                  onChange={(event) =>
+                    setUploadState((current) => ({ ...current, url: event.target.value }))
+                  }
+                  placeholder="https://storage.example.com/call.wav?signature=..."
+                />
+              </label>
+
+              <label className="full-width">
+                Local audio file
+                <input
+                  type="file"
+                  accept="audio/*"
+                  onChange={(event) =>
+                    setUploadState((current) => ({
+                      ...current,
+                      file: event.target.files?.[0] ?? null,
+                    }))
+                  }
+                />
+              </label>
+
+              <div className="modal-actions full-width">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setIsUploadModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={!canQueryApi || uploadSubmitting}>
+                  {uploadSubmitting ? "Uploading..." : "Queue analysis"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
