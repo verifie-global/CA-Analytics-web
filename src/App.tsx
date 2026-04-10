@@ -108,6 +108,15 @@ function readWavSampleRate(bytes: Uint8Array) {
 }
 
 async function validateAudioFileSampleRate(file: File) {
+  const fileName = file.name.toLowerCase();
+  const mimeType = file.type.toLowerCase();
+
+  if (!fileName.endsWith(".wav") && mimeType !== "audio/wav" && mimeType !== "audio/x-wav") {
+    throw new Error(
+      "Only WAV files are supported for client-side sample rate validation. Please upload a WAV file with at least 16000 Hz.",
+    );
+  }
+
   const arrayBuffer = await file.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
   const sampleRate = readWavSampleRate(bytes);
@@ -139,6 +148,7 @@ function App() {
   const [detail, setDetail] = useState<CallDetail | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>("");
   const [audioRequestedFor, setAudioRequestedFor] = useState<string>("");
+  const [audioPendingFor, setAudioPendingFor] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("Enter your company ID and API token to get started.");
   const [callsLoading, setCallsLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -147,6 +157,7 @@ function App() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [copiedSection, setCopiedSection] = useState<string>("");
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [uploadState, setUploadState] = useState({
@@ -219,8 +230,9 @@ function App() {
 
     const hasInProgressConversation = calls.some((call) => isInProgressStatus(call.status));
     const selectedNeedsRefresh = isInProgressStatus(detail?.status);
+    const selectedAudioPending = Boolean(selectedId && audioPendingFor === selectedId);
 
-    if (!hasInProgressConversation && !selectedNeedsRefresh) {
+    if (!hasInProgressConversation && !selectedNeedsRefresh && !selectedAudioPending) {
       return;
     }
 
@@ -234,7 +246,7 @@ function App() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [isAuthorized, calls, detail?.status, selectedId, settings, filters]);
+  }, [isAuthorized, calls, detail?.status, selectedId, audioPendingFor, settings, filters]);
 
   useEffect(() => {
     if (
@@ -321,6 +333,7 @@ function App() {
       setAudioUrl("");
     }
     setAudioRequestedFor("");
+    setAudioPendingFor("");
 
     try {
       const nextDetail = await fetchCallDetail(settings, conversationId);
@@ -347,7 +360,7 @@ function App() {
     if (!conversationId) return;
 
     setAudioLoading(true);
-    setErrorMessage("");
+    setAudioPendingFor(conversationId);
 
     try {
       if (audioUrl) {
@@ -356,8 +369,19 @@ function App() {
 
       const blob = await fetchAudioBlob(settings, conversationId);
       setAudioUrl(URL.createObjectURL(blob));
+      setAudioPendingFor("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load audio.");
+      const maybeStatus = error as Error & { status?: number };
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      const isNotReadyYet =
+        maybeStatus.status === 404 ||
+        message.includes("not found") ||
+        message.includes("404");
+
+      if (!isNotReadyYet) {
+        setAudioPendingFor("");
+        setErrorMessage(error instanceof Error ? error.message : "Unable to load audio.");
+      }
     } finally {
       setAudioLoading(false);
     }
@@ -393,6 +417,22 @@ function App() {
       setErrorMessage(error instanceof Error ? error.message : "Unable to upload the call.");
     } finally {
       setUploadSubmitting(false);
+    }
+  };
+
+  const handleCopy = async (label: string, value?: string | null) => {
+    if (!value?.trim()) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedSection(label);
+      window.setTimeout(() => {
+        setCopiedSection((current) => (current === label ? "" : current));
+      }, 1800);
+    } catch {
+      setErrorMessage("Unable to copy text to clipboard.");
     }
   };
 
@@ -681,7 +721,7 @@ function App() {
                       <h3>{detail.conversationId}</h3>
                     </div>
                     <span className="tag">
-                      {audioLoading
+                      {audioLoading || audioPendingFor === detail.conversationId
                         ? "Preparing audio playback"
                         : audioUrl
                           ? "Playback ready"
@@ -714,7 +754,7 @@ function App() {
                     <audio controls src={audioUrl} className="audio-player" />
                   ) : (
                     <div className="audio-placeholder">
-                      {audioLoading ? (
+                      {audioLoading || audioPendingFor === detail.conversationId ? (
                         <span className="status-inline">
                           <span className="status-pulse" />
                           Preparing audio file for playback...
@@ -729,7 +769,17 @@ function App() {
 
                   <div className="detail-panels">
                     <section>
-                      <h4>Summarization</h4>
+                      <div className="panel-heading-row">
+                        <h4>Summarization</h4>
+                        <button
+                          type="button"
+                          className="secondary-button small-button"
+                          onClick={() => void handleCopy("summary", summary)}
+                          disabled={!summary}
+                        >
+                          {copiedSection === "summary" ? "Copied" : "Copy"}
+                        </button>
+                      </div>
                       <div className="scroll-panel prose-block">
                         {summary ? summary : "No summary available yet."}
                       </div>
@@ -766,7 +816,17 @@ function App() {
                     </section>
 
                     <section>
-                      <h4>Original transcription</h4>
+                      <div className="panel-heading-row">
+                        <h4>Original transcription</h4>
+                        <button
+                          type="button"
+                          className="secondary-button small-button"
+                          onClick={() => void handleCopy("transcript", transcript)}
+                          disabled={!transcript}
+                        >
+                          {copiedSection === "transcript" ? "Copied" : "Copy"}
+                        </button>
+                      </div>
                       <div className="scroll-panel prose-block">
                         {transcript ? transcript : "No original transcription available yet."}
                       </div>
@@ -868,8 +928,10 @@ function App() {
               </label>
 
               <p className="upload-note full-width">
-                Local WAV audio files must have at least a 16000 Hz sample rate. Presigned URLs
-                are queued as-is because the browser cannot inspect remote files before upload.
+                Local uploads must be WAV files with at least a 16000 Hz sample rate. Other audio
+                formats are not validated client-side and are blocked to avoid false results.
+                Presigned URLs are queued as-is because the browser cannot inspect remote files
+                before upload.
               </p>
 
               {uploadValidationMessage ? (

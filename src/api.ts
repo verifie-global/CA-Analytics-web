@@ -238,7 +238,11 @@ export async function fetchAudioBlob(settings: AppSettings, conversationId: stri
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Audio fetch failed with status ${response.status}`);
+    const error = new Error(text || `Audio fetch failed with status ${response.status}`) as Error & {
+      status?: number;
+    };
+    error.status = response.status;
+    throw error;
   }
 
   return response.blob();
