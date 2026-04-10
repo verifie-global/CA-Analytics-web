@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall } from "./api";
+import { fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall, verifyAuthorization } from "./api";
 import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
@@ -21,7 +21,7 @@ const defaultFilters: CallFilters = {
 };
 
 const formatDate = (value?: string | null) => {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(undefined, {
@@ -31,10 +31,18 @@ const formatDate = (value?: string | null) => {
 };
 
 const formatDuration = (seconds?: number | null) => {
-  if (seconds == null) return "—";
+  if (seconds == null) return "-";
   const minutes = Math.floor(seconds / 60);
   const remainder = Math.round(seconds % 60);
   return `${minutes}m ${remainder}s`;
+};
+
+const formatTimestamp = (milliseconds?: number | null) => {
+  if (milliseconds == null) return "--:--";
+  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
 const classForSentiment = (value?: string) => {
@@ -63,6 +71,8 @@ function App() {
   const [callsLoading, setCallsLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
+  const [authChecking, setAuthChecking] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [uploadState, setUploadState] = useState({
     conversationId: "",
@@ -73,6 +83,41 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setDraftSettings(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    if (!settings.companyId || !settings.token) {
+      setIsAuthorized(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkAuthorization = async () => {
+      setAuthChecking(true);
+
+      try {
+        await verifyAuthorization(settings);
+        if (!cancelled) {
+          setIsAuthorized(true);
+          setStatusMessage("Authorization successful.");
+        }
+      } catch {
+        if (!cancelled) {
+          setIsAuthorized(false);
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthChecking(false);
+        }
+      }
+    };
+
+    void checkAuthorization();
+
+    return () => {
+      cancelled = true;
+    };
   }, [settings]);
 
   useEffect(
@@ -89,8 +134,8 @@ function App() {
     [settings],
   );
 
-  const refreshCalls = async () => {
-    if (!canQueryApi) {
+  const refreshCalls = async (activeSettings: AppSettings = settings) => {
+    if (!activeSettings.baseUrl || !activeSettings.companyId || !activeSettings.token) {
       setErrorMessage("Add a base URL, company ID, and bearer token before loading calls.");
       return;
     }
@@ -99,7 +144,7 @@ function App() {
     setErrorMessage("");
 
     try {
-      const nextCalls = await fetchCalls(settings, filters);
+      const nextCalls = await fetchCalls(activeSettings, filters);
       setCalls(nextCalls);
       setStatusMessage(`Loaded ${nextCalls.length} call${nextCalls.length === 1 ? "" : "s"}.`);
 
@@ -116,12 +161,24 @@ function App() {
 
   const handleSettingsSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    setSettings(draftSettings);
-    setStatusMessage("Saved API settings. Loading calls...");
+    setErrorMessage("");
+    setAuthChecking(true);
+    setStatusMessage("Checking authorization...");
 
-    setTimeout(() => {
-      void refreshCalls();
-    }, 0);
+    try {
+      await verifyAuthorization(draftSettings);
+      setSettings(draftSettings);
+      setIsAuthorized(true);
+      setStatusMessage("Authorization successful. Loading dashboard...");
+      setTimeout(() => {
+        void refreshCalls(draftSettings);
+      }, 0);
+    } catch (error) {
+      setIsAuthorized(false);
+      setErrorMessage(error instanceof Error ? error.message : "Authorization failed.");
+    } finally {
+      setAuthChecking(false);
+    }
   };
 
   const handleLoadDetail = async (conversationId: string) => {
@@ -188,12 +245,72 @@ function App() {
 
   const transcript = detail?.transcript?.trim();
 
+  if (!isAuthorized) {
+    return (
+      <div className="app-shell auth-shell">
+        <section className="auth-card">
+          <p className="eyebrow">Authorization</p>
+          <h1>Call Analytics Dashboard</h1>
+          <p className="hero-copy">
+            Enter your company ID and bearer token. We will verify them against the backend
+            before loading the dashboard.
+          </p>
+
+          <form className="grid-form" onSubmit={handleSettingsSubmit}>
+            <label>
+              Base URL
+              <input
+                value={draftSettings.baseUrl}
+                onChange={(event) =>
+                  setDraftSettings((current) => ({ ...current, baseUrl: event.target.value }))
+                }
+                placeholder="https://ca.satisfai.cx"
+              />
+            </label>
+
+            <label>
+              Company ID
+              <input
+                value={draftSettings.companyId}
+                onChange={(event) =>
+                  setDraftSettings((current) => ({ ...current, companyId: event.target.value }))
+                }
+                placeholder="1"
+              />
+            </label>
+
+            <label className="full-width">
+              Bearer token
+              <input
+                type="password"
+                value={draftSettings.token}
+                onChange={(event) =>
+                  setDraftSettings((current) => ({ ...current, token: event.target.value }))
+                }
+                placeholder="company API token"
+              />
+            </label>
+
+            <button className="full-width" type="submit" disabled={authChecking}>
+              {authChecking ? "Checking..." : "Authorize"}
+            </button>
+          </form>
+
+          <div className="status-strip">
+            <span>{statusMessage}</span>
+            {errorMessage ? <strong>{errorMessage}</strong> : null}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">React dashboard for Call Analytics API</p>
-          <h1>Call Analytics Console</h1>
+          <p className="eyebrow">Authorized workspace</p>
+          <h1>Call Analytics Dashboard</h1>
           <p className="hero-copy">
             Upload audio, monitor processing, and inspect transcripts, diarization, sentiment,
             and satisfaction scores from your backend.
@@ -214,8 +331,8 @@ function App() {
       <main className="layout">
         <section className="panel">
           <div className="section-heading">
-            <h2>Connection</h2>
-            <p>These values are stored in local browser storage for convenience.</p>
+            <h2>Authorization</h2>
+            <p>Update the credentials below if you want to re-check access for another company.</p>
           </div>
 
           <form className="grid-form" onSubmit={handleSettingsSubmit}>
@@ -253,7 +370,9 @@ function App() {
               />
             </label>
 
-            <button type="submit">Save and load calls</button>
+            <button type="submit" disabled={authChecking}>
+              {authChecking ? "Checking..." : "Re-check authorization"}
+            </button>
           </form>
         </section>
 
@@ -410,7 +529,7 @@ function App() {
                     </div>
                     <div className="call-card-grid">
                       <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
-                      <span>Score: {call.satisfactionScore ?? "—"}</span>
+                      <span>Score: {call.satisfactionScore ?? "-"}</span>
                       <span>Duration: {formatDuration(call.durationSeconds)}</span>
                       <span>{call.language ?? "No language"}</span>
                     </div>
@@ -451,11 +570,11 @@ function App() {
                     </article>
                     <article>
                       <label>Sentiment</label>
-                      <strong>{detail.sentiment ?? "—"}</strong>
+                      <strong>{detail.sentiment ?? "-"}</strong>
                     </article>
                     <article>
                       <label>Satisfaction</label>
-                      <strong>{detail.satisfactionScore ?? "—"}</strong>
+                      <strong>{detail.satisfactionScore ?? "-"}</strong>
                     </article>
                     <article>
                       <label>Duration</label>
@@ -475,16 +594,25 @@ function App() {
 
                     <section>
                       <h4>Diarization</h4>
-                      <div className="scroll-panel">
+                      <div className="scroll-panel chat-panel">
                         {detail.segments.length === 0 ? (
                           <p>No speaker segments available.</p>
                         ) : (
                           detail.segments.map((segment, index) => (
-                            <article key={`${segment.speaker}-${index}`} className="segment-card">
+                            <article
+                              key={`${segment.speaker}-${index}`}
+                              className={`segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()}`}
+                            >
                               <div className="segment-meta">
-                                <strong>{segment.speaker}</strong>
+                                <strong>
+                                  {segment.role === "AGENT"
+                                    ? "Agent"
+                                    : segment.role === "CUSTOMER"
+                                      ? "Customer"
+                                      : segment.speaker}
+                                </strong>
                                 <span>
-                                  {segment.startMs ?? 0}ms - {segment.endMs ?? 0}ms
+                                  {formatTimestamp(segment.startMs)} - {formatTimestamp(segment.endMs)}
                                 </span>
                               </div>
                               <p>{segment.text}</p>

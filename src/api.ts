@@ -76,13 +76,23 @@ const readBoolean = (record: Record<string, unknown>, ...keys: string[]) => {
 const toSegments = (value: unknown): SpeakerSegment[] =>
   asArray(value)
     .map((item) => asRecord(item))
-    .map((segment) => ({
-      speaker:
-        readString(segment, "speaker", "speakerName", "speakerLabel") ?? "Speaker",
-      startMs: readNumber(segment, "startMs", "start", "offsetMs"),
-      endMs: readNumber(segment, "endMs", "end"),
-      text: readString(segment, "text", "transcript") ?? "",
-    }))
+    .map((segment) => {
+      const speaker =
+        readString(segment, "speaker", "speakerName", "speakerLabel") ?? "Speaker";
+      const normalizedSpeaker = speaker.toUpperCase();
+      const role: "AGENT" | "CUSTOMER" | "UNKNOWN" =
+        normalizedSpeaker === "AGENT" || normalizedSpeaker === "CUSTOMER"
+          ? (normalizedSpeaker as "AGENT" | "CUSTOMER")
+          : "UNKNOWN";
+
+      return {
+        speaker,
+        role,
+        startMs: readNumber(segment, "startMs", "start", "offsetMs"),
+        endMs: readNumber(segment, "endMs", "end"),
+        text: readString(segment, "text", "transcript") ?? "",
+      };
+    })
     .filter((segment) => segment.text);
 
 const normalizeCallSummary = (item: unknown): CallSummary => {
@@ -110,10 +120,10 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
   const rawAnalysis = asRecord(record.analysis ?? record.rawAnalysis);
   const entities = asRecord(record.entities ?? rawAnalysis.entities);
   const segments = toSegments(
-    record.diarization ??
+    rawAnalysis.pseudoDiarization ??
+      record.diarization ??
       record.segments ??
       record.diarizationSegments ??
-      rawAnalysis.pseudoDiarization ??
       rawAnalysis.diarization ??
       rawAnalysis.segments,
   );
@@ -230,4 +240,16 @@ export async function fetchAudioBlob(settings: AppSettings, conversationId: stri
   }
 
   return response.blob();
+}
+
+export async function verifyAuthorization(settings: AppSettings) {
+  await fetchCalls(settings, {
+    page: 1,
+    pageSize: 1,
+    search: "",
+    conversationId: "",
+    status: "",
+    sentiment: "",
+    hasError: "",
+  });
 }

@@ -32,6 +32,7 @@ export type CallSummary = {
 
 export type SpeakerSegment = {
   speaker: string;
+  role?: "AGENT" | "CUSTOMER" | "UNKNOWN";
   startMs?: number | null;
   endMs?: number | null;
   text: string;
