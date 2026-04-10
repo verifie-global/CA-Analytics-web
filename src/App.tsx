@@ -344,53 +344,6 @@ function App() {
       <main className="layout">
         <section className="panel">
           <div className="section-heading">
-            <h2>Authorization</h2>
-            <p>Update the credentials below if you want to re-check access for another company.</p>
-          </div>
-
-          <form className="grid-form" onSubmit={handleSettingsSubmit}>
-            <label>
-              Base URL
-              <input
-                value={draftSettings.baseUrl}
-                onChange={(event) =>
-                  setDraftSettings((current) => ({ ...current, baseUrl: event.target.value }))
-                }
-                placeholder="https://ca.satisfai.cx"
-              />
-            </label>
-
-            <label>
-              Company ID
-              <input
-                value={draftSettings.companyId}
-                onChange={(event) =>
-                  setDraftSettings((current) => ({ ...current, companyId: event.target.value }))
-                }
-                placeholder="123"
-              />
-            </label>
-
-            <label className="full-width">
-              Bearer token
-              <input
-                type="password"
-                value={draftSettings.token}
-                onChange={(event) =>
-                  setDraftSettings((current) => ({ ...current, token: event.target.value }))
-                }
-                placeholder="company API token"
-              />
-            </label>
-
-            <button type="submit" disabled={authChecking}>
-              {authChecking ? "Checking..." : "Re-check authorization"}
-            </button>
-          </form>
-        </section>
-
-        <section className="panel">
-          <div className="section-heading">
             <h2>Upload call</h2>
             <p>Use either a presigned URL or upload a local audio file directly.</p>
           </div>
