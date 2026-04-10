@@ -69,37 +69,56 @@ const renderRedactedTranscript = (value: string) =>
 const generateConversationId = () =>
   `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
+function readWavSampleRate(bytes: Uint8Array) {
+  if (bytes.length < 44) {
+    throw new Error("WAV file is too small to validate.");
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const riff = String.fromCharCode(...bytes.slice(0, 4));
+  const wave = String.fromCharCode(...bytes.slice(8, 12));
+
+  if (riff !== "RIFF" || wave !== "WAVE") {
+    throw new Error("Unsupported audio format for sample rate validation. Please upload a WAV file.");
+  }
+
+  let offset = 12;
+
+  while (offset + 8 <= view.byteLength) {
+    const chunkId = String.fromCharCode(
+      view.getUint8(offset),
+      view.getUint8(offset + 1),
+      view.getUint8(offset + 2),
+      view.getUint8(offset + 3),
+    );
+    const chunkSize = view.getUint32(offset + 4, true);
+
+    if (chunkId === "fmt ") {
+      if (offset + 16 > view.byteLength) {
+        break;
+      }
+
+      return view.getUint32(offset + 12, true);
+    }
+
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+
+  throw new Error("Unable to find sample rate information in the WAV file.");
+}
+
 async function validateAudioFileSampleRate(file: File) {
   const arrayBuffer = await file.arrayBuffer();
-  const AudioContextCtor =
-    window.AudioContext ||
-    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const bytes = new Uint8Array(arrayBuffer);
+  const sampleRate = readWavSampleRate(bytes);
 
-  if (!AudioContextCtor) {
-    throw new Error("This browser cannot inspect audio files before upload.");
+  if (sampleRate < 16000) {
+    throw new Error(
+      `Audio sample rate is ${sampleRate} Hz. Please upload a file with at least 16000 Hz.`,
+    );
   }
 
-  const audioContext = new AudioContextCtor();
-
-  try {
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-
-    if (audioBuffer.sampleRate < 16000) {
-      throw new Error(
-        `Audio sample rate is ${audioBuffer.sampleRate} Hz. Please upload a file with at least 16000 Hz.`,
-      );
-    }
-
-    return audioBuffer.sampleRate;
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error;
-    }
-
-    throw new Error("Unable to inspect the selected audio file.");
-  } finally {
-    void audioContext.close();
-  }
+  return sampleRate;
 }
 
 function App() {
@@ -849,8 +868,8 @@ function App() {
               </label>
 
               <p className="upload-note full-width">
-                Local audio files must have at least a 16000 Hz sample rate. Presigned URLs are
-                queued as-is because the browser cannot inspect remote files before upload.
+                Local WAV audio files must have at least a 16000 Hz sample rate. Presigned URLs
+                are queued as-is because the browser cannot inspect remote files before upload.
               </p>
 
               {uploadValidationMessage ? (
