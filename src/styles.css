@@ -362,6 +362,30 @@ select:focus {
   font-size: 0.82rem;
 }
 
+.tag-progress {
+  background: rgba(255, 200, 61, 0.16);
+  color: var(--theme-warning);
+}
+
+.status-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.status-pulse {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: pulse-status 1.6s infinite;
+}
+
+.status-animated-text {
+  color: var(--theme-warning);
+}
+
 .sentiment-positive {
   background: rgba(83, 163, 54, 0.18);
   color: #98d47e;
@@ -524,6 +548,23 @@ select:focus {
   font-family: "Cascadia Code", "Consolas", monospace;
   font-size: 0.84rem;
   line-height: 1.45;
+}
+
+@keyframes pulse-status {
+  0% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(255, 200, 61, 0.45);
+  }
+
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(255, 200, 61, 0);
+  }
+
+  100% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(255, 200, 61, 0);
+  }
 }
 
 .modal-backdrop {

@@ -50,6 +50,11 @@ const classForSentiment = (value?: string) => {
   return `tag sentiment-${value.toLowerCase()}`;
 };
 
+const isInProgressStatus = (value?: string | null) => {
+  const normalized = value?.toLowerCase();
+  return normalized === "queued" || normalized === "processing" || normalized === "inprogress";
+};
+
 const renderRedactedTranscript = (value: string) =>
   value.split(/(\[REDACTED\])/g).map((part, index) =>
     part === "[REDACTED]" ? (
@@ -159,14 +164,24 @@ function App() {
       return;
     }
 
+    const hasInProgressConversation = calls.some((call) => isInProgressStatus(call.status));
+    const selectedNeedsRefresh = isInProgressStatus(detail?.status);
+
+    if (!hasInProgressConversation && !selectedNeedsRefresh) {
+      return;
+    }
+
     const timer = window.setInterval(() => {
       void refreshCalls();
+      if (selectedId) {
+        void handleLoadDetail(selectedId);
+      }
     }, 5000);
 
     return () => {
       window.clearInterval(timer);
     };
-  }, [isAuthorized, settings, filters]);
+  }, [isAuthorized, calls, detail?.status, selectedId, settings, filters]);
 
   useEffect(() => {
     if (
@@ -504,7 +519,16 @@ function App() {
                   >
                     <div className="call-card-head">
                       <strong>{call.conversationId}</strong>
-                      <span className="tag">{call.status}</span>
+                      <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
+                        {isInProgressStatus(call.status) ? (
+                          <span className="status-inline">
+                            <span className="status-pulse" />
+                            {call.status}
+                          </span>
+                        ) : (
+                          call.status
+                        )}
+                      </span>
                     </div>
                     <div className="call-card-grid">
                       <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
@@ -549,7 +573,9 @@ function App() {
                   <div className="stat-grid">
                     <article>
                       <label>Status</label>
-                      <strong>{detail.status}</strong>
+                      <strong className={isInProgressStatus(detail.status) ? "status-animated-text" : ""}>
+                        {detail.status}
+                      </strong>
                     </article>
                     <article>
                       <label>Sentiment</label>
