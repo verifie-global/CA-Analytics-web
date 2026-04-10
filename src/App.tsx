@@ -176,6 +176,7 @@ function App() {
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const diarizationContainerRef = useRef<HTMLDivElement | null>(null);
   const [uploadState, setUploadState] = useState({
     conversationId: generateConversationId(),
     url: "",
@@ -540,6 +541,26 @@ function App() {
     ? (detail?.analysis?.customerConcerns as Array<Record<string, unknown>>)
     : [];
 
+  useEffect(() => {
+    if (activeSegmentIndex < 0 || !diarizationContainerRef.current) {
+      return;
+    }
+
+    const activeElement = diarizationContainerRef.current.querySelector<HTMLElement>(
+      `[data-segment-index="${activeSegmentIndex}"]`,
+    );
+
+    if (!activeElement) {
+      return;
+    }
+
+    activeElement.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+      behavior: "smooth",
+    });
+  }, [activeSegmentIndex]);
+
   if (!isAuthorized) {
     return (
       <div className="app-shell auth-shell">
@@ -884,12 +905,13 @@ function App() {
 
                     <section>
                       <h4>Diarization</h4>
-                      <div className="scroll-panel chat-panel">
+                      <div ref={diarizationContainerRef} className="scroll-panel chat-panel">
                         {detail.segments.length === 0 ? (
                           <p>No speaker segments available.</p>
                         ) : (
                           detail.segments.map((segment, index) => (
                             <article
+                              data-segment-index={index}
                               key={`${segment.speaker}-${index}`}
                               className={`segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()} ${activeSegmentIndex === index ? "segment-active" : ""}`}
                               onClick={() => handleSeekToSegment(segment.startMs)}
