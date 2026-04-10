@@ -77,7 +77,8 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
   asArray(value)
     .map((item) => asRecord(item))
     .map((segment) => ({
-      speaker: readString(segment, "speaker", "speakerName") ?? "Speaker",
+      speaker:
+        readString(segment, "speaker", "speakerName", "speakerLabel") ?? "Speaker",
       startMs: readNumber(segment, "startMs", "start", "offsetMs"),
       endMs: readNumber(segment, "endMs", "end"),
       text: readString(segment, "text", "transcript") ?? "",
@@ -86,12 +87,14 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
 
 const normalizeCallSummary = (item: unknown): CallSummary => {
   const record = asRecord(item);
+  const rawAnalysis = asRecord(record.analysis);
 
   return {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
     status: readString(record, "status") ?? "Unknown",
-    sentiment: readString(record, "sentiment"),
-    satisfactionScore: readNumber(record, "satisfactionScore"),
+    sentiment: readString(record, "sentiment") ?? readString(rawAnalysis, "sentiment"),
+    satisfactionScore:
+      readNumber(record, "satisfactionScore") ?? readNumber(rawAnalysis, "satisfactionScore"),
     durationSeconds: readNumber(record, "durationSeconds", "callDurationSeconds"),
     language: readString(record, "language"),
     createdUtc: readString(record, "createdUtc", "createdAtUtc", "createdAt"),
@@ -106,16 +109,25 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
   const record = asRecord(item);
   const rawAnalysis = asRecord(record.analysis ?? record.rawAnalysis);
   const entities = asRecord(record.entities ?? rawAnalysis.entities);
-  const segments = toSegments(record.segments ?? record.diarizationSegments ?? rawAnalysis.segments);
+  const segments = toSegments(
+    record.diarization ??
+      record.segments ??
+      record.diarizationSegments ??
+      rawAnalysis.pseudoDiarization ??
+      rawAnalysis.diarization ??
+      rawAnalysis.segments,
+  );
 
   return {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
     status: readString(record, "status") ?? "Unknown",
     transcript:
-      readString(record, "transcript") ??
+      readString(record, "redactedTranscript", "transcript") ??
+      readString(rawAnalysis, "summary", "rawTranscript") ??
       segments.map((segment) => segment.text).join("\n"),
-    sentiment: readString(record, "sentiment"),
-    satisfactionScore: readNumber(record, "satisfactionScore"),
+    sentiment: readString(record, "sentiment") ?? readString(rawAnalysis, "sentiment"),
+    satisfactionScore:
+      readNumber(record, "satisfactionScore") ?? readNumber(rawAnalysis, "satisfactionScore"),
     durationSeconds: readNumber(record, "durationSeconds", "callDurationSeconds"),
     language: readString(record, "language"),
     createdUtc: readString(record, "createdUtc", "createdAtUtc", "createdAt"),
