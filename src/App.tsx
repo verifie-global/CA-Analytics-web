@@ -69,6 +69,19 @@ const renderRedactedTranscript = (value: string) =>
 const generateConversationId = () =>
   `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
+const CopyIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-copy">
+    <path
+      d="M9 9h9v11H9zM6 4h9v2H8v9H6z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 function readWavSampleRate(bytes: Uint8Array) {
   if (bytes.length < 44) {
     throw new Error("WAV file is too small to validate.");
@@ -159,6 +172,7 @@ function App() {
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string>("");
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [uploadState, setUploadState] = useState({
     conversationId: generateConversationId(),
@@ -353,6 +367,7 @@ function App() {
       file: null,
     });
     setUploadValidationMessage("");
+    setUploadErrorMessage("");
     setIsUploadModalOpen(true);
   };
 
@@ -391,12 +406,13 @@ function App() {
     event.preventDefault();
 
     if (!uploadState.conversationId || (!uploadState.url && !uploadState.file)) {
-      setErrorMessage("Provide a conversation ID and either a presigned URL or an audio file.");
+      setUploadErrorMessage("Provide a conversation ID and either a presigned URL or an audio file.");
       return;
     }
 
     setErrorMessage("");
     setUploadValidationMessage("");
+    setUploadErrorMessage("");
     setUploadSubmitting(true);
     setStatusMessage("Uploading call and queuing analysis...");
 
@@ -411,10 +427,11 @@ function App() {
       setIsUploadModalOpen(false);
       setUploadState({ conversationId: generateConversationId(), url: "", file: null });
       setUploadValidationMessage("");
+      setUploadErrorMessage("");
       await refreshCalls();
       await handleLoadDetail(uploadState.conversationId);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to upload the call.");
+      setUploadErrorMessage(error instanceof Error ? error.message : "Unable to upload the call.");
     } finally {
       setUploadSubmitting(false);
     }
@@ -434,6 +451,34 @@ function App() {
     } catch {
       setErrorMessage("Unable to copy text to clipboard.");
     }
+  };
+
+  const handleLogout = () => {
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+    }
+
+    localStorage.removeItem(STORAGE_KEY);
+    setSettings(defaultSettings);
+    setDraftSettings(defaultSettings);
+    setCalls([]);
+    setSelectedId("");
+    setDetail(null);
+    setAudioUrl("");
+    setAudioRequestedFor("");
+    setAudioPendingFor("");
+    setIsAuthorized(false);
+    setIsUploadModalOpen(false);
+    setUploadSubmitting(false);
+    setUploadValidationMessage("");
+    setUploadErrorMessage("");
+    setErrorMessage("");
+    setStatusMessage("You have been logged out.");
+    setUploadState({
+      conversationId: generateConversationId(),
+      url: "",
+      file: null,
+    });
   };
 
   const transcript = detail?.transcript?.trim();
@@ -573,6 +618,9 @@ function App() {
           </div>
           <button type="button" className="secondary-button" onClick={openUploadModal}>
             Upload call
+          </button>
+          <button type="button" className="secondary-button" onClick={handleLogout}>
+            Log out
           </button>
         </div>
       </header>
@@ -769,18 +817,18 @@ function App() {
 
                   <div className="detail-panels">
                     <section>
-                      <div className="panel-heading-row">
-                        <h4>Summarization</h4>
+                      <h4>Summarization</h4>
+                      <div className="scroll-panel prose-block copy-panel">
                         <button
                           type="button"
-                          className="secondary-button small-button"
+                          className={`icon-button ${copiedSection === "summary" ? "is-copied" : ""}`}
                           onClick={() => void handleCopy("summary", summary)}
                           disabled={!summary}
+                          aria-label="Copy summarization"
+                          title={copiedSection === "summary" ? "Copied" : "Copy"}
                         >
-                          {copiedSection === "summary" ? "Copied" : "Copy"}
+                          <CopyIcon />
                         </button>
-                      </div>
-                      <div className="scroll-panel prose-block">
                         {summary ? summary : "No summary available yet."}
                       </div>
                     </section>
@@ -816,18 +864,18 @@ function App() {
                     </section>
 
                     <section>
-                      <div className="panel-heading-row">
-                        <h4>Original transcription</h4>
+                      <h4>Original transcription</h4>
+                      <div className="scroll-panel prose-block copy-panel">
                         <button
                           type="button"
-                          className="secondary-button small-button"
+                          className={`icon-button ${copiedSection === "transcript" ? "is-copied" : ""}`}
                           onClick={() => void handleCopy("transcript", transcript)}
                           disabled={!transcript}
+                          aria-label="Copy original transcription"
+                          title={copiedSection === "transcript" ? "Copied" : "Copy"}
                         >
-                          {copiedSection === "transcript" ? "Copied" : "Copy"}
+                          <CopyIcon />
                         </button>
-                      </div>
-                      <div className="scroll-panel prose-block">
                         {transcript ? transcript : "No original transcription available yet."}
                       </div>
                     </section>
@@ -918,6 +966,7 @@ function App() {
                   onChange={(event) =>
                     {
                       setUploadValidationMessage("");
+                      setUploadErrorMessage("");
                       setUploadState((current) => ({
                         ...current,
                         file: event.target.files?.[0] ?? null,
@@ -936,6 +985,10 @@ function App() {
 
               {uploadValidationMessage ? (
                 <p className="upload-validation full-width">{uploadValidationMessage}</p>
+              ) : null}
+
+              {uploadErrorMessage ? (
+                <p className="upload-error full-width">{uploadErrorMessage}</p>
               ) : null}
 
               <div className="modal-actions full-width">

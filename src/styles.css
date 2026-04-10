@@ -69,12 +69,6 @@ button:hover {
   box-shadow: none;
 }
 
-.small-button {
-  padding: 0.45rem 0.8rem;
-  border-radius: 10px;
-  font-size: 0.86rem;
-}
-
 button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -541,16 +535,40 @@ select:focus {
   margin: 0 0 0.7rem;
 }
 
-.panel-heading-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.7rem;
+.copy-panel {
+  position: relative;
+  padding-top: 3rem;
 }
 
-.panel-heading-row h4 {
-  margin: 0;
+.icon-button {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--theme-border);
+  box-shadow: none;
+}
+
+.icon-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.icon-button.is-copied {
+  color: #98d47e;
+  border-color: rgba(83, 163, 54, 0.35);
+  background: rgba(83, 163, 54, 0.14);
+}
+
+.icon-copy {
+  width: 1rem;
+  height: 1rem;
 }
 
 .detail-panels section {
@@ -704,6 +722,15 @@ select:focus {
   background: rgba(83, 163, 54, 0.14);
   border: 1px solid rgba(83, 163, 54, 0.35);
   color: #98d47e;
+}
+
+.upload-error {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+  background: rgba(219, 55, 0, 0.12);
+  border: 1px solid rgba(219, 55, 0, 0.3);
+  color: #ffb097;
 }
 
 @media (max-width: 1100px) {
