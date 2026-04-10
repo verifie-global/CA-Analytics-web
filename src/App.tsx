@@ -137,6 +137,14 @@ function App() {
     };
   }, [settings]);
 
+  useEffect(() => {
+    if (!isAuthorized) {
+      return;
+    }
+
+    void refreshCalls();
+  }, [isAuthorized]);
+
   useEffect(
     () => () => {
       if (audioUrl) {

@@ -86,6 +86,11 @@ select {
   outline: none;
 }
 
+option {
+  background: var(--theme-surface);
+  color: var(--theme-text);
+}
+
 input:focus,
 select:focus {
   border-color: var(--theme-primary);
