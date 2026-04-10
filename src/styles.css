@@ -597,12 +597,90 @@ select:focus {
   font-weight: 700;
 }
 
+.token-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-content: flex-start;
+}
+
+.token-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--theme-border);
+  color: var(--theme-text);
+}
+
+.entity-panel,
+.concern-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.entity-group {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.entity-group strong {
+  text-transform: capitalize;
+}
+
+.concern-card {
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1px solid var(--theme-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.concern-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.bool-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  border: 1px solid transparent;
+}
+
+.bool-true {
+  background: rgba(83, 163, 54, 0.16);
+  border-color: rgba(83, 163, 54, 0.35);
+  color: #98d47e;
+}
+
+.bool-false {
+  background: rgba(219, 55, 0, 0.14);
+  border-color: rgba(219, 55, 0, 0.32);
+  color: #ffb097;
+}
+
 .segment-card {
   padding: 0.85rem;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background 160ms ease;
 }
 
 .segment-card + .segment-card {
   margin-top: 0.75rem;
+}
+
+.segment-card:hover {
+  transform: translateY(-1px);
 }
 
 .chat-panel {
@@ -636,6 +714,11 @@ select:focus {
 .role-unknown {
   align-self: stretch;
   background: rgba(255, 255, 255, 0.05);
+}
+
+.segment-active {
+  border-color: var(--theme-warning);
+  box-shadow: 0 0 0 2px rgba(255, 200, 61, 0.18);
 }
 
 .segment-card p {

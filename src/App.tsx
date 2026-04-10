@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall, verifyAuthorization } from "./api";
 import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types";
 
@@ -162,6 +162,7 @@ function App() {
   const [audioUrl, setAudioUrl] = useState<string>("");
   const [audioRequestedFor, setAudioRequestedFor] = useState<string>("");
   const [audioPendingFor, setAudioPendingFor] = useState<string>("");
+  const [playbackTimeSeconds, setPlaybackTimeSeconds] = useState(0);
   const [statusMessage, setStatusMessage] = useState<string>("Enter your company ID and API token to get started.");
   const [callsLoading, setCallsLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -174,6 +175,7 @@ function App() {
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [uploadState, setUploadState] = useState({
     conversationId: generateConversationId(),
     url: "",
@@ -352,6 +354,9 @@ function App() {
       setAudioUrl("");
     }
     if (!options?.silent) {
+      setPlaybackTimeSeconds(0);
+    }
+    if (!options?.silent) {
       setAudioRequestedFor("");
       setAudioPendingFor("");
     }
@@ -396,6 +401,7 @@ function App() {
       const blob = await fetchAudioBlob(settings, conversationId);
       setAudioUrl(URL.createObjectURL(blob));
       setAudioPendingFor("");
+      setPlaybackTimeSeconds(0);
     } catch (error) {
       const maybeStatus = error as Error & { status?: number };
       const message = error instanceof Error ? error.message.toLowerCase() : "";
@@ -464,6 +470,17 @@ function App() {
     }
   };
 
+  const handleSeekToSegment = (startMs?: number | null) => {
+    if (!audioRef.current || startMs == null) {
+      return;
+    }
+
+    const nextTime = startMs / 1000;
+    audioRef.current.currentTime = nextTime;
+    setPlaybackTimeSeconds(nextTime);
+    void audioRef.current.play().catch(() => undefined);
+  };
+
   const handleLogout = () => {
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
@@ -508,6 +525,20 @@ function App() {
     return (total / scoredCalls.length).toFixed(1);
   })();
   const maxSentimentCount = Math.max(positiveCount, neutralCount, negativeCount, 1);
+  const activeSegmentIndex = detail?.segments.findIndex((segment) => {
+    const start = (segment.startMs ?? 0) / 1000;
+    const end = (segment.endMs ?? Number.MAX_SAFE_INTEGER) / 1000;
+    return playbackTimeSeconds >= start && playbackTimeSeconds <= end;
+  }) ?? -1;
+  const entityEntries = Object.entries(detail?.entities ?? {}).filter(([, value]) =>
+    Array.isArray(value) ? value.length > 0 : Boolean(value),
+  );
+  const topics = Array.isArray(detail?.analysis?.topics)
+    ? (detail?.analysis?.topics as string[])
+    : [];
+  const customerConcerns = Array.isArray(detail?.analysis?.customerConcerns)
+    ? (detail?.analysis?.customerConcerns as Array<Record<string, unknown>>)
+    : [];
 
   if (!isAuthorized) {
     return (
@@ -809,7 +840,15 @@ function App() {
                   </div>
 
                   {audioUrl ? (
-                    <audio controls src={audioUrl} className="audio-player" />
+                    <audio
+                      ref={audioRef}
+                      controls
+                      src={audioUrl}
+                      className="audio-player"
+                      onTimeUpdate={(event) => setPlaybackTimeSeconds(event.currentTarget.currentTime)}
+                      onLoadedMetadata={(event) => setPlaybackTimeSeconds(event.currentTarget.currentTime)}
+                      onEnded={() => setPlaybackTimeSeconds(0)}
+                    />
                   ) : (
                     <div className="audio-placeholder">
                       {audioLoading || audioPendingFor === detail.conversationId ? (
@@ -852,7 +891,8 @@ function App() {
                           detail.segments.map((segment, index) => (
                             <article
                               key={`${segment.speaker}-${index}`}
-                              className={`segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()}`}
+                              className={`segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()} ${activeSegmentIndex === index ? "segment-active" : ""}`}
+                              onClick={() => handleSeekToSegment(segment.startMs)}
                             >
                               <div className="segment-meta">
                                 <strong>
@@ -900,10 +940,85 @@ function App() {
                     </section>
 
                     <section>
+                      <h4>Topics</h4>
+                      <div className="scroll-panel token-panel">
+                        {topics.length > 0 ? (
+                          topics.map((topic, index) => (
+                            <span key={`${topic}-${index}`} className="token-chip">
+                              {topic}
+                            </span>
+                          ))
+                        ) : (
+                          <p>No topics available.</p>
+                        )}
+                      </div>
+                    </section>
+
+                    <section>
                       <h4>Entities</h4>
-                      <pre className="scroll-panel code-block">
-                        {JSON.stringify(detail.entities, null, 2)}
-                      </pre>
+                      <div className="scroll-panel entity-panel">
+                        {entityEntries.length > 0 ? (
+                          entityEntries.map(([key, value]) => (
+                            <div key={key} className="entity-group">
+                              <strong>{key}</strong>
+                              <div className="token-panel">
+                                {Array.isArray(value) ? (
+                                  value.map((item, index) => (
+                                    <span key={`${key}-${index}`} className="token-chip">
+                                      {String(item)}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="token-chip">{String(value)}</span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p>No entities available.</p>
+                        )}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4>Customer concerns</h4>
+                      <div className="scroll-panel concern-panel">
+                        {customerConcerns.length > 0 ? (
+                          customerConcerns.map((concern, index) => {
+                            const resolved = Boolean(concern.resolved);
+                            const actionsTaken = Array.isArray(concern.actionsTaken)
+                              ? (concern.actionsTaken as string[])
+                              : [];
+
+                            return (
+                              <article key={`concern-${index}`} className="concern-card">
+                                <div className="concern-head">
+                                  <strong>{String(concern.concern ?? `Concern ${index + 1}`)}</strong>
+                                  <span className={`bool-badge ${resolved ? "bool-true" : "bool-false"}`}>
+                                    {resolved ? "Resolved" : "Not resolved"}
+                                  </span>
+                                </div>
+                                {concern.customerQuestion ? (
+                                  <p>
+                                    <strong>Question:</strong> {String(concern.customerQuestion)}
+                                  </p>
+                                ) : null}
+                                {actionsTaken.length > 0 ? (
+                                  <div className="token-panel">
+                                    {actionsTaken.map((action, actionIndex) => (
+                                      <span key={`action-${index}-${actionIndex}`} className="token-chip">
+                                        {action}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </article>
+                            );
+                          })
+                        ) : (
+                          <p>No customer concerns available.</p>
+                        )}
+                      </div>
                     </section>
 
                     <section>
