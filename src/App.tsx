@@ -1,0 +1,528 @@
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall } from "./api";
+import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types";
+
+const STORAGE_KEY = "ca-analytics-settings";
+
+const defaultSettings: AppSettings = {
+  baseUrl: "https://ca.satisfai.cx",
+  companyId: "",
+  token: "",
+};
+
+const defaultFilters: CallFilters = {
+  page: 1,
+  pageSize: 10,
+  search: "",
+  conversationId: "",
+  status: "",
+  sentiment: "",
+  hasError: "",
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+};
+
+const formatDuration = (seconds?: number | null) => {
+  if (seconds == null) return "—";
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds % 60);
+  return `${minutes}m ${remainder}s`;
+};
+
+const classForSentiment = (value?: string) => {
+  if (!value) return "tag";
+  return `tag sentiment-${value.toLowerCase()}`;
+};
+
+function App() {
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return defaultSettings;
+
+    try {
+      return { ...defaultSettings, ...(JSON.parse(saved) as Partial<AppSettings>) };
+    } catch {
+      return defaultSettings;
+    }
+  });
+  const [draftSettings, setDraftSettings] = useState<AppSettings>(settings);
+  const [filters, setFilters] = useState<CallFilters>(defaultFilters);
+  const [calls, setCalls] = useState<CallSummary[]>([]);
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [detail, setDetail] = useState<CallDetail | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string>("");
+  const [statusMessage, setStatusMessage] = useState<string>("Enter your company ID and API token to get started.");
+  const [callsLoading, setCallsLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [uploadState, setUploadState] = useState({
+    conversationId: "",
+    url: "",
+    file: null as File | null,
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    setDraftSettings(settings);
+  }, [settings]);
+
+  useEffect(
+    () => () => {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+    },
+    [audioUrl],
+  );
+
+  const canQueryApi = useMemo(
+    () => Boolean(settings.baseUrl && settings.companyId && settings.token),
+    [settings],
+  );
+
+  const refreshCalls = async () => {
+    if (!canQueryApi) {
+      setErrorMessage("Add a base URL, company ID, and bearer token before loading calls.");
+      return;
+    }
+
+    setCallsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const nextCalls = await fetchCalls(settings, filters);
+      setCalls(nextCalls);
+      setStatusMessage(`Loaded ${nextCalls.length} call${nextCalls.length === 1 ? "" : "s"}.`);
+
+      if (selectedId && !nextCalls.some((call) => call.conversationId === selectedId)) {
+        setSelectedId("");
+        setDetail(null);
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load calls.");
+    } finally {
+      setCallsLoading(false);
+    }
+  };
+
+  const handleSettingsSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSettings(draftSettings);
+    setStatusMessage("Saved API settings. Loading calls...");
+
+    setTimeout(() => {
+      void refreshCalls();
+    }, 0);
+  };
+
+  const handleLoadDetail = async (conversationId: string) => {
+    setSelectedId(conversationId);
+    setDetailLoading(true);
+    setErrorMessage("");
+
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      setAudioUrl("");
+    }
+
+    try {
+      const nextDetail = await fetchCallDetail(settings, conversationId);
+      setDetail(nextDetail);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load call details.");
+      setDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleAudioLoad = async () => {
+    if (!selectedId) return;
+
+    setAudioLoading(true);
+    setErrorMessage("");
+
+    try {
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+
+      const blob = await fetchAudioBlob(settings, selectedId);
+      setAudioUrl(URL.createObjectURL(blob));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load audio.");
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+
+  const handleUpload = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!uploadState.conversationId || (!uploadState.url && !uploadState.file)) {
+      setErrorMessage("Provide a conversation ID and either a presigned URL or an audio file.");
+      return;
+    }
+
+    setErrorMessage("");
+    setStatusMessage("Uploading call and queuing analysis...");
+
+    try {
+      await uploadCall(settings, uploadState);
+      setStatusMessage("Upload accepted. The backend has queued the call for analysis.");
+      setUploadState({ conversationId: "", url: "", file: null });
+      await refreshCalls();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to upload the call.");
+    }
+  };
+
+  const transcript = detail?.transcript?.trim();
+
+  return (
+    <div className="app-shell">
+      <header className="hero">
+        <div>
+          <p className="eyebrow">React dashboard for Call Analytics API</p>
+          <h1>Call Analytics Console</h1>
+          <p className="hero-copy">
+            Upload audio, monitor processing, and inspect transcripts, diarization, sentiment,
+            and satisfaction scores from your backend.
+          </p>
+        </div>
+        <div className="hero-card">
+          <div className="hero-stat">
+            <span>{calls.length}</span>
+            <label>visible calls</label>
+          </div>
+          <div className="hero-stat">
+            <span>{detail?.status ?? "Idle"}</span>
+            <label>selected status</label>
+          </div>
+        </div>
+      </header>
+
+      <main className="layout">
+        <section className="panel">
+          <div className="section-heading">
+            <h2>Connection</h2>
+            <p>These values are stored in local browser storage for convenience.</p>
+          </div>
+
+          <form className="grid-form" onSubmit={handleSettingsSubmit}>
+            <label>
+              Base URL
+              <input
+                value={draftSettings.baseUrl}
+                onChange={(event) =>
+                  setDraftSettings((current) => ({ ...current, baseUrl: event.target.value }))
+                }
+                placeholder="https://ca.satisfai.cx"
+              />
+            </label>
+
+            <label>
+              Company ID
+              <input
+                value={draftSettings.companyId}
+                onChange={(event) =>
+                  setDraftSettings((current) => ({ ...current, companyId: event.target.value }))
+                }
+                placeholder="123"
+              />
+            </label>
+
+            <label className="full-width">
+              Bearer token
+              <input
+                type="password"
+                value={draftSettings.token}
+                onChange={(event) =>
+                  setDraftSettings((current) => ({ ...current, token: event.target.value }))
+                }
+                placeholder="company API token"
+              />
+            </label>
+
+            <button type="submit">Save and load calls</button>
+          </form>
+        </section>
+
+        <section className="panel">
+          <div className="section-heading">
+            <h2>Upload call</h2>
+            <p>Use either a presigned URL or upload a local audio file directly.</p>
+          </div>
+
+          <form className="grid-form" onSubmit={handleUpload}>
+            <label>
+              Conversation ID
+              <input
+                value={uploadState.conversationId}
+                onChange={(event) =>
+                  setUploadState((current) => ({ ...current, conversationId: event.target.value }))
+                }
+                placeholder="conv-001"
+              />
+            </label>
+
+            <label className="full-width">
+              Presigned URL
+              <input
+                value={uploadState.url}
+                onChange={(event) =>
+                  setUploadState((current) => ({ ...current, url: event.target.value }))
+                }
+                placeholder="https://storage.example.com/call.wav?signature=..."
+              />
+            </label>
+
+            <label className="full-width">
+              Local audio file
+              <input
+                type="file"
+                accept="audio/*"
+                onChange={(event) =>
+                  setUploadState((current) => ({
+                    ...current,
+                    file: event.target.files?.[0] ?? null,
+                  }))
+                }
+              />
+            </label>
+
+            <button type="submit" disabled={!canQueryApi}>
+              Queue analysis
+            </button>
+          </form>
+        </section>
+
+        <section className="panel">
+          <div className="section-heading">
+            <h2>Call explorer</h2>
+            <p>Filter your company calls, then open one to inspect the full analysis.</p>
+          </div>
+
+          <form
+            className="filters"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void refreshCalls();
+            }}
+          >
+            <input
+              value={filters.search}
+              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+              placeholder="Search transcript or metadata"
+            />
+            <input
+              value={filters.conversationId}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, conversationId: event.target.value }))
+              }
+              placeholder="Conversation ID"
+            />
+            <select
+              value={filters.status}
+              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+            >
+              <option value="">All statuses</option>
+              <option value="Queued">Queued</option>
+              <option value="Processing">Processing</option>
+              <option value="Completed">Completed</option>
+              <option value="Failed">Failed</option>
+            </select>
+            <select
+              value={filters.sentiment}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, sentiment: event.target.value }))
+              }
+            >
+              <option value="">All sentiment</option>
+              <option value="positive">Positive</option>
+              <option value="neutral">Neutral</option>
+              <option value="negative">Negative</option>
+            </select>
+            <select
+              value={filters.hasError}
+              onChange={(event) => setFilters((current) => ({ ...current, hasError: event.target.value }))}
+            >
+              <option value="">Errors or not</option>
+              <option value="true">Only errors</option>
+              <option value="false">No errors</option>
+            </select>
+            <input
+              type="number"
+              min="1"
+              value={filters.page}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, page: Number(event.target.value) || 1 }))
+              }
+              placeholder="Page"
+            />
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={filters.pageSize}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, pageSize: Number(event.target.value) || 10 }))
+              }
+              placeholder="Page size"
+            />
+            <button type="submit" disabled={!canQueryApi || callsLoading}>
+              {callsLoading ? "Loading..." : "Refresh"}
+            </button>
+          </form>
+
+          <div className="status-strip">
+            <span>{statusMessage}</span>
+            {errorMessage ? <strong>{errorMessage}</strong> : null}
+          </div>
+
+          <div className="workspace">
+            <div className="list-column">
+              {calls.length === 0 ? (
+                <div className="empty-state">
+                  <h3>No calls loaded yet</h3>
+                  <p>Save your connection settings, then load or upload a call.</p>
+                </div>
+              ) : (
+                calls.map((call) => (
+                  <button
+                    key={call.conversationId}
+                    type="button"
+                    className={`call-card ${selectedId === call.conversationId ? "selected" : ""}`}
+                    onClick={() => void handleLoadDetail(call.conversationId)}
+                  >
+                    <div className="call-card-head">
+                      <strong>{call.conversationId}</strong>
+                      <span className="tag">{call.status}</span>
+                    </div>
+                    <div className="call-card-grid">
+                      <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
+                      <span>Score: {call.satisfactionScore ?? "—"}</span>
+                      <span>Duration: {formatDuration(call.durationSeconds)}</span>
+                      <span>{call.language ?? "No language"}</span>
+                    </div>
+                    <small>Created {formatDate(call.createdUtc)}</small>
+                    {call.error ? <small className="error-text">{call.error}</small> : null}
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className="detail-column">
+              {!selectedId ? (
+                <div className="empty-state">
+                  <h3>Select a call</h3>
+                  <p>The call detail view will appear here.</p>
+                </div>
+              ) : detailLoading ? (
+                <div className="empty-state">
+                  <h3>Loading analysis</h3>
+                  <p>Fetching transcript, diarization, and scoring data.</p>
+                </div>
+              ) : detail ? (
+                <>
+                  <div className="detail-header">
+                    <div>
+                      <p className="eyebrow">Conversation</p>
+                      <h3>{detail.conversationId}</h3>
+                    </div>
+                    <button type="button" onClick={() => void handleAudioLoad()} disabled={audioLoading}>
+                      {audioLoading ? "Loading audio..." : "Load audio"}
+                    </button>
+                  </div>
+
+                  <div className="stat-grid">
+                    <article>
+                      <label>Status</label>
+                      <strong>{detail.status}</strong>
+                    </article>
+                    <article>
+                      <label>Sentiment</label>
+                      <strong>{detail.sentiment ?? "—"}</strong>
+                    </article>
+                    <article>
+                      <label>Satisfaction</label>
+                      <strong>{detail.satisfactionScore ?? "—"}</strong>
+                    </article>
+                    <article>
+                      <label>Duration</label>
+                      <strong>{formatDuration(detail.durationSeconds)}</strong>
+                    </article>
+                  </div>
+
+                  {audioUrl ? <audio controls src={audioUrl} className="audio-player" /> : null}
+
+                  <div className="detail-panels">
+                    <section>
+                      <h4>Transcript</h4>
+                      <div className="scroll-panel prose-block">
+                        {transcript ? transcript : "No transcript available yet."}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4>Diarization</h4>
+                      <div className="scroll-panel">
+                        {detail.segments.length === 0 ? (
+                          <p>No speaker segments available.</p>
+                        ) : (
+                          detail.segments.map((segment, index) => (
+                            <article key={`${segment.speaker}-${index}`} className="segment-card">
+                              <div className="segment-meta">
+                                <strong>{segment.speaker}</strong>
+                                <span>
+                                  {segment.startMs ?? 0}ms - {segment.endMs ?? 0}ms
+                                </span>
+                              </div>
+                              <p>{segment.text}</p>
+                            </article>
+                          ))
+                        )}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4>Entities</h4>
+                      <pre className="scroll-panel code-block">
+                        {JSON.stringify(detail.entities, null, 2)}
+                      </pre>
+                    </section>
+
+                    <section>
+                      <h4>Raw analysis</h4>
+                      <pre className="scroll-panel code-block">
+                        {JSON.stringify(detail.analysis, null, 2)}
+                      </pre>
+                    </section>
+                  </div>
+
+                  {detail.error ? <p className="error-text">Processing error: {detail.error}</p> : null}
+                </>
+              ) : (
+                <div className="empty-state">
+                  <h3>Call not available</h3>
+                  <p>Try refreshing the list or selecting a different conversation.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+export default App;
