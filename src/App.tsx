@@ -253,7 +253,7 @@ function App() {
     const timer = window.setInterval(() => {
       void refreshCalls(settings, { silent: true });
       if (selectedId) {
-        void handleLoadDetail(selectedId);
+        void handleLoadDetail(selectedId, { silent: true });
       }
     }, 5000);
 
@@ -294,20 +294,24 @@ function App() {
 
     if (!options?.silent) {
       setCallsLoading(true);
+      setErrorMessage("");
     }
-    setErrorMessage("");
 
     try {
       const nextCalls = await fetchCalls(activeSettings, filters);
       setCalls(nextCalls);
-      setStatusMessage(`Loaded ${nextCalls.length} call${nextCalls.length === 1 ? "" : "s"}.`);
+      if (!options?.silent) {
+        setStatusMessage(`Loaded ${nextCalls.length} call${nextCalls.length === 1 ? "" : "s"}.`);
+      }
 
       if (selectedId && !nextCalls.some((call) => call.conversationId === selectedId)) {
         setSelectedId("");
         setDetail(null);
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load calls.");
+      if (!options?.silent) {
+        setErrorMessage(error instanceof Error ? error.message : "Unable to load calls.");
+      }
     } finally {
       if (!options?.silent) {
         setCallsLoading(false);
@@ -337,26 +341,34 @@ function App() {
     }
   };
 
-  const handleLoadDetail = async (conversationId: string) => {
+  const handleLoadDetail = async (conversationId: string, options?: { silent?: boolean }) => {
     setSelectedId(conversationId);
-    setDetailLoading(true);
-    setErrorMessage("");
+    if (!options?.silent) {
+      setDetailLoading(true);
+      setErrorMessage("");
+    }
 
-    if (audioUrl) {
+    if (!options?.silent && audioUrl) {
       URL.revokeObjectURL(audioUrl);
       setAudioUrl("");
     }
-    setAudioRequestedFor("");
-    setAudioPendingFor("");
+    if (!options?.silent) {
+      setAudioRequestedFor("");
+      setAudioPendingFor("");
+    }
 
     try {
       const nextDetail = await fetchCallDetail(settings, conversationId);
       setDetail(nextDetail);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load call details.");
-      setDetail(null);
+      if (!options?.silent) {
+        setErrorMessage(error instanceof Error ? error.message : "Unable to load call details.");
+        setDetail(null);
+      }
     } finally {
-      setDetailLoading(false);
+      if (!options?.silent) {
+        setDetailLoading(false);
+      }
     }
   };
 

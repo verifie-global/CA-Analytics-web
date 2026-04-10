@@ -538,12 +538,13 @@ select:focus {
 .copy-panel {
   position: relative;
   padding-top: 3rem;
+  padding-right: 3.4rem;
 }
 
 .icon-button {
   position: absolute;
-  top: 0.85rem;
-  right: 0.85rem;
+  top: 0.75rem;
+  right: 0.6rem;
   width: 2rem;
   height: 2rem;
   padding: 0;
@@ -703,6 +704,13 @@ select:focus {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+.modal-actions button[type="submit"] {
+  background: var(--theme-primary);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 12px 24px rgba(55, 121, 235, 0.24);
 }
 
 .upload-note,
