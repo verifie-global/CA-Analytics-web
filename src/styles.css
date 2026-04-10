@@ -232,15 +232,15 @@ select:focus {
   border-radius: 999px 999px 14px 14px;
 }
 
-.hero-bar-completed {
+.hero-bar-positive {
   background: linear-gradient(180deg, #53a336, #4d9d30);
 }
 
-.hero-bar-progress {
+.hero-bar-neutral {
   background: linear-gradient(180deg, #ffc83d, #dbb138);
 }
 
-.hero-bar-failed {
+.hero-bar-negative {
   background: linear-gradient(180deg, #db3700, #b82f00);
 }
 
@@ -667,6 +667,25 @@ select:focus {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+.upload-note,
+.upload-validation {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 14px;
+}
+
+.upload-note {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--theme-border);
+  color: var(--theme-text-muted);
+}
+
+.upload-validation {
+  background: rgba(83, 163, 54, 0.14);
+  border: 1px solid rgba(83, 163, 54, 0.35);
+  color: #98d47e;
 }
 
 @media (max-width: 1100px) {

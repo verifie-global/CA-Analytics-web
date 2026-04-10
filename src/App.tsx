@@ -69,6 +69,39 @@ const renderRedactedTranscript = (value: string) =>
 const generateConversationId = () =>
   `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
+async function validateAudioFileSampleRate(file: File) {
+  const arrayBuffer = await file.arrayBuffer();
+  const AudioContextCtor =
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+
+  if (!AudioContextCtor) {
+    throw new Error("This browser cannot inspect audio files before upload.");
+  }
+
+  const audioContext = new AudioContextCtor();
+
+  try {
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+
+    if (audioBuffer.sampleRate < 16000) {
+      throw new Error(
+        `Audio sample rate is ${audioBuffer.sampleRate} Hz. Please upload a file with at least 16000 Hz.`,
+      );
+    }
+
+    return audioBuffer.sampleRate;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error("Unable to inspect the selected audio file.");
+  } finally {
+    void audioContext.close();
+  }
+}
+
 function App() {
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -95,6 +128,7 @@ function App() {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
+  const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [uploadState, setUploadState] = useState({
     conversationId: generateConversationId(),
@@ -286,6 +320,7 @@ function App() {
       url: "",
       file: null,
     });
+    setUploadValidationMessage("");
     setIsUploadModalOpen(true);
   };
 
@@ -318,14 +353,21 @@ function App() {
     }
 
     setErrorMessage("");
+    setUploadValidationMessage("");
     setUploadSubmitting(true);
     setStatusMessage("Uploading call and queuing analysis...");
 
     try {
+      if (uploadState.file) {
+        const sampleRate = await validateAudioFileSampleRate(uploadState.file);
+        setUploadValidationMessage(`Validated local audio at ${sampleRate} Hz.`);
+      }
+
       await uploadCall(settings, uploadState);
       setStatusMessage(`Upload accepted. ${uploadState.conversationId} is now queued for analysis.`);
       setIsUploadModalOpen(false);
       setUploadState({ conversationId: generateConversationId(), url: "", file: null });
+      setUploadValidationMessage("");
       await refreshCalls();
       await handleLoadDetail(uploadState.conversationId);
     } catch (error) {
@@ -338,9 +380,9 @@ function App() {
   const transcript = detail?.transcript?.trim();
   const redactedTranscript = detail?.redactedTranscript?.trim();
   const summary = detail?.summary?.trim();
-  const completedCount = calls.filter((call) => call.status?.toLowerCase() === "completed").length;
-  const inProgressCount = calls.filter((call) => isInProgressStatus(call.status)).length;
-  const failedCount = calls.filter((call) => call.status?.toLowerCase() === "failed").length;
+  const positiveCount = calls.filter((call) => call.sentiment?.toLowerCase() === "positive").length;
+  const neutralCount = calls.filter((call) => call.sentiment?.toLowerCase() === "neutral").length;
+  const negativeCount = calls.filter((call) => call.sentiment?.toLowerCase() === "negative").length;
   const avgScore = (() => {
     const scoredCalls = calls.filter((call) => typeof call.satisfactionScore === "number");
     if (scoredCalls.length === 0) {
@@ -350,7 +392,7 @@ function App() {
     const total = scoredCalls.reduce((sum, call) => sum + (call.satisfactionScore ?? 0), 0);
     return (total / scoredCalls.length).toFixed(1);
   })();
-  const maxCount = Math.max(completedCount, inProgressCount, failedCount, 1);
+  const maxSentimentCount = Math.max(positiveCount, neutralCount, negativeCount, 1);
 
   if (!isAuthorized) {
     return (
@@ -423,30 +465,30 @@ function App() {
             and satisfaction scores from your backend.
           </p>
           <div className="hero-graphic">
-            <div className="hero-bars" aria-label="Call status overview">
+            <div className="hero-bars" aria-label="Sentiment overview">
               <div className="hero-bar-group">
                 <span
-                  className="hero-bar hero-bar-completed"
-                  style={{ height: `${(completedCount / maxCount) * 100}%` }}
+                  className="hero-bar hero-bar-positive"
+                  style={{ height: `${(positiveCount / maxSentimentCount) * 100}%` }}
                 />
-                <label>Completed</label>
-                <strong>{completedCount}</strong>
+                <label>Positive</label>
+                <strong>{positiveCount}</strong>
               </div>
               <div className="hero-bar-group">
                 <span
-                  className="hero-bar hero-bar-progress"
-                  style={{ height: `${(inProgressCount / maxCount) * 100}%` }}
+                  className="hero-bar hero-bar-neutral"
+                  style={{ height: `${(neutralCount / maxSentimentCount) * 100}%` }}
                 />
-                <label>In progress</label>
-                <strong>{inProgressCount}</strong>
+                <label>Neutral</label>
+                <strong>{neutralCount}</strong>
               </div>
               <div className="hero-bar-group">
                 <span
-                  className="hero-bar hero-bar-failed"
-                  style={{ height: `${(failedCount / maxCount) * 100}%` }}
+                  className="hero-bar hero-bar-negative"
+                  style={{ height: `${(negativeCount / maxSentimentCount) * 100}%` }}
                 />
-                <label>Failed</label>
-                <strong>{failedCount}</strong>
+                <label>Negative</label>
+                <strong>{negativeCount}</strong>
               </div>
             </div>
             <div className="hero-summary">
@@ -455,8 +497,8 @@ function App() {
                 <strong>{avgScore ?? "-"}</strong>
               </div>
               <div>
-                <span>Total calls</span>
-                <strong>{calls.length}</strong>
+                <span>Scored calls</span>
+                <strong>{calls.filter((call) => typeof call.satisfactionScore === "number").length}</strong>
               </div>
             </div>
           </div>
@@ -795,13 +837,25 @@ function App() {
                   type="file"
                   accept="audio/*"
                   onChange={(event) =>
-                    setUploadState((current) => ({
-                      ...current,
-                      file: event.target.files?.[0] ?? null,
-                    }))
+                    {
+                      setUploadValidationMessage("");
+                      setUploadState((current) => ({
+                        ...current,
+                        file: event.target.files?.[0] ?? null,
+                      }));
+                    }
                   }
                 />
               </label>
+
+              <p className="upload-note full-width">
+                Local audio files must have at least a 16000 Hz sample rate. Presigned URLs are
+                queued as-is because the browser cannot inspect remote files before upload.
+              </p>
+
+              {uploadValidationMessage ? (
+                <p className="upload-validation full-width">{uploadValidationMessage}</p>
+              ) : null}
 
               <div className="modal-actions full-width">
                 <button
