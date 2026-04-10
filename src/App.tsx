@@ -244,9 +244,8 @@ function App() {
 
     const hasInProgressConversation = calls.some((call) => isInProgressStatus(call.status));
     const selectedNeedsRefresh = isInProgressStatus(detail?.status);
-    const selectedAudioPending = Boolean(selectedId && audioPendingFor === selectedId);
 
-    if (!hasInProgressConversation && !selectedNeedsRefresh && !selectedAudioPending) {
+    if (!hasInProgressConversation && !selectedNeedsRefresh) {
       return;
     }
 
@@ -260,7 +259,7 @@ function App() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [isAuthorized, calls, detail?.status, selectedId, audioPendingFor, settings, filters]);
+  }, [isAuthorized, calls, detail?.status, selectedId, settings, filters]);
 
   useEffect(() => {
     if (
@@ -627,7 +626,7 @@ function App() {
             <span>{detail?.status ?? "Idle"}</span>
             <label>selected status</label>
           </div>
-          <button type="button" className="secondary-button" onClick={openUploadModal}>
+          <button type="button" onClick={openUploadModal}>
             Upload call
           </button>
           <button type="button" className="secondary-button" onClick={handleLogout}>
