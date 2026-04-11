@@ -834,8 +834,6 @@ function App() {
                     <div className="call-card-grid">
                       <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
                       <span>Score: {call.satisfactionScore ?? "-"}</span>
-                      <span>Friendliness:</span>
-                      <span><FriendlinessIndicator value={call.friendlinessScore} /></span>
                       <span>{call.language ?? "No language"}</span>
                     </div>
                     <small>Created {formatDate(call.createdUtc)}</small>
