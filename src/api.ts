@@ -105,6 +105,7 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
     sentiment: readString(record, "sentiment") ?? readString(rawAnalysis, "sentiment"),
     satisfactionScore:
       readNumber(record, "satisfactionScore") ?? readNumber(rawAnalysis, "satisfactionScore"),
+    friendlinessScore: readNumber(record, "friendlinessScore"),
     durationSeconds: readNumber(record, "durationSeconds", "callDurationSeconds"),
     language: readString(record, "language"),
     createdUtc: readString(record, "createdUtc", "createdAtUtc", "createdAt"),
@@ -140,6 +141,7 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
     sentiment: readString(record, "sentiment") ?? readString(rawAnalysis, "sentiment"),
     satisfactionScore:
       readNumber(record, "satisfactionScore") ?? readNumber(rawAnalysis, "satisfactionScore"),
+    friendlinessScore: readNumber(record, "friendlinessScore"),
     durationSeconds: readNumber(record, "durationSeconds", "callDurationSeconds"),
     language: readString(record, "language"),
     createdUtc: readString(record, "createdUtc", "createdAtUtc", "createdAt"),

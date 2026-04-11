@@ -21,6 +21,7 @@ export type CallSummary = {
   status: string;
   sentiment?: Sentiment;
   satisfactionScore?: number | null;
+  friendlinessScore?: number | null;
   durationSeconds?: number | null;
   language?: string | null;
   createdUtc?: string | null;
@@ -46,6 +47,7 @@ export type CallDetail = {
   summary?: string | null;
   sentiment?: Sentiment;
   satisfactionScore?: number | null;
+  friendlinessScore?: number | null;
   durationSeconds?: number | null;
   language?: string | null;
   createdUtc?: string | null;

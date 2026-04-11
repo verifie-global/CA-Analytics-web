@@ -50,6 +50,14 @@ const classForSentiment = (value?: string) => {
   return `tag sentiment-${value.toLowerCase()}`;
 };
 
+const getFriendlinessLabel = (value?: number | null) => {
+  if (value == null) return "N/A";
+  if (value <= 3) return "Low";
+  if (value <= 6) return "Medium";
+  if (value <= 8) return "Good";
+  return "Excellent";
+};
+
 const isInProgressStatus = (value?: string | null) => {
   const normalized = value?.toLowerCase();
   return normalized === "queued" || normalized === "processing" || normalized === "inprogress";
@@ -81,6 +89,38 @@ const CopyIcon = () => (
     />
   </svg>
 );
+
+const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
+  if (value == null) {
+    return (
+      <div className="friendliness-block" title="Friendliness estimates how warm, polite, and supportive the agent sounded during the call.">
+        <span className="friendliness-score">N/A</span>
+        <span className="friendliness-label">N/A</span>
+      </div>
+    );
+  }
+
+  const clampedValue = Math.max(1, Math.min(10, value));
+  const label = getFriendlinessLabel(clampedValue);
+
+  return (
+    <div
+      className="friendliness-block"
+      title="Friendliness estimates how warm, polite, and supportive the agent sounded during the call."
+    >
+      <div className="friendliness-head">
+        <span className="friendliness-score">{clampedValue}/10</span>
+        <span className={`friendliness-label friendliness-${label.toLowerCase()}`}>{label}</span>
+      </div>
+      <div className="friendliness-track" aria-hidden="true">
+        <span
+          className={`friendliness-fill friendliness-${label.toLowerCase()}`}
+          style={{ width: `${clampedValue * 10}%` }}
+        />
+      </div>
+    </div>
+  );
+};
 
 function readWavSampleRate(bytes: Uint8Array) {
   if (bytes.length < 44) {
@@ -802,9 +842,11 @@ function App() {
                     <div className="call-card-grid">
                       <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
                       <span>Score: {call.satisfactionScore ?? "-"}</span>
+                      <span>Friendliness: {call.friendlinessScore != null ? `${call.friendlinessScore}/10` : "N/A"}</span>
                       <span>Duration: {formatDuration(call.durationSeconds)}</span>
                       <span>{call.language ?? "No language"}</span>
                     </div>
+                    <FriendlinessIndicator value={call.friendlinessScore} />
                     <small>Created {formatDate(call.createdUtc)}</small>
                     {call.error ? <small className="error-text">{call.error}</small> : null}
                   </button>
@@ -857,6 +899,15 @@ function App() {
                     <article>
                       <label>Duration</label>
                       <strong>{formatDuration(detail.durationSeconds)}</strong>
+                    </article>
+                    <article className="friendliness-card">
+                      <label>
+                        Friendliness
+                        <span className="helper-text">
+                          Friendliness estimates how warm, polite, and supportive the agent sounded during the call.
+                        </span>
+                      </label>
+                      <FriendlinessIndicator value={detail.friendlinessScore} />
                     </article>
                   </div>
 
