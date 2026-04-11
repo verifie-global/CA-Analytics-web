@@ -30,13 +30,6 @@ const formatDate = (value?: string | null) => {
   }).format(date);
 };
 
-const formatDuration = (seconds?: number | null) => {
-  if (seconds == null) return "-";
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.round(seconds % 60);
-  return `${minutes}m ${remainder}s`;
-};
-
 const formatTimestamp = (milliseconds?: number | null) => {
   if (milliseconds == null) return "--:--";
   const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
@@ -92,32 +85,16 @@ const CopyIcon = () => (
 
 const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
   if (value == null) {
-    return (
-      <div className="friendliness-block" title="Friendliness estimates how warm, polite, and supportive the agent sounded during the call.">
-        <span className="friendliness-score">N/A</span>
-        <span className="friendliness-label">N/A</span>
-      </div>
-    );
+    return <span className="friendliness-value">N/A</span>;
   }
 
   const clampedValue = Math.max(1, Math.min(10, value));
   const label = getFriendlinessLabel(clampedValue);
 
   return (
-    <div
-      className="friendliness-block"
-      title="Friendliness estimates how warm, polite, and supportive the agent sounded during the call."
-    >
-      <div className="friendliness-head">
-        <span className="friendliness-score">{clampedValue}/10</span>
-        <span className={`friendliness-label friendliness-${label.toLowerCase()}`}>{label}</span>
-      </div>
-      <div className="friendliness-track" aria-hidden="true">
-        <span
-          className={`friendliness-fill friendliness-${label.toLowerCase()}`}
-          style={{ width: `${clampedValue * 10}%` }}
-        />
-      </div>
+    <div className="friendliness-inline">
+      <span className="friendliness-value">{clampedValue}/10</span>
+      <span className={`friendliness-label friendliness-${label.toLowerCase()}`}>{label}</span>
     </div>
   );
 };
@@ -565,6 +542,15 @@ function App() {
     const total = scoredCalls.reduce((sum, call) => sum + (call.satisfactionScore ?? 0), 0);
     return (total / scoredCalls.length).toFixed(1);
   })();
+  const avgFriendliness = (() => {
+    const scoredCalls = calls.filter((call) => typeof call.friendlinessScore === "number");
+    if (scoredCalls.length === 0) {
+      return null;
+    }
+
+    const total = scoredCalls.reduce((sum, call) => sum + (call.friendlinessScore ?? 0), 0);
+    return (total / scoredCalls.length).toFixed(1);
+  })();
   const maxSentimentCount = Math.max(positiveCount, neutralCount, negativeCount, 1);
   const activeSegmentIndex = detail?.segments.findIndex((segment) => {
     const start = (segment.startMs ?? 0) / 1000;
@@ -673,38 +659,44 @@ function App() {
           <div className="hero-graphic">
             <div className="hero-bars" aria-label="Sentiment overview">
               <div className="hero-bar-group">
-                <span
-                  className="hero-bar hero-bar-positive"
-                  style={{ height: `${(positiveCount / maxSentimentCount) * 100}%` }}
-                />
+                <div className="hero-bar-shell">
+                  <span
+                    className="hero-bar hero-bar-positive"
+                    style={{ height: `${(positiveCount / maxSentimentCount) * 100}%` }}
+                  />
+                </div>
                 <label>Positive</label>
                 <strong>{positiveCount}</strong>
               </div>
               <div className="hero-bar-group">
-                <span
-                  className="hero-bar hero-bar-neutral"
-                  style={{ height: `${(neutralCount / maxSentimentCount) * 100}%` }}
-                />
+                <div className="hero-bar-shell">
+                  <span
+                    className="hero-bar hero-bar-neutral"
+                    style={{ height: `${(neutralCount / maxSentimentCount) * 100}%` }}
+                  />
+                </div>
                 <label>Neutral</label>
                 <strong>{neutralCount}</strong>
               </div>
               <div className="hero-bar-group">
-                <span
-                  className="hero-bar hero-bar-negative"
-                  style={{ height: `${(negativeCount / maxSentimentCount) * 100}%` }}
-                />
+                <div className="hero-bar-shell">
+                  <span
+                    className="hero-bar hero-bar-negative"
+                    style={{ height: `${(negativeCount / maxSentimentCount) * 100}%` }}
+                  />
+                </div>
                 <label>Negative</label>
                 <strong>{negativeCount}</strong>
               </div>
             </div>
             <div className="hero-summary">
               <div>
-                <span>Average score</span>
+                <span>Average satisfaction</span>
                 <strong>{avgScore ?? "-"}</strong>
               </div>
               <div>
-                <span>Scored calls</span>
-                <strong>{calls.filter((call) => typeof call.satisfactionScore === "number").length}</strong>
+                <span>Average friendliness</span>
+                <strong>{avgFriendliness ?? "-"}</strong>
               </div>
             </div>
           </div>
@@ -842,11 +834,10 @@ function App() {
                     <div className="call-card-grid">
                       <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
                       <span>Score: {call.satisfactionScore ?? "-"}</span>
-                      <span>Friendliness: {call.friendlinessScore != null ? `${call.friendlinessScore}/10` : "N/A"}</span>
-                      <span>Duration: {formatDuration(call.durationSeconds)}</span>
+                      <span>Friendliness:</span>
+                      <span><FriendlinessIndicator value={call.friendlinessScore} /></span>
                       <span>{call.language ?? "No language"}</span>
                     </div>
-                    <FriendlinessIndicator value={call.friendlinessScore} />
                     <small>Created {formatDate(call.createdUtc)}</small>
                     {call.error ? <small className="error-text">{call.error}</small> : null}
                   </button>
@@ -897,17 +888,8 @@ function App() {
                       <strong>{detail.satisfactionScore ?? "-"}</strong>
                     </article>
                     <article>
-                      <label>Duration</label>
-                      <strong>{formatDuration(detail.durationSeconds)}</strong>
-                    </article>
-                    <article className="friendliness-card">
-                      <label>
-                        Friendliness
-                        <span className="helper-text">
-                          Friendliness estimates how warm, polite, and supportive the agent sounded during the call.
-                        </span>
-                      </label>
-                      <FriendlinessIndicator value={detail.friendlinessScore} />
+                      <label>Friendliness</label>
+                      <strong><FriendlinessIndicator value={detail.friendlinessScore} /></strong>
                     </article>
                   </div>
 
