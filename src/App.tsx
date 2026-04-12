@@ -569,6 +569,10 @@ function App() {
   const coachingAssistance = Array.isArray(detail?.analysis?.coachingAssistance)
     ? (detail?.analysis?.coachingAssistance as string[])
     : [];
+  const relatedDepartment =
+    typeof detail?.analysis?.department === "string" ? detail.analysis.department : null;
+  const taskUrgency =
+    typeof detail?.analysis?.taskUrgency === "string" ? detail.analysis.taskUrgency : null;
 
   useEffect(() => {
     if (activeSegmentIndex < 0 || !diarizationContainerRef.current) {
@@ -1007,6 +1011,22 @@ function App() {
                         ) : (
                           <p>No topics available.</p>
                         )}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4>Routing</h4>
+                      <div className="scroll-panel routing-panel">
+                        <article className="routing-card">
+                          <label>Related department</label>
+                          <strong>{relatedDepartment ?? "N/A"}</strong>
+                        </article>
+                        <article className="routing-card">
+                          <label>Task urgency</label>
+                          <strong className={`urgency-badge ${taskUrgency ? `urgency-${taskUrgency.toLowerCase()}` : ""}`}>
+                            {taskUrgency ?? "N/A"}
+                          </strong>
+                        </article>
                       </div>
                     </section>
 

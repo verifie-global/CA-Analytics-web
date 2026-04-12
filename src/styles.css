@@ -676,6 +676,55 @@ select:focus {
   gap: 0.9rem;
 }
 
+.routing-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.routing-card {
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1px solid var(--theme-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.routing-card label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--theme-text-muted);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.urgency-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.24rem 0.7rem;
+  border: 1px solid transparent;
+  text-transform: capitalize;
+}
+
+.urgency-high {
+  background: rgba(219, 55, 0, 0.14);
+  border-color: rgba(219, 55, 0, 0.3);
+  color: #ffb097;
+}
+
+.urgency-medium {
+  background: rgba(255, 200, 61, 0.16);
+  border-color: rgba(255, 200, 61, 0.3);
+  color: #ffd979;
+}
+
+.urgency-low {
+  background: rgba(83, 163, 54, 0.16);
+  border-color: rgba(83, 163, 54, 0.32);
+  color: #98d47e;
+}
+
 .entity-group {
   display: grid;
   gap: 0.55rem;
