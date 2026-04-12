@@ -3,6 +3,27 @@ import { fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall, verifyAuthoriz
 import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
+const WIDGETS_STORAGE_KEY = "ca-analytics-custom-widgets";
+
+type WidgetMetric =
+  | "total_calls"
+  | "completed_calls"
+  | "failed_calls"
+  | "in_progress_calls"
+  | "positive_calls"
+  | "neutral_calls"
+  | "negative_calls"
+  | "avg_satisfaction"
+  | "avg_friendliness";
+
+type WidgetVisualType = "stat" | "progress";
+
+type DashboardWidget = {
+  id: string;
+  title: string;
+  metric: WidgetMetric;
+  visualType: WidgetVisualType;
+};
 
 const defaultSettings: AppSettings = {
   baseUrl: "https://ca.satisfai.cx",
@@ -69,6 +90,21 @@ const renderRedactedTranscript = (value: string) =>
 
 const generateConversationId = () =>
   `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const generateWidgetId = () =>
+  `widget-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const widgetMetricOptions: Array<{ value: WidgetMetric; label: string }> = [
+  { value: "total_calls", label: "Total calls" },
+  { value: "completed_calls", label: "Completed calls" },
+  { value: "failed_calls", label: "Failed calls" },
+  { value: "in_progress_calls", label: "In-progress calls" },
+  { value: "positive_calls", label: "Positive sentiment calls" },
+  { value: "neutral_calls", label: "Neutral sentiment calls" },
+  { value: "negative_calls", label: "Negative sentiment calls" },
+  { value: "avg_satisfaction", label: "Average satisfaction" },
+  { value: "avg_friendliness", label: "Average friendliness" },
+];
 
 const CopyIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-copy">
@@ -189,6 +225,27 @@ function App() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string>("");
+  const [customWidgets, setCustomWidgets] = useState<DashboardWidget[]>(() => {
+    const saved = localStorage.getItem(WIDGETS_STORAGE_KEY);
+    if (!saved) {
+      return [];
+    }
+
+    try {
+      return JSON.parse(saved) as DashboardWidget[];
+    } catch {
+      return [];
+    }
+  });
+  const [widgetDraft, setWidgetDraft] = useState<{
+    title: string;
+    metric: WidgetMetric;
+    visualType: WidgetVisualType;
+  }>({
+    title: "",
+    metric: "avg_satisfaction",
+    visualType: "stat",
+  });
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -204,6 +261,10 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setDraftSettings(settings);
   }, [settings]);
+
+  useEffect(() => {
+    localStorage.setItem(WIDGETS_STORAGE_KEY, JSON.stringify(customWidgets));
+  }, [customWidgets]);
 
   useEffect(() => {
     if (!settings.companyId || !settings.token) {
@@ -552,6 +613,68 @@ function App() {
     return (total / scoredCalls.length).toFixed(1);
   })();
   const maxSentimentCount = Math.max(positiveCount, neutralCount, negativeCount, 1);
+  const completedCount = calls.filter((call) => call.status?.toLowerCase() === "completed").length;
+  const failedCount = calls.filter((call) => call.status?.toLowerCase() === "failed").length;
+  const inProgressCount = calls.filter((call) => isInProgressStatus(call.status)).length;
+  const widgetMetricValues: Record<
+    WidgetMetric,
+    { value: number | null; max: number; formatted: string; description: string }
+  > = {
+    total_calls: {
+      value: calls.length,
+      max: Math.max(calls.length, 1),
+      formatted: String(calls.length),
+      description: "Total calls currently visible in the dashboard",
+    },
+    completed_calls: {
+      value: completedCount,
+      max: Math.max(calls.length, 1),
+      formatted: String(completedCount),
+      description: "Calls with completed analysis",
+    },
+    failed_calls: {
+      value: failedCount,
+      max: Math.max(calls.length, 1),
+      formatted: String(failedCount),
+      description: "Calls that finished with an error",
+    },
+    in_progress_calls: {
+      value: inProgressCount,
+      max: Math.max(calls.length, 1),
+      formatted: String(inProgressCount),
+      description: "Calls still queued or processing",
+    },
+    positive_calls: {
+      value: positiveCount,
+      max: Math.max(calls.length, 1),
+      formatted: String(positiveCount),
+      description: "Calls with positive sentiment",
+    },
+    neutral_calls: {
+      value: neutralCount,
+      max: Math.max(calls.length, 1),
+      formatted: String(neutralCount),
+      description: "Calls with neutral sentiment",
+    },
+    negative_calls: {
+      value: negativeCount,
+      max: Math.max(calls.length, 1),
+      formatted: String(negativeCount),
+      description: "Calls with negative sentiment",
+    },
+    avg_satisfaction: {
+      value: avgScore ? Number(avgScore) : null,
+      max: 10,
+      formatted: avgScore ? `${avgScore}/10` : "N/A",
+      description: "Average satisfaction score across visible calls",
+    },
+    avg_friendliness: {
+      value: avgFriendliness ? Number(avgFriendliness) : null,
+      max: 10,
+      formatted: avgFriendliness ? `${avgFriendliness}/10` : "N/A",
+      description: "Average friendliness score across visible calls",
+    },
+  };
   const activeSegmentIndex = detail?.segments.findIndex((segment) => {
     const start = (segment.startMs ?? 0) / 1000;
     const end = (segment.endMs ?? Number.MAX_SAFE_INTEGER) / 1000;
@@ -573,6 +696,32 @@ function App() {
     typeof detail?.analysis?.department === "string" ? detail.analysis.department : null;
   const taskUrgency =
     typeof detail?.analysis?.taskUrgency === "string" ? detail.analysis.taskUrgency : null;
+
+  const handleAddWidget = (event: FormEvent) => {
+    event.preventDefault();
+
+    const metricLabel = widgetMetricOptions.find((option) => option.value === widgetDraft.metric)?.label ?? "Widget";
+
+    setCustomWidgets((current) => [
+      ...current,
+      {
+        id: generateWidgetId(),
+        title: widgetDraft.title.trim() || metricLabel,
+        metric: widgetDraft.metric,
+        visualType: widgetDraft.visualType,
+      },
+    ]);
+
+    setWidgetDraft({
+      title: "",
+      metric: widgetDraft.metric,
+      visualType: widgetDraft.visualType,
+    });
+  };
+
+  const handleRemoveWidget = (id: string) => {
+    setCustomWidgets((current) => current.filter((widget) => widget.id !== id));
+  };
 
   useEffect(() => {
     if (activeSegmentIndex < 0 || !diarizationContainerRef.current) {
@@ -725,6 +874,110 @@ function App() {
           </button>
         </div>
       </header>
+
+      <section className="panel widget-panel">
+        <div className="section-heading">
+          <h2>Custom graphics builder</h2>
+          <p>Create your own dashboard graphics and keep them in this browser.</p>
+        </div>
+
+        <form className="widget-builder" onSubmit={handleAddWidget}>
+          <label>
+            Widget title
+            <input
+              value={widgetDraft.title}
+              onChange={(event) =>
+                setWidgetDraft((current) => ({ ...current, title: event.target.value }))
+              }
+              placeholder="Example: My quality snapshot"
+            />
+          </label>
+          <label>
+            Metric
+            <select
+              value={widgetDraft.metric}
+              onChange={(event) =>
+                setWidgetDraft((current) => ({
+                  ...current,
+                  metric: event.target.value as WidgetMetric,
+                }))
+              }
+            >
+              {widgetMetricOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Visual
+            <select
+              value={widgetDraft.visualType}
+              onChange={(event) =>
+                setWidgetDraft((current) => ({
+                  ...current,
+                  visualType: event.target.value as WidgetVisualType,
+                }))
+              }
+            >
+              <option value="stat">Stat card</option>
+              <option value="progress">Progress card</option>
+            </select>
+          </label>
+          <button type="submit">Save graphic</button>
+        </form>
+
+        <div className="widget-grid">
+          {customWidgets.length === 0 ? (
+            <div className="empty-state widget-empty">
+              <h3>No custom graphics yet</h3>
+              <p>Pick a metric, choose a visual type, and save your first dashboard graphic.</p>
+            </div>
+          ) : (
+            customWidgets.map((widget) => {
+              const metricData = widgetMetricValues[widget.metric];
+              const progressValue =
+                metricData.value == null || metricData.max <= 0
+                  ? 0
+                  : Math.min(100, Math.max(0, (metricData.value / metricData.max) * 100));
+
+              return (
+                <article key={widget.id} className="custom-widget">
+                  <div className="custom-widget-head">
+                    <div>
+                      <p className="eyebrow">Custom graphic</p>
+                      <h3>{widget.title}</h3>
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary-button small-button"
+                      onClick={() => handleRemoveWidget(widget.id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  {widget.visualType === "stat" ? (
+                    <div className="custom-widget-body">
+                      <strong>{metricData.formatted}</strong>
+                      <span>{metricData.description}</span>
+                    </div>
+                  ) : (
+                    <div className="custom-widget-body">
+                      <strong>{metricData.formatted}</strong>
+                      <div className="widget-progress-track">
+                        <span className="widget-progress-fill" style={{ width: `${progressValue}%` }} />
+                      </div>
+                      <span>{metricData.description}</span>
+                    </div>
+                  )}
+                </article>
+              );
+            })
+          )}
+        </div>
+      </section>
 
       <main className="layout">
         <section className="panel">
