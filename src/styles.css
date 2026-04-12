@@ -258,6 +258,10 @@ select:focus {
   background: linear-gradient(180deg, #db3700, #b82f00);
 }
 
+.hero-bar-default {
+  background: linear-gradient(180deg, #3779eb, #5f95f0);
+}
+
 .hero-summary {
   display: grid;
   gap: 0.75rem;
@@ -278,6 +282,10 @@ select:focus {
 
 .hero-summary strong {
   font-size: 1.5rem;
+}
+
+.hero-edit-button {
+  margin-top: 0.25rem;
 }
 
 .hero-card,
@@ -328,55 +336,11 @@ select:focus {
   gap: 1.25rem;
 }
 
-.widget-panel {
-  margin-bottom: 1.25rem;
-}
-
-.widget-builder {
+.header-editor-grid {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr auto;
-  gap: 1rem;
-  align-items: end;
-  margin-bottom: 1rem;
-}
-
-.widget-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.widget-empty {
-  min-height: 180px;
-  grid-column: 1 / -1;
-}
-
-.custom-widget {
-  padding: 1rem;
-  border-radius: 20px;
-  border: 1px solid var(--theme-border);
-  background: rgba(15, 22, 35, 0.72);
-}
-
-.custom-widget-head {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 1rem;
-}
-
-.custom-widget-head h3 {
-  margin: 0;
-}
-
-.custom-widget-body {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.custom-widget-body strong {
-  font-size: 1.8rem;
 }
 
 .custom-widget-body span {

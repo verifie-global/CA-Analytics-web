@@ -3,9 +3,9 @@ import { fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall, verifyAuthoriz
 import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
-const WIDGETS_STORAGE_KEY = "ca-analytics-custom-widgets";
+const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 
-type WidgetMetric =
+type HeaderMetric =
   | "total_calls"
   | "completed_calls"
   | "failed_calls"
@@ -16,13 +16,9 @@ type WidgetMetric =
   | "avg_satisfaction"
   | "avg_friendliness";
 
-type WidgetVisualType = "stat" | "progress";
-
-type DashboardWidget = {
-  id: string;
-  title: string;
-  metric: WidgetMetric;
-  visualType: WidgetVisualType;
+type HeaderGraphicConfig = {
+  bars: [HeaderMetric, HeaderMetric, HeaderMetric];
+  summaries: [HeaderMetric, HeaderMetric];
 };
 
 const defaultSettings: AppSettings = {
@@ -91,10 +87,12 @@ const renderRedactedTranscript = (value: string) =>
 const generateConversationId = () =>
   `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-const generateWidgetId = () =>
-  `widget-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+const defaultHeaderGraphicConfig: HeaderGraphicConfig = {
+  bars: ["positive_calls", "neutral_calls", "negative_calls"],
+  summaries: ["avg_satisfaction", "avg_friendliness"],
+};
 
-const widgetMetricOptions: Array<{ value: WidgetMetric; label: string }> = [
+const headerMetricOptions: Array<{ value: HeaderMetric; label: string }> = [
   { value: "total_calls", label: "Total calls" },
   { value: "completed_calls", label: "Completed calls" },
   { value: "failed_calls", label: "Failed calls" },
@@ -105,6 +103,24 @@ const widgetMetricOptions: Array<{ value: WidgetMetric; label: string }> = [
   { value: "avg_satisfaction", label: "Average satisfaction" },
   { value: "avg_friendliness", label: "Average friendliness" },
 ];
+
+const headerBarClassByMetric = (metric: HeaderMetric) => {
+  switch (metric) {
+    case "positive_calls":
+    case "completed_calls":
+    case "avg_friendliness":
+      return "hero-bar-positive";
+    case "neutral_calls":
+    case "in_progress_calls":
+    case "avg_satisfaction":
+      return "hero-bar-neutral";
+    case "negative_calls":
+    case "failed_calls":
+      return "hero-bar-negative";
+    default:
+      return "hero-bar-default";
+  }
+};
 
 const CopyIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-copy">
@@ -225,26 +241,18 @@ function App() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string>("");
-  const [customWidgets, setCustomWidgets] = useState<DashboardWidget[]>(() => {
-    const saved = localStorage.getItem(WIDGETS_STORAGE_KEY);
+  const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
+  const [headerGraphicConfig, setHeaderGraphicConfig] = useState<HeaderGraphicConfig>(() => {
+    const saved = localStorage.getItem(HEADER_GRAPHIC_STORAGE_KEY);
     if (!saved) {
-      return [];
+      return defaultHeaderGraphicConfig;
     }
 
     try {
-      return JSON.parse(saved) as DashboardWidget[];
+      return { ...defaultHeaderGraphicConfig, ...(JSON.parse(saved) as Partial<HeaderGraphicConfig>) };
     } catch {
-      return [];
+      return defaultHeaderGraphicConfig;
     }
-  });
-  const [widgetDraft, setWidgetDraft] = useState<{
-    title: string;
-    metric: WidgetMetric;
-    visualType: WidgetVisualType;
-  }>({
-    title: "",
-    metric: "avg_satisfaction",
-    visualType: "stat",
   });
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
@@ -263,8 +271,8 @@ function App() {
   }, [settings]);
 
   useEffect(() => {
-    localStorage.setItem(WIDGETS_STORAGE_KEY, JSON.stringify(customWidgets));
-  }, [customWidgets]);
+    localStorage.setItem(HEADER_GRAPHIC_STORAGE_KEY, JSON.stringify(headerGraphicConfig));
+  }, [headerGraphicConfig]);
 
   useEffect(() => {
     if (!settings.companyId || !settings.token) {
@@ -612,12 +620,11 @@ function App() {
     const total = scoredCalls.reduce((sum, call) => sum + (call.friendlinessScore ?? 0), 0);
     return (total / scoredCalls.length).toFixed(1);
   })();
-  const maxSentimentCount = Math.max(positiveCount, neutralCount, negativeCount, 1);
   const completedCount = calls.filter((call) => call.status?.toLowerCase() === "completed").length;
   const failedCount = calls.filter((call) => call.status?.toLowerCase() === "failed").length;
   const inProgressCount = calls.filter((call) => isInProgressStatus(call.status)).length;
-  const widgetMetricValues: Record<
-    WidgetMetric,
+  const metricValues: Record<
+    HeaderMetric,
     { value: number | null; max: number; formatted: string; description: string }
   > = {
     total_calls: {
@@ -696,32 +703,6 @@ function App() {
     typeof detail?.analysis?.department === "string" ? detail.analysis.department : null;
   const taskUrgency =
     typeof detail?.analysis?.taskUrgency === "string" ? detail.analysis.taskUrgency : null;
-
-  const handleAddWidget = (event: FormEvent) => {
-    event.preventDefault();
-
-    const metricLabel = widgetMetricOptions.find((option) => option.value === widgetDraft.metric)?.label ?? "Widget";
-
-    setCustomWidgets((current) => [
-      ...current,
-      {
-        id: generateWidgetId(),
-        title: widgetDraft.title.trim() || metricLabel,
-        metric: widgetDraft.metric,
-        visualType: widgetDraft.visualType,
-      },
-    ]);
-
-    setWidgetDraft({
-      title: "",
-      metric: widgetDraft.metric,
-      visualType: widgetDraft.visualType,
-    });
-  };
-
-  const handleRemoveWidget = (id: string) => {
-    setCustomWidgets((current) => current.filter((widget) => widget.id !== id));
-  };
 
   useEffect(() => {
     if (activeSegmentIndex < 0 || !diarizationContainerRef.current) {
@@ -812,48 +793,51 @@ function App() {
             Upload audio, monitor processing, and inspect transcripts, diarization, sentiment,
             and satisfaction scores from your backend.
           </p>
+          <button
+            type="button"
+            className="secondary-button small-button hero-edit-button"
+            onClick={() => setIsHeaderEditorOpen(true)}
+          >
+            Edit graphic
+          </button>
           <div className="hero-graphic">
             <div className="hero-bars" aria-label="Sentiment overview">
-              <div className="hero-bar-group">
-                <div className="hero-bar-shell">
-                  <span
-                    className="hero-bar hero-bar-positive"
-                    style={{ height: `${(positiveCount / maxSentimentCount) * 100}%` }}
-                  />
-                </div>
-                <label>Positive</label>
-                <strong>{positiveCount}</strong>
-              </div>
-              <div className="hero-bar-group">
-                <div className="hero-bar-shell">
-                  <span
-                    className="hero-bar hero-bar-neutral"
-                    style={{ height: `${(neutralCount / maxSentimentCount) * 100}%` }}
-                  />
-                </div>
-                <label>Neutral</label>
-                <strong>{neutralCount}</strong>
-              </div>
-              <div className="hero-bar-group">
-                <div className="hero-bar-shell">
-                  <span
-                    className="hero-bar hero-bar-negative"
-                    style={{ height: `${(negativeCount / maxSentimentCount) * 100}%` }}
-                  />
-                </div>
-                <label>Negative</label>
-                <strong>{negativeCount}</strong>
-              </div>
+              {headerGraphicConfig.bars.map((metric) => {
+                const metricData = metricValues[metric];
+                const optionLabel =
+                  headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+                const heightPercent =
+                  metricData.value == null || metricData.max <= 0
+                    ? 0
+                    : (metricData.value / metricData.max) * 100;
+
+                return (
+                  <div key={metric} className="hero-bar-group">
+                    <div className="hero-bar-shell">
+                      <span
+                        className={`hero-bar ${headerBarClassByMetric(metric)}`}
+                        style={{ height: `${heightPercent}%` }}
+                      />
+                    </div>
+                    <label>{optionLabel}</label>
+                    <strong>{metricData.formatted}</strong>
+                  </div>
+                );
+              })}
             </div>
             <div className="hero-summary">
-              <div>
-                <span>Average satisfaction</span>
-                <strong>{avgScore ?? "-"}</strong>
-              </div>
-              <div>
-                <span>Average friendliness</span>
-                <strong>{avgFriendliness ?? "-"}</strong>
-              </div>
+              {headerGraphicConfig.summaries.map((metric) => {
+                const metricData = metricValues[metric];
+                const optionLabel =
+                  headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+
+                return (
+                  <div key={metric}>
+                    <span>{optionLabel}</span>
+                    <strong>{metricData.formatted}</strong>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -874,110 +858,6 @@ function App() {
           </button>
         </div>
       </header>
-
-      <section className="panel widget-panel">
-        <div className="section-heading">
-          <h2>Custom graphics builder</h2>
-          <p>Create your own dashboard graphics and keep them in this browser.</p>
-        </div>
-
-        <form className="widget-builder" onSubmit={handleAddWidget}>
-          <label>
-            Widget title
-            <input
-              value={widgetDraft.title}
-              onChange={(event) =>
-                setWidgetDraft((current) => ({ ...current, title: event.target.value }))
-              }
-              placeholder="Example: My quality snapshot"
-            />
-          </label>
-          <label>
-            Metric
-            <select
-              value={widgetDraft.metric}
-              onChange={(event) =>
-                setWidgetDraft((current) => ({
-                  ...current,
-                  metric: event.target.value as WidgetMetric,
-                }))
-              }
-            >
-              {widgetMetricOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Visual
-            <select
-              value={widgetDraft.visualType}
-              onChange={(event) =>
-                setWidgetDraft((current) => ({
-                  ...current,
-                  visualType: event.target.value as WidgetVisualType,
-                }))
-              }
-            >
-              <option value="stat">Stat card</option>
-              <option value="progress">Progress card</option>
-            </select>
-          </label>
-          <button type="submit">Save graphic</button>
-        </form>
-
-        <div className="widget-grid">
-          {customWidgets.length === 0 ? (
-            <div className="empty-state widget-empty">
-              <h3>No custom graphics yet</h3>
-              <p>Pick a metric, choose a visual type, and save your first dashboard graphic.</p>
-            </div>
-          ) : (
-            customWidgets.map((widget) => {
-              const metricData = widgetMetricValues[widget.metric];
-              const progressValue =
-                metricData.value == null || metricData.max <= 0
-                  ? 0
-                  : Math.min(100, Math.max(0, (metricData.value / metricData.max) * 100));
-
-              return (
-                <article key={widget.id} className="custom-widget">
-                  <div className="custom-widget-head">
-                    <div>
-                      <p className="eyebrow">Custom graphic</p>
-                      <h3>{widget.title}</h3>
-                    </div>
-                    <button
-                      type="button"
-                      className="secondary-button small-button"
-                      onClick={() => handleRemoveWidget(widget.id)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-
-                  {widget.visualType === "stat" ? (
-                    <div className="custom-widget-body">
-                      <strong>{metricData.formatted}</strong>
-                      <span>{metricData.description}</span>
-                    </div>
-                  ) : (
-                    <div className="custom-widget-body">
-                      <strong>{metricData.formatted}</strong>
-                      <div className="widget-progress-track">
-                        <span className="widget-progress-fill" style={{ width: `${progressValue}%` }} />
-                      </div>
-                      <span>{metricData.description}</span>
-                    </div>
-                  )}
-                </article>
-              );
-            })
-          )}
-        </div>
-      </section>
 
       <main className="layout">
         <section className="panel">
@@ -1474,6 +1354,76 @@ function App() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      ) : null}
+
+      {isHeaderEditorOpen ? (
+        <div className="modal-backdrop" onClick={() => setIsHeaderEditorOpen(false)}>
+          <section className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="section-heading">
+              <h2>Edit header graphic</h2>
+              <p>Choose which metrics appear in the built-in dashboard graphic. Changes are saved in this browser.</p>
+            </div>
+
+            <div className="header-editor-grid">
+              {headerGraphicConfig.bars.map((metric, index) => (
+                <label key={`bar-${index}`}>
+                  Bar {index + 1}
+                  <select
+                    value={metric}
+                    onChange={(event) =>
+                      setHeaderGraphicConfig((current) => {
+                        const nextBars = [...current.bars] as HeaderGraphicConfig["bars"];
+                        nextBars[index] = event.target.value as HeaderMetric;
+                        return { ...current, bars: nextBars };
+                      })
+                    }
+                  >
+                    {headerMetricOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+
+              {headerGraphicConfig.summaries.map((metric, index) => (
+                <label key={`summary-${index}`}>
+                  Summary {index + 1}
+                  <select
+                    value={metric}
+                    onChange={(event) =>
+                      setHeaderGraphicConfig((current) => {
+                        const nextSummaries = [...current.summaries] as HeaderGraphicConfig["summaries"];
+                        nextSummaries[index] = event.target.value as HeaderMetric;
+                        return { ...current, summaries: nextSummaries };
+                      })
+                    }
+                  >
+                    {headerMetricOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+
+            <div className="modal-actions full-width">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setHeaderGraphicConfig(defaultHeaderGraphicConfig)}
+              >
+                Reset defaults
+              </button>
+              <button type="button" onClick={() => setIsHeaderEditorOpen(false)}>
+                Done
+              </button>
+            </div>
           </section>
         </div>
       ) : null}
