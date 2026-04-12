@@ -343,6 +343,34 @@ select:focus {
   margin-bottom: 1rem;
 }
 
+.editor-group {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.editor-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.editor-group-head h3 {
+  margin: 0;
+}
+
+.editor-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+}
+
 .custom-widget-body span {
   color: var(--theme-text-muted);
 }

@@ -17,8 +17,8 @@ type HeaderMetric =
   | "avg_friendliness";
 
 type HeaderGraphicConfig = {
-  bars: [HeaderMetric, HeaderMetric, HeaderMetric];
-  summaries: [HeaderMetric, HeaderMetric];
+  bars: HeaderMetric[];
+  summaries: HeaderMetric[];
 };
 
 const defaultSettings: AppSettings = {
@@ -704,6 +704,37 @@ function App() {
   const taskUrgency =
     typeof detail?.analysis?.taskUrgency === "string" ? detail.analysis.taskUrgency : null;
 
+  const addHeaderBar = () => {
+    setHeaderGraphicConfig((current) => ({
+      ...current,
+      bars: [...current.bars, "total_calls"],
+    }));
+  };
+
+  const removeHeaderBar = (index: number) => {
+    setHeaderGraphicConfig((current) => ({
+      ...current,
+      bars: current.bars.length > 1 ? current.bars.filter((_, currentIndex) => currentIndex !== index) : current.bars,
+    }));
+  };
+
+  const addHeaderSummary = () => {
+    setHeaderGraphicConfig((current) => ({
+      ...current,
+      summaries: [...current.summaries, "avg_satisfaction"],
+    }));
+  };
+
+  const removeHeaderSummary = (index: number) => {
+    setHeaderGraphicConfig((current) => ({
+      ...current,
+      summaries:
+        current.summaries.length > 1
+          ? current.summaries.filter((_, currentIndex) => currentIndex !== index)
+          : current.summaries,
+    }));
+  };
+
   useEffect(() => {
     if (activeSegmentIndex < 0 || !diarizationContainerRef.current) {
       return;
@@ -1367,49 +1398,91 @@ function App() {
             </div>
 
             <div className="header-editor-grid">
-              {headerGraphicConfig.bars.map((metric, index) => (
-                <label key={`bar-${index}`}>
-                  Bar {index + 1}
-                  <select
-                    value={metric}
-                    onChange={(event) =>
-                      setHeaderGraphicConfig((current) => {
-                        const nextBars = [...current.bars] as HeaderGraphicConfig["bars"];
-                        nextBars[index] = event.target.value as HeaderMetric;
-                        return { ...current, bars: nextBars };
-                      })
-                    }
-                  >
-                    {headerMetricOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
+              <div className="editor-group">
+                <div className="editor-group-head">
+                  <h3>Bars</h3>
+                  <button type="button" className="secondary-button small-button" onClick={addHeaderBar}>
+                    Add bar
+                  </button>
+                </div>
 
-              {headerGraphicConfig.summaries.map((metric, index) => (
-                <label key={`summary-${index}`}>
-                  Summary {index + 1}
-                  <select
-                    value={metric}
-                    onChange={(event) =>
-                      setHeaderGraphicConfig((current) => {
-                        const nextSummaries = [...current.summaries] as HeaderGraphicConfig["summaries"];
-                        nextSummaries[index] = event.target.value as HeaderMetric;
-                        return { ...current, summaries: nextSummaries };
-                      })
-                    }
-                  >
-                    {headerMetricOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
+                <div className="editor-list">
+                  {headerGraphicConfig.bars.map((metric, index) => (
+                    <div key={`bar-${index}`} className="editor-row">
+                      <label>
+                        Bar {index + 1}
+                        <select
+                          value={metric}
+                          onChange={(event) =>
+                            setHeaderGraphicConfig((current) => {
+                              const nextBars = [...current.bars];
+                              nextBars[index] = event.target.value as HeaderMetric;
+                              return { ...current, bars: nextBars };
+                            })
+                          }
+                        >
+                          {headerMetricOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-button small-button"
+                        onClick={() => removeHeaderBar(index)}
+                        disabled={headerGraphicConfig.bars.length <= 1}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="editor-group">
+                <div className="editor-group-head">
+                  <h3>Summaries</h3>
+                  <button type="button" className="secondary-button small-button" onClick={addHeaderSummary}>
+                    Add summary
+                  </button>
+                </div>
+
+                <div className="editor-list">
+                  {headerGraphicConfig.summaries.map((metric, index) => (
+                    <div key={`summary-${index}`} className="editor-row">
+                      <label>
+                        Summary {index + 1}
+                        <select
+                          value={metric}
+                          onChange={(event) =>
+                            setHeaderGraphicConfig((current) => {
+                              const nextSummaries = [...current.summaries];
+                              nextSummaries[index] = event.target.value as HeaderMetric;
+                              return { ...current, summaries: nextSummaries };
+                            })
+                          }
+                        >
+                          {headerMetricOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-button small-button"
+                        onClick={() => removeHeaderSummary(index)}
+                        disabled={headerGraphicConfig.summaries.length <= 1}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="modal-actions full-width">
