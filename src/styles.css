@@ -670,7 +670,8 @@ select:focus {
 }
 
 .entity-panel,
-.concern-panel {
+.concern-panel,
+.coaching-panel {
   display: grid;
   gap: 0.9rem;
 }
@@ -689,6 +690,23 @@ select:focus {
   border-radius: 16px;
   border: 1px solid var(--theme-border);
   background: rgba(255, 255, 255, 0.03);
+}
+
+.coaching-card {
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1px solid rgba(55, 121, 235, 0.24);
+  background: rgba(55, 121, 235, 0.08);
+}
+
+.coaching-card strong {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #9bbfff;
+}
+
+.coaching-card p {
+  margin: 0;
 }
 
 .concern-head {

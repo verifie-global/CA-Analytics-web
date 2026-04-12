@@ -566,6 +566,9 @@ function App() {
   const customerConcerns = Array.isArray(detail?.analysis?.customerConcerns)
     ? (detail?.analysis?.customerConcerns as Array<Record<string, unknown>>)
     : [];
+  const coachingAssistance = Array.isArray(detail?.analysis?.coachingAssistance)
+    ? (detail?.analysis?.coachingAssistance as string[])
+    : [];
 
   useEffect(() => {
     if (activeSegmentIndex < 0 || !diarizationContainerRef.current) {
@@ -1070,6 +1073,22 @@ function App() {
                           })
                         ) : (
                           <p>No customer concerns available.</p>
+                        )}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4>Coaching assistance</h4>
+                      <div className="scroll-panel coaching-panel">
+                        {coachingAssistance.length > 0 ? (
+                          coachingAssistance.map((item, index) => (
+                            <article key={`coaching-${index}`} className="coaching-card">
+                              <strong>Recommendation {index + 1}</strong>
+                              <p>{item}</p>
+                            </article>
+                          ))
+                        ) : (
+                          <p>No coaching assistance available.</p>
                         )}
                       </div>
                     </section>
