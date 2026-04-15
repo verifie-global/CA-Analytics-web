@@ -151,45 +151,11 @@ const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
   );
 };
 
-function readWavSampleRate(bytes: Uint8Array) {
-  if (bytes.length < 44) {
-    throw new Error("WAV file is too small to validate.");
-  }
-
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const riff = String.fromCharCode(...bytes.slice(0, 4));
-  const wave = String.fromCharCode(...bytes.slice(8, 12));
-
-  if (riff !== "RIFF" || wave !== "WAVE") {
-    throw new Error("Unsupported audio format for sample rate validation. Please upload a WAV file.");
-  }
-
-  let offset = 12;
-
-  while (offset + 8 <= view.byteLength) {
-    const chunkId = String.fromCharCode(
-      view.getUint8(offset),
-      view.getUint8(offset + 1),
-      view.getUint8(offset + 2),
-      view.getUint8(offset + 3),
-    );
-    const chunkSize = view.getUint32(offset + 4, true);
-
-    if (chunkId === "fmt ") {
-      if (offset + 16 > view.byteLength) {
-        break;
-      }
-
-      return view.getUint32(offset + 12, true);
-    }
-
-    offset += 8 + chunkSize + (chunkSize % 2);
-  }
-
-  throw new Error("Unable to find sample rate information in the WAV file.");
-}
-
 async function validateAudioFileSampleRate(file: File) {
+  void file;
+  return null;
+
+  /*
   const fileName = file.name.toLowerCase();
   const mimeType = file.type.toLowerCase();
 
@@ -210,6 +176,7 @@ async function validateAudioFileSampleRate(file: File) {
   }
 
   return sampleRate;
+  */
 }
 
 function App() {
@@ -1358,10 +1325,9 @@ function App() {
               </label>
 
               <p className="upload-note full-width">
-                Local uploads must be WAV files with at least a 16000 Hz sample rate. Other audio
-                formats are not validated client-side and are blocked to avoid false results.
-                Presigned URLs are queued as-is because the browser cannot inspect remote files
-                before upload.
+                Client-side sample-rate validation is temporarily disabled for local uploads.
+                Presigned URLs are still queued as-is because the browser cannot inspect remote
+                files before upload.
               </p>
 
               {uploadValidationMessage ? (
