@@ -13,7 +13,19 @@ export type CallFilters = {
 export type AppSettings = {
   baseUrl: string;
   companyId: string;
-  token: string;
+  apiToken: string;
+  accessToken: string;
+  tokenType?: string | null;
+  companyName?: string | null;
+  expiresAtUtc?: string | null;
+};
+
+export type AuthTokenResponse = {
+  accessToken: string;
+  tokenType?: string | null;
+  expiresAtUtc?: string | null;
+  companyId?: number | string | null;
+  companyName?: string | null;
 };
 
 export type CallSummary = {

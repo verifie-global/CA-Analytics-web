@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall, verifyAuthorization } from "./api";
+import { authorizeSettings, fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall } from "./api";
 import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
@@ -24,7 +24,11 @@ type HeaderGraphicConfig = {
 const defaultSettings: AppSettings = {
   baseUrl: "https://ca.satisfai.cx",
   companyId: "",
-  token: "",
+  apiToken: "",
+  accessToken: "",
+  tokenType: "Bearer",
+  companyName: "",
+  expiresAtUtc: "",
 };
 
 const defaultFilters: CallFilters = {
@@ -185,7 +189,13 @@ function App() {
     if (!saved) return defaultSettings;
 
     try {
-      return { ...defaultSettings, ...(JSON.parse(saved) as Partial<AppSettings>) };
+      const parsed = JSON.parse(saved) as Partial<AppSettings> & { token?: string };
+      return {
+        ...defaultSettings,
+        ...parsed,
+        apiToken: parsed.apiToken ?? parsed.token ?? "",
+        accessToken: parsed.accessToken ?? "",
+      };
     } catch {
       return defaultSettings;
     }
@@ -199,7 +209,9 @@ function App() {
   const [audioRequestedFor, setAudioRequestedFor] = useState<string>("");
   const [audioPendingFor, setAudioPendingFor] = useState<string>("");
   const [playbackTimeSeconds, setPlaybackTimeSeconds] = useState(0);
-  const [statusMessage, setStatusMessage] = useState<string>("Enter your company ID and API token to get started.");
+  const [statusMessage, setStatusMessage] = useState<string>(
+    "Enter your company ID and API token to get started.",
+  );
   const [callsLoading, setCallsLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -242,8 +254,13 @@ function App() {
   }, [headerGraphicConfig]);
 
   useEffect(() => {
-    if (!settings.companyId || !settings.token) {
+    if (!settings.companyId || !settings.apiToken) {
       setIsAuthorized(false);
+      return;
+    }
+
+    if (settings.accessToken) {
+      setIsAuthorized(true);
       return;
     }
 
@@ -253,10 +270,15 @@ function App() {
       setAuthChecking(true);
 
       try {
-        await verifyAuthorization(settings);
+        const authorizedSettings = await authorizeSettings(settings);
         if (!cancelled) {
+          setSettings(authorizedSettings);
           setIsAuthorized(true);
-          setStatusMessage("Authorization successful.");
+          setStatusMessage(
+            authorizedSettings.companyName
+              ? `Authorization successful for ${authorizedSettings.companyName}.`
+              : "Authorization successful.",
+          );
         }
       } catch {
         if (!cancelled) {
@@ -334,7 +356,7 @@ function App() {
   }, [selectedId, detail, audioUrl, audioLoading, audioRequestedFor]);
 
   const canQueryApi = useMemo(
-    () => Boolean(settings.baseUrl && settings.companyId && settings.token),
+    () => Boolean(settings.baseUrl && settings.companyId && settings.accessToken),
     [settings],
   );
 
@@ -342,8 +364,8 @@ function App() {
     activeSettings: AppSettings = settings,
     options?: { silent?: boolean },
   ) => {
-    if (!activeSettings.baseUrl || !activeSettings.companyId || !activeSettings.token) {
-      setErrorMessage("Add a base URL, company ID, and bearer token before loading calls.");
+    if (!activeSettings.baseUrl || !activeSettings.companyId || !activeSettings.accessToken) {
+      setErrorMessage("Authorize with a company ID and API token before loading calls.");
       return;
     }
 
@@ -381,12 +403,19 @@ function App() {
     setStatusMessage("Checking authorization...");
 
     try {
-      await verifyAuthorization(draftSettings);
-      setSettings(draftSettings);
+      const authorizedSettings = await authorizeSettings({
+        ...draftSettings,
+        accessToken: "",
+      });
+      setSettings(authorizedSettings);
       setIsAuthorized(true);
-      setStatusMessage("Authorization successful. Loading dashboard...");
+      setStatusMessage(
+        authorizedSettings.companyName
+          ? `Authorization successful for ${authorizedSettings.companyName}. Loading dashboard...`
+          : "Authorization successful. Loading dashboard...",
+      );
       setTimeout(() => {
-        void refreshCalls(draftSettings);
+        void refreshCalls(authorizedSettings);
       }, 0);
     } catch (error) {
       setIsAuthorized(false);
@@ -490,7 +519,9 @@ function App() {
     try {
       if (uploadState.file) {
         const sampleRate = await validateAudioFileSampleRate(uploadState.file);
-        setUploadValidationMessage(`Validated local audio at ${sampleRate} Hz.`);
+        if (sampleRate != null) {
+          setUploadValidationMessage(`Validated local audio at ${sampleRate} Hz.`);
+        }
       }
 
       await uploadCall(settings, uploadState);
@@ -729,7 +760,7 @@ function App() {
           <p className="eyebrow">Authorization</p>
           <h1>Call Analytics Dashboard</h1>
           <p className="hero-copy">
-            Enter your company ID and bearer token. We will verify them against the backend
+            Enter your company ID and partner API token. We will exchange it for a backend JWT
             before loading the dashboard.
           </p>
 
@@ -756,14 +787,13 @@ function App() {
             </label>
 
             <label className="full-width">
-              Bearer token
+              API token
               <input
                 type="password"
-                value={draftSettings.token}
+                value={draftSettings.apiToken}
                 onChange={(event) =>
-                  setDraftSettings((current) => ({ ...current, token: event.target.value }))
+                  setDraftSettings((current) => ({ ...current, apiToken: event.target.value }))
                 }
-                placeholder="company API token"
               />
             </label>
 

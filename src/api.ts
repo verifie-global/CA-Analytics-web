@@ -1,4 +1,11 @@
-import type { AppSettings, CallDetail, CallFilters, CallSummary, SpeakerSegment } from "./types";
+import type {
+  AppSettings,
+  AuthTokenResponse,
+  CallDetail,
+  CallFilters,
+  CallSummary,
+  SpeakerSegment,
+} from "./types";
 
 const trimSlash = (value: string) => value.replace(/\/+$/, "");
 
@@ -8,7 +15,12 @@ const buildUrl = (settings: AppSettings, path: string, query?: URLSearchParams) 
 };
 
 const authHeaders = (settings: AppSettings, extra?: HeadersInit) => ({
-  Authorization: `Bearer ${settings.token}`,
+  Authorization: `Bearer ${settings.accessToken}`,
+  ...extra,
+});
+
+const jsonHeaders = (extra?: HeadersInit) => ({
+  "Content-Type": "application/json",
   ...extra,
 });
 
@@ -250,14 +262,34 @@ export async function fetchAudioBlob(settings: AppSettings, conversationId: stri
   return response.blob();
 }
 
-export async function verifyAuthorization(settings: AppSettings) {
-  await fetchCalls(settings, {
-    page: 1,
-    pageSize: 1,
-    search: "",
-    conversationId: "",
-    status: "",
-    sentiment: "",
-    hasError: "",
+export async function requestAuthToken(settings: AppSettings): Promise<AuthTokenResponse> {
+  const response = await fetch(buildUrl(settings, "/api/auth/token"), {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({
+      companyId: Number(settings.companyId),
+      apiToken: settings.apiToken,
+    }),
   });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Authorization failed with status ${response.status}`);
+  }
+
+  return (await response.json()) as AuthTokenResponse;
+}
+
+export async function authorizeSettings(settings: AppSettings): Promise<AppSettings> {
+  const auth = await requestAuthToken(settings);
+
+  return {
+    ...settings,
+    companyId:
+      auth.companyId != null && auth.companyId !== "" ? String(auth.companyId) : settings.companyId,
+    accessToken: auth.accessToken,
+    tokenType: auth.tokenType ?? "Bearer",
+    companyName: auth.companyName ?? settings.companyName ?? null,
+    expiresAtUtc: auth.expiresAtUtc ?? settings.expiresAtUtc ?? null,
+  };
 }
