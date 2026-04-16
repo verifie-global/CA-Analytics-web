@@ -274,6 +274,7 @@ function App() {
       return [];
     }
   });
+  const [transcriptCache, setTranscriptCache] = useState<Record<string, string>>({});
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -297,6 +298,57 @@ function App() {
   useEffect(() => {
     localStorage.setItem(KEYWORD_RULES_STORAGE_KEY, JSON.stringify(keywordRules));
   }, [keywordRules]);
+
+  useEffect(() => {
+    setTranscriptCache({});
+  }, [settings.companyId]);
+
+  useEffect(() => {
+    if (!isAuthorized || keywordRules.length === 0 || calls.length === 0) {
+      return;
+    }
+
+    const missingIds = calls
+      .map((call) => call.conversationId)
+      .filter((conversationId) => transcriptCache[conversationId] == null);
+
+    if (missingIds.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrateTranscriptCache = async () => {
+      for (const conversationId of missingIds) {
+        if (cancelled) {
+          return;
+        }
+
+        try {
+          const nextDetail = await fetchCallDetail(settings, conversationId);
+          if (!cancelled) {
+            setTranscriptCache((current) => ({
+              ...current,
+              [conversationId]: nextDetail.transcript?.trim() ?? "",
+            }));
+          }
+        } catch {
+          if (!cancelled) {
+            setTranscriptCache((current) => ({
+              ...current,
+              [conversationId]: "",
+            }));
+          }
+        }
+      }
+    };
+
+    void hydrateTranscriptCache();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [calls, isAuthorized, keywordRules, settings, transcriptCache]);
 
   useEffect(() => {
     if (!settings.companyId || !settings.apiToken) {
@@ -492,6 +544,10 @@ function App() {
     try {
       const nextDetail = await fetchCallDetail(settings, conversationId);
       setDetail(nextDetail);
+      setTranscriptCache((current) => ({
+        ...current,
+        [conversationId]: nextDetail.transcript?.trim() ?? "",
+      }));
     } catch (error) {
       if (!options?.silent) {
         setErrorMessage(error instanceof Error ? error.message : "Unable to load call details.");
@@ -663,6 +719,7 @@ function App() {
     setUploadValidationMessage("");
     setUploadErrorMessage("");
     setErrorMessage("");
+    setTranscriptCache({});
     setStatusMessage("You have been logged out.");
     setUploadState({
       conversationId: generateConversationId(),
@@ -689,6 +746,19 @@ function App() {
     setKeywordRules((current) => current.filter((rule) => rule.id !== ruleId));
   };
 
+  const getKeywordMatchCount = (transcriptValue?: string | null) => {
+    if (!transcriptValue?.trim()) {
+      return 0;
+    }
+
+    return keywordRules
+      .filter((rule) => rule.enabled && rule.phrase.trim())
+      .reduce((total, rule) => {
+        const matches = transcriptValue.match(new RegExp(escapeRegExp(rule.phrase.trim()), "gi"));
+        return total + (matches?.length ?? 0);
+      }, 0);
+  };
+
   const transcript = detail?.transcript?.trim();
   const redactedTranscript = detail?.redactedTranscript?.trim();
   const summary = detail?.summary?.trim();
@@ -708,6 +778,14 @@ function App() {
       })
       .filter((match) => match.count > 0);
   }, [keywordRules, transcript]);
+  const keywordBadgeCounts = useMemo(
+    () =>
+      calls.reduce<Record<string, number>>((result, call) => {
+        result[call.conversationId] = getKeywordMatchCount(transcriptCache[call.conversationId]);
+        return result;
+      }, {}),
+    [calls, transcriptCache, keywordRules],
+  );
   const positiveCount = calls.filter((call) => call.sentiment?.toLowerCase() === "positive").length;
   const neutralCount = calls.filter((call) => call.sentiment?.toLowerCase() === "neutral").length;
   const negativeCount = calls.filter((call) => call.sentiment?.toLowerCase() === "negative").length;
@@ -1098,33 +1176,50 @@ function App() {
                 </div>
               ) : (
                 calls.map((call) => (
-                  <button
-                    key={call.conversationId}
-                    type="button"
-                    className={`call-card ${selectedId === call.conversationId ? "selected" : ""}`}
-                    onClick={() => void handleLoadDetail(call.conversationId)}
-                  >
-                    <div className="call-card-head">
-                      <strong>{call.conversationId}</strong>
-                      <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
-                        {isInProgressStatus(call.status) ? (
-                          <span className="status-inline">
-                            <span className="status-pulse" />
-                            {call.status}
+                  (() => {
+                    const keywordCount = keywordBadgeCounts[call.conversationId] ?? 0;
+                    const isKeywordScanPending =
+                      keywordRules.length > 0 && transcriptCache[call.conversationId] == null;
+
+                    return (
+                      <button
+                        key={call.conversationId}
+                        type="button"
+                        className={`call-card ${selectedId === call.conversationId ? "selected" : ""}`}
+                        onClick={() => void handleLoadDetail(call.conversationId)}
+                      >
+                        <div className="call-card-head">
+                          <strong>{call.conversationId}</strong>
+                          <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
+                            {isInProgressStatus(call.status) ? (
+                              <span className="status-inline">
+                                <span className="status-pulse" />
+                                {call.status}
+                              </span>
+                            ) : (
+                              call.status
+                            )}
                           </span>
-                        ) : (
-                          call.status
-                        )}
-                      </span>
-                    </div>
-                    <div className="call-card-grid">
-                      <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
-                      <span>Score: {call.satisfactionScore ?? "-"}</span>
-                      <span>{call.language ?? "No language"}</span>
-                    </div>
-                    <small>Created {formatDate(call.createdUtc)}</small>
-                    {call.error ? <small className="error-text">{call.error}</small> : null}
-                  </button>
+                        </div>
+                        <div className="call-card-grid">
+                          <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
+                          <span>Score: {call.satisfactionScore ?? "-"}</span>
+                          <span>{call.language ?? "No language"}</span>
+                          {keywordRules.length > 0 ? (
+                            <span className={`tag keyword-list-badge ${keywordCount > 0 ? "tag-warning" : ""}`}>
+                              {isKeywordScanPending
+                                ? "Checking keywords..."
+                                : keywordCount > 0
+                                  ? `${keywordCount} keyword hit${keywordCount === 1 ? "" : "s"}`
+                                  : "No keyword"}
+                            </span>
+                          ) : null}
+                        </div>
+                        <small>Created {formatDate(call.createdUtc)}</small>
+                        {call.error ? <small className="error-text">{call.error}</small> : null}
+                      </button>
+                    );
+                  })()
                 ))
               )}
             </div>

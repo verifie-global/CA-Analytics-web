@@ -539,6 +539,11 @@ textarea:focus {
   color: var(--theme-warning);
 }
 
+.keyword-list-badge {
+  justify-self: start;
+  max-width: 100%;
+}
+
 .status-inline {
   display: inline-flex;
   align-items: center;
