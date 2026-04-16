@@ -241,7 +241,7 @@ function App() {
   const [uploadState, setUploadState] = useState({
     conversationId: generateConversationId(),
     url: "",
-    file: null as File | null,
+    files: [] as File[],
   });
 
   useEffect(() => {
@@ -463,7 +463,7 @@ function App() {
     setUploadState({
       conversationId: generateConversationId(),
       url: "",
-      file: null,
+      files: [],
     });
     setUploadValidationMessage("");
     setUploadErrorMessage("");
@@ -505,8 +505,13 @@ function App() {
   const handleUpload = async (event: FormEvent) => {
     event.preventDefault();
 
-    if (!uploadState.conversationId || (!uploadState.url && !uploadState.file)) {
-      setUploadErrorMessage("Provide a conversation ID and either a presigned URL or an audio file.");
+    if (!uploadState.conversationId || (!uploadState.url && uploadState.files.length === 0)) {
+      setUploadErrorMessage("Provide either a presigned URL or one or more local audio files.");
+      return;
+    }
+
+    if (uploadState.url && uploadState.files.length > 0) {
+      setUploadErrorMessage("Use either a presigned URL or local audio files in a single upload.");
       return;
     }
 
@@ -517,21 +522,48 @@ function App() {
     setStatusMessage("Uploading call and queuing analysis...");
 
     try {
-      if (uploadState.file) {
-        const sampleRate = await validateAudioFileSampleRate(uploadState.file);
-        if (sampleRate != null) {
-          setUploadValidationMessage(`Validated local audio at ${sampleRate} Hz.`);
+      const uploadedConversationIds: string[] = [];
+
+      if (uploadState.files.length > 0) {
+        for (const [index, file] of uploadState.files.entries()) {
+          const conversationId = generateConversationId();
+          setStatusMessage(
+            `Uploading ${index + 1} of ${uploadState.files.length}: ${file.name}`,
+          );
+
+          const sampleRate = await validateAudioFileSampleRate(file);
+          if (sampleRate != null) {
+            setUploadValidationMessage(`Validated local audio at ${sampleRate} Hz.`);
+          }
+
+          await uploadCall(settings, {
+            conversationId,
+            url: "",
+            file,
+          });
+
+          uploadedConversationIds.push(conversationId);
         }
+      } else {
+        await uploadCall(settings, {
+          conversationId: uploadState.conversationId,
+          url: uploadState.url,
+          file: null,
+        });
+        uploadedConversationIds.push(uploadState.conversationId);
       }
 
-      await uploadCall(settings, uploadState);
-      setStatusMessage(`Upload accepted. ${uploadState.conversationId} is now queued for analysis.`);
+      setStatusMessage(
+        uploadedConversationIds.length === 1
+          ? `Upload accepted. ${uploadedConversationIds[0]} is now queued for analysis.`
+          : `Upload accepted. ${uploadedConversationIds.length} calls are now queued for analysis.`,
+      );
       setIsUploadModalOpen(false);
-      setUploadState({ conversationId: generateConversationId(), url: "", file: null });
+      setUploadState({ conversationId: generateConversationId(), url: "", files: [] });
       setUploadValidationMessage("");
       setUploadErrorMessage("");
       await refreshCalls();
-      await handleLoadDetail(uploadState.conversationId);
+      await handleLoadDetail(uploadedConversationIds[uploadedConversationIds.length - 1]);
     } catch (error) {
       setUploadErrorMessage(error instanceof Error ? error.message : "Unable to upload the call.");
     } finally {
@@ -590,7 +622,7 @@ function App() {
     setUploadState({
       conversationId: generateConversationId(),
       url: "",
-      file: null,
+      files: [],
     });
   };
 
@@ -1305,7 +1337,7 @@ function App() {
 
             <form className="grid-form" onSubmit={handleUpload}>
               <label>
-                Conversation ID
+                Conversation ID for URL upload
                 <input value={uploadState.conversationId} readOnly />
               </label>
 
@@ -1330,29 +1362,48 @@ function App() {
                 <input
                   value={uploadState.url}
                   onChange={(event) =>
-                    setUploadState((current) => ({ ...current, url: event.target.value }))
+                    setUploadState((current) => ({ ...current, url: event.target.value, files: [] }))
                   }
                   placeholder="https://storage.example.com/call.wav?signature=..."
                 />
               </label>
 
               <label className="full-width">
-                Local audio file
+                Local audio files
                 <input
                   type="file"
                   accept="audio/*"
+                  multiple
                   onChange={(event) =>
                     {
                       setUploadValidationMessage("");
                       setUploadErrorMessage("");
                       setUploadState((current) => ({
                         ...current,
-                        file: event.target.files?.[0] ?? null,
+                        url: "",
+                        files: Array.from(event.target.files ?? []),
                       }));
                     }
                   }
                 />
               </label>
+
+              {uploadState.files.length > 0 ? (
+                <div className="upload-selection full-width">
+                  <strong>{uploadState.files.length} file(s) selected</strong>
+                  <ul className="upload-file-list">
+                    {uploadState.files.map((file) => (
+                      <li key={`${file.name}-${file.lastModified}`}>
+                        <span>{file.name}</span>
+                        <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p>
+                    A separate random conversation ID will be generated for each local file during upload.
+                  </p>
+                </div>
+              ) : null}
 
               <p className="upload-note full-width">
                 Client-side sample-rate validation is temporarily disabled for local uploads.
@@ -1377,7 +1428,11 @@ function App() {
                   Cancel
                 </button>
                 <button type="submit" disabled={!canQueryApi || uploadSubmitting}>
-                  {uploadSubmitting ? "Uploading..." : "Queue analysis"}
+                  {uploadSubmitting
+                    ? "Uploading..."
+                    : uploadState.files.length > 1
+                      ? "Queue analyses"
+                      : "Queue analysis"}
                 </button>
               </div>
             </form>

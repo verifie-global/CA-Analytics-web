@@ -993,6 +993,41 @@ select:focus {
   border-radius: 14px;
 }
 
+.upload-selection {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0.95rem 1rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--theme-border);
+  color: var(--theme-text);
+}
+
+.upload-selection p {
+  margin: 0;
+  color: var(--theme-text-muted);
+}
+
+.upload-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.upload-file-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 12px;
+  background: rgba(8, 13, 23, 0.58);
+  color: var(--theme-text);
+}
+
 .upload-note {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--theme-border);
