@@ -11,12 +11,18 @@ type KeywordRule = {
   phrase: string;
   alertLabel: string;
   actionText: string;
+  color: string;
   enabled: boolean;
 };
 
 type KeywordMatch = {
   rule: KeywordRule;
   count: number;
+};
+
+type KeywordBadgeMatch = {
+  label: string;
+  color: string;
 };
 
 type HeaderMetric =
@@ -113,6 +119,7 @@ const defaultKeywordRule = (): KeywordRule => ({
   phrase: "",
   alertLabel: "",
   actionText: "",
+  color: "#ffc83d",
   enabled: true,
 });
 
@@ -269,7 +276,12 @@ function App() {
 
     try {
       const parsed = JSON.parse(saved) as KeywordRule[];
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed)
+        ? parsed.map((rule) => ({
+            ...rule,
+            color: rule.color || "#ffc83d",
+          }))
+        : [];
     } catch {
       return [];
     }
@@ -734,7 +746,7 @@ function App() {
 
   const updateKeywordRule = (
     ruleId: string,
-    field: "phrase" | "alertLabel" | "actionText" | "enabled",
+    field: "phrase" | "alertLabel" | "actionText" | "color" | "enabled",
     value: string | boolean,
   ) => {
     setKeywordRules((current) =>
@@ -746,7 +758,7 @@ function App() {
     setKeywordRules((current) => current.filter((rule) => rule.id !== ruleId));
   };
 
-  const getKeywordMatchLabels = (transcriptValue?: string | null) => {
+  const getKeywordBadgeMatches = (transcriptValue?: string | null): KeywordBadgeMatch[] => {
     if (!transcriptValue?.trim()) {
       return [];
     }
@@ -759,7 +771,12 @@ function App() {
           return [];
         }
 
-        return [rule.alertLabel.trim() || rule.phrase.trim()];
+        return [
+          {
+            label: rule.alertLabel.trim() || rule.phrase.trim(),
+            color: rule.color || "#ffc83d",
+          },
+        ];
       });
   };
 
@@ -782,10 +799,10 @@ function App() {
       })
       .filter((match) => match.count > 0);
   }, [keywordRules, transcript]);
-  const keywordBadgeLabels = useMemo(
+  const keywordBadgeMatches = useMemo(
     () =>
-      calls.reduce<Record<string, string[]>>((result, call) => {
-        result[call.conversationId] = getKeywordMatchLabels(transcriptCache[call.conversationId]);
+      calls.reduce<Record<string, KeywordBadgeMatch[]>>((result, call) => {
+        result[call.conversationId] = getKeywordBadgeMatches(transcriptCache[call.conversationId]);
         return result;
       }, {}),
     [calls, transcriptCache, keywordRules],
@@ -1181,11 +1198,14 @@ function App() {
               ) : (
                 calls.map((call) => (
                   (() => {
-                    const keywordLabels = keywordBadgeLabels[call.conversationId] ?? [];
+                    const keywordMatchesForList = keywordBadgeMatches[call.conversationId] ?? [];
                     const isKeywordScanPending =
                       keywordRules.length > 0 && transcriptCache[call.conversationId] == null;
-                    const visibleKeywordLabels = keywordLabels.slice(0, 2);
-                    const hiddenKeywordCount = Math.max(0, keywordLabels.length - visibleKeywordLabels.length);
+                    const visibleKeywordLabels = keywordMatchesForList.slice(0, 2);
+                    const hiddenKeywordCount = Math.max(
+                      0,
+                      keywordMatchesForList.length - visibleKeywordLabels.length,
+                    );
 
                     return (
                       <button
@@ -1215,14 +1235,19 @@ function App() {
                             <span className="keyword-list-badges">
                               {isKeywordScanPending ? (
                                 <span className="tag keyword-list-badge">Checking keywords...</span>
-                              ) : keywordLabels.length > 0 ? (
+                              ) : keywordMatchesForList.length > 0 ? (
                                 <>
-                                  {visibleKeywordLabels.map((label) => (
+                                  {visibleKeywordLabels.map((keywordMatch) => (
                                     <span
-                                      key={`${call.conversationId}-${label}`}
-                                      className="tag tag-warning keyword-list-badge"
+                                      key={`${call.conversationId}-${keywordMatch.label}`}
+                                      className="tag keyword-list-badge"
+                                      style={{
+                                        backgroundColor: `${keywordMatch.color}26`,
+                                        color: keywordMatch.color,
+                                        borderColor: `${keywordMatch.color}4d`,
+                                      }}
                                     >
-                                      {label}
+                                      {keywordMatch.label}
                                     </span>
                                   ))}
                                   {hiddenKeywordCount > 0 ? (
@@ -1332,10 +1357,24 @@ function App() {
                       <div className="scroll-panel keyword-panel">
                         {keywordMatches.length > 0 ? (
                           keywordMatches.map((match) => (
-                            <article key={match.rule.id} className="keyword-card">
+                            <article
+                              key={match.rule.id}
+                              className="keyword-card"
+                              style={{
+                                borderColor: `${match.rule.color}42`,
+                                backgroundColor: `${match.rule.color}14`,
+                              }}
+                            >
                               <div className="keyword-card-head">
                                 <strong>{match.rule.alertLabel || match.rule.phrase}</strong>
-                                <span className="token-chip">
+                                <span
+                                  className="token-chip"
+                                  style={{
+                                    backgroundColor: `${match.rule.color}22`,
+                                    color: match.rule.color,
+                                    borderColor: `${match.rule.color}4d`,
+                                  }}
+                                >
                                   {match.count} hit{match.count === 1 ? "" : "s"}
                                 </span>
                               </div>
@@ -1734,6 +1773,18 @@ function App() {
                               updateKeywordRule(rule.id, "alertLabel", event.target.value)
                             }
                             placeholder="Fraud escalation"
+                          />
+                        </label>
+
+                        <label>
+                          Badge color
+                          <input
+                            type="color"
+                            value={rule.color}
+                            onChange={(event) =>
+                              updateKeywordRule(rule.id, "color", event.target.value)
+                            }
+                            className="keyword-color-input"
                           />
                         </label>
 

@@ -905,6 +905,12 @@ textarea:focus {
   height: 18px;
 }
 
+.keyword-color-input {
+  min-height: 52px;
+  padding: 0.4rem;
+  cursor: pointer;
+}
+
 .compact-empty-state {
   padding: 1.25rem;
 }
