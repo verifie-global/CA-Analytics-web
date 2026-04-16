@@ -4,6 +4,20 @@ import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types"
 
 const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
+const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
+
+type KeywordRule = {
+  id: string;
+  phrase: string;
+  alertLabel: string;
+  actionText: string;
+  enabled: boolean;
+};
+
+type KeywordMatch = {
+  rule: KeywordRule;
+  count: number;
+};
 
 type HeaderMetric =
   | "total_calls"
@@ -90,6 +104,19 @@ const renderRedactedTranscript = (value: string) =>
 
 const generateConversationId = () =>
   `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const generateKeywordRuleId = () =>
+  `keyword-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+const defaultKeywordRule = (): KeywordRule => ({
+  id: generateKeywordRuleId(),
+  phrase: "",
+  alertLabel: "",
+  actionText: "",
+  enabled: true,
+});
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const defaultHeaderGraphicConfig: HeaderGraphicConfig = {
   bars: ["positive_calls", "neutral_calls", "negative_calls"],
@@ -221,6 +248,7 @@ function App() {
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string>("");
   const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
+  const [isKeywordManagerOpen, setIsKeywordManagerOpen] = useState(false);
   const [headerGraphicConfig, setHeaderGraphicConfig] = useState<HeaderGraphicConfig>(() => {
     const saved = localStorage.getItem(HEADER_GRAPHIC_STORAGE_KEY);
     if (!saved) {
@@ -231,6 +259,19 @@ function App() {
       return { ...defaultHeaderGraphicConfig, ...(JSON.parse(saved) as Partial<HeaderGraphicConfig>) };
     } catch {
       return defaultHeaderGraphicConfig;
+    }
+  });
+  const [keywordRules, setKeywordRules] = useState<KeywordRule[]>(() => {
+    const saved = localStorage.getItem(KEYWORD_RULES_STORAGE_KEY);
+    if (!saved) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(saved) as KeywordRule[];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
     }
   });
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
@@ -252,6 +293,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem(HEADER_GRAPHIC_STORAGE_KEY, JSON.stringify(headerGraphicConfig));
   }, [headerGraphicConfig]);
+
+  useEffect(() => {
+    localStorage.setItem(KEYWORD_RULES_STORAGE_KEY, JSON.stringify(keywordRules));
+  }, [keywordRules]);
 
   useEffect(() => {
     if (!settings.companyId || !settings.apiToken) {
@@ -626,9 +671,43 @@ function App() {
     });
   };
 
+  const addKeywordRule = () => {
+    setKeywordRules((current) => [...current, defaultKeywordRule()]);
+  };
+
+  const updateKeywordRule = (
+    ruleId: string,
+    field: "phrase" | "alertLabel" | "actionText" | "enabled",
+    value: string | boolean,
+  ) => {
+    setKeywordRules((current) =>
+      current.map((rule) => (rule.id === ruleId ? { ...rule, [field]: value } : rule)),
+    );
+  };
+
+  const removeKeywordRule = (ruleId: string) => {
+    setKeywordRules((current) => current.filter((rule) => rule.id !== ruleId));
+  };
+
   const transcript = detail?.transcript?.trim();
   const redactedTranscript = detail?.redactedTranscript?.trim();
   const summary = detail?.summary?.trim();
+  const keywordMatches: KeywordMatch[] = useMemo(() => {
+    if (!transcript) {
+      return [];
+    }
+
+    return keywordRules
+      .filter((rule) => rule.enabled && rule.phrase.trim())
+      .map((rule) => {
+        const matches = transcript.match(new RegExp(escapeRegExp(rule.phrase.trim()), "gi"));
+        return {
+          rule,
+          count: matches?.length ?? 0,
+        };
+      })
+      .filter((match) => match.count > 0);
+  }, [keywordRules, transcript]);
   const positiveCount = calls.filter((call) => call.sentiment?.toLowerCase() === "positive").length;
   const neutralCount = calls.filter((call) => call.sentiment?.toLowerCase() === "neutral").length;
   const negativeCount = calls.filter((call) => call.sentiment?.toLowerCase() === "negative").length;
@@ -913,6 +992,13 @@ function App() {
           <button type="button" onClick={openUploadModal}>
             Upload call
           </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setIsKeywordManagerOpen(true)}
+          >
+            Keyword rules
+          </button>
           <button type="button" className="secondary-button" onClick={handleLogout}>
             Log out
           </button>
@@ -1061,13 +1147,20 @@ function App() {
                       <p className="eyebrow">Conversation</p>
                       <h3>{detail.conversationId}</h3>
                     </div>
-                    <span className="tag">
-                      {audioLoading || audioPendingFor === detail.conversationId
-                        ? "Preparing audio playback"
-                        : audioUrl
-                          ? "Playback ready"
-                          : "No audio yet"}
-                    </span>
+                    <div className="detail-header-tags">
+                      <span className="tag">
+                        {audioLoading || audioPendingFor === detail.conversationId
+                          ? "Preparing audio playback"
+                          : audioUrl
+                            ? "Playback ready"
+                            : "No audio yet"}
+                      </span>
+                      <span className={`tag ${keywordMatches.length > 0 ? "tag-warning" : ""}`}>
+                        {keywordMatches.length > 0
+                          ? `${keywordMatches.length} keyword alert${keywordMatches.length === 1 ? "" : "s"}`
+                          : "No keyword alerts"}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="stat-grid">
@@ -1117,6 +1210,36 @@ function App() {
                   )}
 
                   <div className="detail-panels">
+                    <section>
+                      <h4>Keyword alerts</h4>
+                      <div className="scroll-panel keyword-panel">
+                        {keywordMatches.length > 0 ? (
+                          keywordMatches.map((match) => (
+                            <article key={match.rule.id} className="keyword-card">
+                              <div className="keyword-card-head">
+                                <strong>{match.rule.alertLabel || match.rule.phrase}</strong>
+                                <span className="token-chip">
+                                  {match.count} hit{match.count === 1 ? "" : "s"}
+                                </span>
+                              </div>
+                              <p>
+                                <strong>Keyword:</strong> {match.rule.phrase}
+                              </p>
+                              <p>
+                                <strong>Action:</strong> {match.rule.actionText || "No action set."}
+                              </p>
+                            </article>
+                          ))
+                        ) : keywordRules.length > 0 ? (
+                          <p>No configured keywords were found in this transcript.</p>
+                        ) : (
+                          <p>
+                            No keyword rules yet. Add them from the dashboard to trigger transcript alerts.
+                          </p>
+                        )}
+                      </div>
+                    </section>
+
                     <section>
                       <h4>Summarization</h4>
                       <div className="scroll-panel prose-block copy-panel">
@@ -1436,6 +1559,109 @@ function App() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      ) : null}
+
+      {isKeywordManagerOpen ? (
+        <div className="modal-backdrop" onClick={() => setIsKeywordManagerOpen(false)}>
+          <section className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="section-heading">
+              <h2>Keyword rules</h2>
+              <p>
+                Configure transcript keywords that should trigger alerts and recommended actions.
+                These rules are saved only in this browser for now.
+              </p>
+            </div>
+
+            <div className="keyword-manager">
+              <div className="editor-group-head">
+                <h3>Rules</h3>
+                <button type="button" className="secondary-button small-button" onClick={addKeywordRule}>
+                  Add keyword
+                </button>
+              </div>
+
+              {keywordRules.length > 0 ? (
+                <div className="keyword-rule-list">
+                  {keywordRules.map((rule, index) => (
+                    <article key={rule.id} className="keyword-rule-card">
+                      <div className="editor-group-head">
+                        <h3>Rule {index + 1}</h3>
+                        <button
+                          type="button"
+                          className="secondary-button small-button"
+                          onClick={() => removeKeywordRule(rule.id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="grid-form keyword-rule-grid">
+                        <label>
+                          Keyword or phrase
+                          <input
+                            value={rule.phrase}
+                            onChange={(event) =>
+                              updateKeywordRule(rule.id, "phrase", event.target.value)
+                            }
+                            placeholder="chargeback"
+                          />
+                        </label>
+
+                        <label>
+                          Alert label
+                          <input
+                            value={rule.alertLabel}
+                            onChange={(event) =>
+                              updateKeywordRule(rule.id, "alertLabel", event.target.value)
+                            }
+                            placeholder="Fraud escalation"
+                          />
+                        </label>
+
+                        <label className="full-width">
+                          Required action
+                          <textarea
+                            value={rule.actionText}
+                            onChange={(event) =>
+                              updateKeywordRule(rule.id, "actionText", event.target.value)
+                            }
+                            placeholder="Notify fraud operations and review the call immediately."
+                            rows={3}
+                          />
+                        </label>
+
+                        <label className="keyword-toggle">
+                          <span>Enabled</span>
+                          <input
+                            type="checkbox"
+                            checked={rule.enabled}
+                            onChange={(event) =>
+                              updateKeywordRule(rule.id, "enabled", event.target.checked)
+                            }
+                          />
+                        </label>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state compact-empty-state">
+                  <h3>No keyword rules yet</h3>
+                  <p>Add a rule to watch transcripts for important words or phrases.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions full-width">
+              <button type="button" className="secondary-button" onClick={() => setKeywordRules([])}>
+                Clear all
+              </button>
+              <button type="button" onClick={() => setIsKeywordManagerOpen(false)}>
+                Done
+              </button>
+            </div>
           </section>
         </div>
       ) : null}

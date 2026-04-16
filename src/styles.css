@@ -82,7 +82,8 @@ button:disabled {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid var(--theme-border);
   border-radius: 12px;
@@ -92,13 +93,20 @@ select {
   outline: none;
 }
 
+textarea {
+  resize: vertical;
+  min-height: 96px;
+  font: inherit;
+}
+
 option {
   background: var(--theme-surface);
   color: var(--theme-text);
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--theme-primary);
   box-shadow: 0 0 0 4px rgba(202, 225, 252, 0.18);
 }
@@ -487,6 +495,13 @@ select:focus {
   align-items: center;
 }
 
+.detail-header-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
 .call-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -515,6 +530,11 @@ select:focus {
 }
 
 .tag-progress {
+  background: rgba(255, 200, 61, 0.16);
+  color: var(--theme-warning);
+}
+
+.tag-warning {
   background: rgba(255, 200, 61, 0.16);
   color: var(--theme-warning);
 }
@@ -824,6 +844,57 @@ select:focus {
 
 .coaching-card p {
   margin: 0;
+}
+
+.keyword-panel,
+.keyword-manager,
+.keyword-rule-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.keyword-card,
+.keyword-rule-card {
+  padding: 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 200, 61, 0.22);
+  background: rgba(255, 200, 61, 0.08);
+}
+
+.keyword-card p,
+.keyword-rule-card p {
+  margin: 0.45rem 0 0;
+}
+
+.keyword-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.keyword-rule-grid {
+  margin-top: 0.85rem;
+}
+
+.keyword-toggle {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--theme-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.keyword-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.compact-empty-state {
+  padding: 1.25rem;
 }
 
 .concern-head {
