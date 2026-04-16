@@ -746,17 +746,21 @@ function App() {
     setKeywordRules((current) => current.filter((rule) => rule.id !== ruleId));
   };
 
-  const getKeywordMatchCount = (transcriptValue?: string | null) => {
+  const getKeywordMatchLabels = (transcriptValue?: string | null) => {
     if (!transcriptValue?.trim()) {
-      return 0;
+      return [];
     }
 
     return keywordRules
       .filter((rule) => rule.enabled && rule.phrase.trim())
-      .reduce((total, rule) => {
+      .flatMap((rule) => {
         const matches = transcriptValue.match(new RegExp(escapeRegExp(rule.phrase.trim()), "gi"));
-        return total + (matches?.length ?? 0);
-      }, 0);
+        if (!matches || matches.length === 0) {
+          return [];
+        }
+
+        return [rule.alertLabel.trim() || rule.phrase.trim()];
+      });
   };
 
   const transcript = detail?.transcript?.trim();
@@ -778,10 +782,10 @@ function App() {
       })
       .filter((match) => match.count > 0);
   }, [keywordRules, transcript]);
-  const keywordBadgeCounts = useMemo(
+  const keywordBadgeLabels = useMemo(
     () =>
-      calls.reduce<Record<string, number>>((result, call) => {
-        result[call.conversationId] = getKeywordMatchCount(transcriptCache[call.conversationId]);
+      calls.reduce<Record<string, string[]>>((result, call) => {
+        result[call.conversationId] = getKeywordMatchLabels(transcriptCache[call.conversationId]);
         return result;
       }, {}),
     [calls, transcriptCache, keywordRules],
@@ -1177,9 +1181,11 @@ function App() {
               ) : (
                 calls.map((call) => (
                   (() => {
-                    const keywordCount = keywordBadgeCounts[call.conversationId] ?? 0;
+                    const keywordLabels = keywordBadgeLabels[call.conversationId] ?? [];
                     const isKeywordScanPending =
                       keywordRules.length > 0 && transcriptCache[call.conversationId] == null;
+                    const visibleKeywordLabels = keywordLabels.slice(0, 2);
+                    const hiddenKeywordCount = Math.max(0, keywordLabels.length - visibleKeywordLabels.length);
 
                     return (
                       <button
@@ -1206,12 +1212,28 @@ function App() {
                           <span>Score: {call.satisfactionScore ?? "-"}</span>
                           <span>{call.language ?? "No language"}</span>
                           {keywordRules.length > 0 ? (
-                            <span className={`tag keyword-list-badge ${keywordCount > 0 ? "tag-warning" : ""}`}>
-                              {isKeywordScanPending
-                                ? "Checking keywords..."
-                                : keywordCount > 0
-                                  ? `${keywordCount} keyword hit${keywordCount === 1 ? "" : "s"}`
-                                  : "No keyword"}
+                            <span className="keyword-list-badges">
+                              {isKeywordScanPending ? (
+                                <span className="tag keyword-list-badge">Checking keywords...</span>
+                              ) : keywordLabels.length > 0 ? (
+                                <>
+                                  {visibleKeywordLabels.map((label) => (
+                                    <span
+                                      key={`${call.conversationId}-${label}`}
+                                      className="tag tag-warning keyword-list-badge"
+                                    >
+                                      {label}
+                                    </span>
+                                  ))}
+                                  {hiddenKeywordCount > 0 ? (
+                                    <span className="tag keyword-list-badge">
+                                      +{hiddenKeywordCount} more
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className="tag keyword-list-badge">No keyword</span>
+                              )}
                             </span>
                           ) : null}
                         </div>

@@ -544,6 +544,13 @@ textarea:focus {
   max-width: 100%;
 }
 
+.keyword-list-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  grid-column: 1 / -1;
+}
+
 .status-inline {
   display: inline-flex;
   align-items: center;
