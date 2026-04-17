@@ -266,6 +266,7 @@ function App() {
   const [copiedSection, setCopiedSection] = useState<string>("");
   const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
   const [isKeywordManagerOpen, setIsKeywordManagerOpen] = useState(false);
+  const [isQaExportModalOpen, setIsQaExportModalOpen] = useState(false);
   const [headerGraphicConfig, setHeaderGraphicConfig] = useState<HeaderGraphicConfig>(() => {
     const saved = localStorage.getItem(HEADER_GRAPHIC_STORAGE_KEY);
     if (!saved) {
@@ -786,6 +787,15 @@ function App() {
     );
   };
 
+  const openQaExportModal = () => {
+    setSelectedConversationIds((current) =>
+      current.filter((conversationId) =>
+        exportableCalls.some((call) => call.conversationId === conversationId),
+      ),
+    );
+    setIsQaExportModalOpen(true);
+  };
+
   const downloadBlobFile = (blob: Blob, fileName: string) => {
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -821,6 +831,7 @@ function App() {
       setStatusMessage(
         `Downloaded ${exportedCount} QA monitoring questionnaire${exportedCount === 1 ? "" : "s"}.`,
       );
+      setIsQaExportModalOpen(false);
     } catch (error) {
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to export QA monitoring questionnaire.",
@@ -1201,29 +1212,13 @@ function App() {
           </div>
 
           <div className="explorer-actions">
-            <label className="selection-toggle">
-              <input
-                type="checkbox"
-                checked={allExportableSelected}
-                onChange={(event) =>
-                  setSelectedConversationIds(
-                    event.target.checked ? exportableCalls.map((call) => call.conversationId) : [],
-                  )
-                }
-                disabled={exportableCalls.length === 0}
-              />
-              <span>Select all completed</span>
-            </label>
-
             <button
               type="button"
               className="secondary-button"
-              onClick={() => void handleQaExport()}
-              disabled={selectedConversationIds.length === 0 || qaExportSubmitting}
+              onClick={openQaExportModal}
+              disabled={exportableCalls.length === 0}
             >
-              {qaExportSubmitting
-                ? "Exporting QA questionnaires..."
-                : `Export QA monitoring questionnaire${selectedConversationIds.length === 1 ? "" : "s"}`}
+              Export QA monitoring questionnaire
             </button>
           </div>
 
@@ -1330,20 +1325,6 @@ function App() {
                         className={`call-card ${selectedId === call.conversationId ? "selected" : ""}`}
                         onClick={() => void handleLoadDetail(call.conversationId)}
                       >
-                        <div className="call-card-select">
-                          <label
-                            className={`selection-toggle ${!isCompletedStatus(call.status) ? "selection-disabled" : ""}`}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedConversationIds.includes(call.conversationId)}
-                              disabled={!isCompletedStatus(call.status)}
-                              onChange={() => toggleConversationSelection(call.conversationId)}
-                            />
-                            <span>QA export</span>
-                          </label>
-                        </div>
                         <div className="call-card-head">
                           <strong>{call.conversationId}</strong>
                           <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
@@ -1966,6 +1947,83 @@ function App() {
               </button>
               <button type="button" onClick={() => setIsKeywordManagerOpen(false)}>
                 Done
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isQaExportModalOpen ? (
+        <div className="modal-backdrop" onClick={() => setIsQaExportModalOpen(false)}>
+          <section className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="section-heading">
+              <h2>Export QA monitoring questionnaire</h2>
+              <p>
+                Select completed conversations that already have transcript and analysis data, then
+                download the generated questionnaire files.
+              </p>
+            </div>
+
+            <div className="qa-export-modal">
+              <label className="selection-toggle">
+                <input
+                  type="checkbox"
+                  checked={allExportableSelected}
+                  onChange={(event) =>
+                    setSelectedConversationIds(
+                      event.target.checked ? exportableCalls.map((call) => call.conversationId) : [],
+                    )
+                  }
+                  disabled={exportableCalls.length === 0}
+                />
+                <span>Select all completed conversations</span>
+              </label>
+
+              <div className="qa-export-list">
+                {exportableCalls.length > 0 ? (
+                  exportableCalls.map((call) => (
+                    <label key={call.conversationId} className="qa-export-item">
+                      <input
+                        type="checkbox"
+                        checked={selectedConversationIds.includes(call.conversationId)}
+                        onChange={() => toggleConversationSelection(call.conversationId)}
+                      />
+                      <div className="qa-export-copy">
+                        <strong>{call.conversationId}</strong>
+                        <span>
+                          {call.sentiment ?? "unknown"} · score {call.satisfactionScore ?? "-"} · created{" "}
+                          {formatDate(call.createdUtc)}
+                        </span>
+                      </div>
+                    </label>
+                  ))
+                ) : (
+                  <div className="empty-state compact-empty-state">
+                    <h3>No completed conversations</h3>
+                    <p>Only completed calls can be exported as QA monitoring questionnaires.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="modal-actions full-width">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setIsQaExportModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleQaExport()}
+                disabled={selectedConversationIds.length === 0 || qaExportSubmitting}
+              >
+                {qaExportSubmitting
+                  ? "Exporting QA questionnaires..."
+                  : selectedConversationIds.length > 0
+                    ? `Export ${selectedConversationIds.length} questionnaire${selectedConversationIds.length === 1 ? "" : "s"}`
+                    : "Export questionnaires"}
               </button>
             </div>
           </section>

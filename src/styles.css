@@ -413,7 +413,7 @@ textarea:focus {
 .explorer-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 1rem;
   margin-bottom: 1rem;
 }
@@ -488,12 +488,6 @@ textarea:focus {
   color: var(--theme-text);
   box-shadow: none;
   display: block;
-}
-
-.call-card-select {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0.65rem;
 }
 
 .call-card.selected {
@@ -575,10 +569,6 @@ textarea:focus {
 .selection-toggle input {
   width: 16px;
   height: 16px;
-}
-
-.selection-disabled {
-  opacity: 0.55;
 }
 
 .status-inline {
@@ -963,6 +953,45 @@ textarea:focus {
   min-height: 52px;
   padding: 0.4rem;
   cursor: pointer;
+}
+
+.qa-export-modal {
+  display: grid;
+  gap: 1rem;
+}
+
+.qa-export-list {
+  display: grid;
+  gap: 0.75rem;
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.qa-export-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.9rem;
+  align-items: start;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  border: 1px solid var(--theme-border);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.qa-export-item input {
+  width: 16px;
+  height: 16px;
+  margin-top: 0.2rem;
+}
+
+.qa-export-copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.qa-export-copy span {
+  color: var(--theme-text-muted);
 }
 
 .compact-empty-state {
