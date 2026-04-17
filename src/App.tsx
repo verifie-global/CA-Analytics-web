@@ -901,6 +901,16 @@ function App() {
   const topics = Array.isArray(detail?.analysis?.topics)
     ? (detail?.analysis?.topics as string[])
     : [];
+  const mainTopicRaw =
+    typeof detail?.analysis?.mainTopic === "string"
+      ? detail.analysis.mainTopic
+      : typeof detail?.analysis?.manTopic === "string"
+        ? detail.analysis.manTopic
+        : "";
+  const mainTopic = mainTopicRaw.trim();
+  const secondaryTopics = mainTopic
+    ? topics.filter((topic) => topic.trim().toLowerCase() !== mainTopic.toLowerCase())
+    : topics;
   const customerConcerns = Array.isArray(detail?.analysis?.customerConcerns)
     ? (detail?.analysis?.customerConcerns as Array<Record<string, unknown>>)
     : [];
@@ -1474,12 +1484,17 @@ function App() {
                     <section>
                       <h4>Topics</h4>
                       <div className="scroll-panel token-panel">
-                        {topics.length > 0 ? (
-                          topics.map((topic, index) => (
+                        {mainTopic || secondaryTopics.length > 0 ? (
+                          <>
+                            {mainTopic ? (
+                              <span className="token-chip token-chip-highlight">{mainTopic}</span>
+                            ) : null}
+                            {secondaryTopics.map((topic, index) => (
                             <span key={`${topic}-${index}`} className="token-chip">
                               {topic}
                             </span>
-                          ))
+                            ))}
+                          </>
                         ) : (
                           <p>No topics available.</p>
                         )}

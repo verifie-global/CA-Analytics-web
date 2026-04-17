@@ -769,6 +769,13 @@ textarea:focus {
   color: var(--theme-text);
 }
 
+.token-chip-highlight {
+  background: rgba(55, 121, 235, 0.18);
+  border-color: rgba(55, 121, 235, 0.34);
+  color: #b9d7ff;
+  box-shadow: inset 0 0 0 1px rgba(55, 121, 235, 0.12);
+}
+
 .entity-panel,
 .concern-panel,
 .coaching-panel {
