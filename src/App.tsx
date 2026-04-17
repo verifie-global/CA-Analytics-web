@@ -1487,7 +1487,10 @@ function App() {
                         {mainTopic || secondaryTopics.length > 0 ? (
                           <>
                             {mainTopic ? (
-                              <span className="token-chip token-chip-highlight">{mainTopic}</span>
+                              <div className="main-topic-badge">
+                                <span className="main-topic-label">Main topic</span>
+                                <strong>{mainTopic}</strong>
+                              </div>
                             ) : null}
                             {secondaryTopics.map((topic, index) => (
                             <span key={`${topic}-${index}`} className="token-chip">
