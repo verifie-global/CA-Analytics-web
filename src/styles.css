@@ -410,6 +410,14 @@ textarea:focus {
   margin-bottom: 0;
 }
 
+.explorer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
 .grid-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -482,6 +490,12 @@ textarea:focus {
   display: block;
 }
 
+.call-card-select {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.65rem;
+}
+
 .call-card.selected {
   outline: 1px solid var(--theme-warning);
 }
@@ -549,6 +563,22 @@ textarea:focus {
   flex-wrap: wrap;
   gap: 0.45rem;
   grid-column: 1 / -1;
+}
+
+.selection-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--theme-text);
+}
+
+.selection-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.selection-disabled {
+  opacity: 0.55;
 }
 
 .status-inline {
@@ -1179,10 +1209,16 @@ textarea:focus {
   .widget-grid,
   .workspace,
   .detail-panels,
+  .explorer-actions,
   .filters,
   .grid-form,
   .stat-grid {
     grid-template-columns: 1fr;
+  }
+
+  .explorer-actions {
+    display: grid;
+    justify-content: stretch;
   }
 
   .app-shell {

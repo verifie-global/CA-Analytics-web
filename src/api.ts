@@ -262,6 +262,34 @@ export async function fetchAudioBlob(settings: AppSettings, conversationId: stri
   return response.blob();
 }
 
+export async function exportQaQuestionnaire(settings: AppSettings, conversationId: string) {
+  const response = await fetch(
+    buildUrl(settings, `/api/companies/${settings.companyId}/calls/${conversationId}/qa-export`),
+    {
+      method: "POST",
+      headers: authHeaders(settings),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `QA export failed with status ${response.status}`);
+  }
+
+  const contentDisposition = response.headers.get("content-disposition") ?? "";
+  const fileNameMatch =
+    contentDisposition.match(/filename\*=UTF-8''([^;]+)/i) ??
+    contentDisposition.match(/filename="?([^"]+)"?/i);
+  const fileName = fileNameMatch?.[1]
+    ? decodeURIComponent(fileNameMatch[1]).trim()
+    : `${conversationId}-qa-export`;
+
+  return {
+    blob: await response.blob(),
+    fileName,
+  };
+}
+
 export async function requestAuthToken(settings: AppSettings): Promise<AuthTokenResponse> {
   const response = await fetch(buildUrl(settings, "/api/auth/token"), {
     method: "POST",

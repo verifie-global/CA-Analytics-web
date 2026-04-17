@@ -1,5 +1,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { authorizeSettings, fetchAudioBlob, fetchCallDetail, fetchCalls, uploadCall } from "./api";
+import {
+  authorizeSettings,
+  exportQaQuestionnaire,
+  fetchAudioBlob,
+  fetchCallDetail,
+  fetchCalls,
+  uploadCall,
+} from "./api";
 import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
@@ -96,6 +103,8 @@ const isInProgressStatus = (value?: string | null) => {
   const normalized = value?.toLowerCase();
   return normalized === "queued" || normalized === "processing" || normalized === "inprogress";
 };
+
+const isCompletedStatus = (value?: string | null) => value?.toLowerCase() === "completed";
 
 const renderRedactedTranscript = (value: string) =>
   value.split(/(\[REDACTED\])/g).map((part, index) =>
@@ -238,6 +247,7 @@ function App() {
   const [filters, setFilters] = useState<CallFilters>(defaultFilters);
   const [calls, setCalls] = useState<CallSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<CallDetail | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>("");
   const [audioRequestedFor, setAudioRequestedFor] = useState<string>("");
@@ -290,6 +300,7 @@ function App() {
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [qaExportSubmitting, setQaExportSubmitting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const diarizationContainerRef = useRef<HTMLDivElement | null>(null);
   const [uploadState, setUploadState] = useState({
@@ -486,6 +497,13 @@ function App() {
     try {
       const nextCalls = await fetchCalls(activeSettings, filters);
       setCalls(nextCalls);
+      setSelectedConversationIds((current) =>
+        current.filter((conversationId) =>
+          nextCalls.some(
+            (call) => call.conversationId === conversationId && isCompletedStatus(call.status),
+          ),
+        ),
+      );
       if (!options?.silent) {
         setStatusMessage(`Loaded ${nextCalls.length} call${nextCalls.length === 1 ? "" : "s"}.`);
       }
@@ -721,6 +739,7 @@ function App() {
     setDraftSettings(defaultSettings);
     setCalls([]);
     setSelectedId("");
+    setSelectedConversationIds([]);
     setDetail(null);
     setAudioUrl("");
     setAudioRequestedFor("");
@@ -731,6 +750,7 @@ function App() {
     setUploadValidationMessage("");
     setUploadErrorMessage("");
     setErrorMessage("");
+    setQaExportSubmitting(false);
     setTranscriptCache({});
     setStatusMessage("You have been logged out.");
     setUploadState({
@@ -756,6 +776,58 @@ function App() {
 
   const removeKeywordRule = (ruleId: string) => {
     setKeywordRules((current) => current.filter((rule) => rule.id !== ruleId));
+  };
+
+  const toggleConversationSelection = (conversationId: string) => {
+    setSelectedConversationIds((current) =>
+      current.includes(conversationId)
+        ? current.filter((id) => id !== conversationId)
+        : [...current, conversationId],
+    );
+  };
+
+  const downloadBlobFile = (blob: Blob, fileName: string) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  };
+
+  const handleQaExport = async () => {
+    if (selectedConversationIds.length === 0) {
+      setErrorMessage("Select at least one completed conversation to export the QA questionnaire.");
+      return;
+    }
+
+    setQaExportSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      let exportedCount = 0;
+
+      for (const [index, conversationId] of selectedConversationIds.entries()) {
+        setStatusMessage(
+          `Exporting QA questionnaire ${index + 1} of ${selectedConversationIds.length}: ${conversationId}`,
+        );
+        const result = await exportQaQuestionnaire(settings, conversationId);
+        downloadBlobFile(result.blob, result.fileName);
+        exportedCount += 1;
+      }
+
+      setStatusMessage(
+        `Downloaded ${exportedCount} QA monitoring questionnaire${exportedCount === 1 ? "" : "s"}.`,
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to export QA monitoring questionnaire.",
+      );
+    } finally {
+      setQaExportSubmitting(false);
+    }
   };
 
   const getKeywordBadgeMatches = (transcriptValue?: string | null): KeywordBadgeMatch[] => {
@@ -807,6 +879,13 @@ function App() {
       }, {}),
     [calls, transcriptCache, keywordRules],
   );
+  const exportableCalls = useMemo(
+    () => calls.filter((call) => isCompletedStatus(call.status)),
+    [calls],
+  );
+  const allExportableSelected =
+    exportableCalls.length > 0 &&
+    exportableCalls.every((call) => selectedConversationIds.includes(call.conversationId));
   const positiveCount = calls.filter((call) => call.sentiment?.toLowerCase() === "positive").length;
   const neutralCount = calls.filter((call) => call.sentiment?.toLowerCase() === "neutral").length;
   const negativeCount = calls.filter((call) => call.sentiment?.toLowerCase() === "negative").length;
@@ -1121,6 +1200,33 @@ function App() {
             <p>Filter your company calls, then open one to inspect the full analysis.</p>
           </div>
 
+          <div className="explorer-actions">
+            <label className="selection-toggle">
+              <input
+                type="checkbox"
+                checked={allExportableSelected}
+                onChange={(event) =>
+                  setSelectedConversationIds(
+                    event.target.checked ? exportableCalls.map((call) => call.conversationId) : [],
+                  )
+                }
+                disabled={exportableCalls.length === 0}
+              />
+              <span>Select all completed</span>
+            </label>
+
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => void handleQaExport()}
+              disabled={selectedConversationIds.length === 0 || qaExportSubmitting}
+            >
+              {qaExportSubmitting
+                ? "Exporting QA questionnaires..."
+                : `Export QA monitoring questionnaire${selectedConversationIds.length === 1 ? "" : "s"}`}
+            </button>
+          </div>
+
           <form
             className="filters"
             onSubmit={(event) => {
@@ -1224,6 +1330,20 @@ function App() {
                         className={`call-card ${selectedId === call.conversationId ? "selected" : ""}`}
                         onClick={() => void handleLoadDetail(call.conversationId)}
                       >
+                        <div className="call-card-select">
+                          <label
+                            className={`selection-toggle ${!isCompletedStatus(call.status) ? "selection-disabled" : ""}`}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedConversationIds.includes(call.conversationId)}
+                              disabled={!isCompletedStatus(call.status)}
+                              onChange={() => toggleConversationSelection(call.conversationId)}
+                            />
+                            <span>QA export</span>
+                          </label>
+                        </div>
                         <div className="call-card-head">
                           <strong>{call.conversationId}</strong>
                           <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
