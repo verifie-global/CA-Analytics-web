@@ -310,6 +310,14 @@ function App() {
     files: [] as File[],
   });
 
+  const isUnauthorizedError = (error: unknown) =>
+    Boolean(
+      error &&
+        typeof error === "object" &&
+        "status" in error &&
+        (error as { status?: number }).status === 401,
+    );
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setDraftSettings(settings);
@@ -356,7 +364,12 @@ function App() {
               [conversationId]: nextDetail.transcript?.trim() ?? "",
             }));
           }
-        } catch {
+        } catch (error) {
+          if (!cancelled && isUnauthorizedError(error)) {
+            handleUnauthorizedSession();
+            return;
+          }
+
           if (!cancelled) {
             setTranscriptCache((current) => ({
               ...current,
@@ -514,6 +527,11 @@ function App() {
         setDetail(null);
       }
     } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
       if (!options?.silent) {
         setErrorMessage(error instanceof Error ? error.message : "Unable to load calls.");
       }
@@ -580,6 +598,11 @@ function App() {
         [conversationId]: nextDetail.transcript?.trim() ?? "",
       }));
     } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
       if (!options?.silent) {
         setErrorMessage(error instanceof Error ? error.message : "Unable to load call details.");
         setDetail(null);
@@ -618,6 +641,11 @@ function App() {
       setAudioPendingFor("");
       setPlaybackTimeSeconds(0);
     } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
       const maybeStatus = error as Error & { status?: number };
       const message = error instanceof Error ? error.message.toLowerCase() : "";
       const isNotReadyYet =
@@ -697,6 +725,11 @@ function App() {
       await refreshCalls();
       await handleLoadDetail(uploadedConversationIds[uploadedConversationIds.length - 1]);
     } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
       setUploadErrorMessage(error instanceof Error ? error.message : "Unable to upload the call.");
     } finally {
       setUploadSubmitting(false);
@@ -754,6 +787,40 @@ function App() {
     setQaExportSubmitting(false);
     setTranscriptCache({});
     setStatusMessage("You have been logged out.");
+    setUploadState({
+      conversationId: generateConversationId(),
+      url: "",
+      files: [],
+    });
+  };
+
+  const handleUnauthorizedSession = () => {
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+    }
+
+    localStorage.removeItem(STORAGE_KEY);
+    setSettings(defaultSettings);
+    setDraftSettings(defaultSettings);
+    setCalls([]);
+    setSelectedId("");
+    setSelectedConversationIds([]);
+    setDetail(null);
+    setAudioUrl("");
+    setAudioRequestedFor("");
+    setAudioPendingFor("");
+    setIsAuthorized(false);
+    setIsUploadModalOpen(false);
+    setIsKeywordManagerOpen(false);
+    setIsHeaderEditorOpen(false);
+    setIsQaExportModalOpen(false);
+    setUploadSubmitting(false);
+    setQaExportSubmitting(false);
+    setUploadValidationMessage("");
+    setUploadErrorMessage("");
+    setTranscriptCache({});
+    setErrorMessage("Your session expired. Please sign in again.");
+    setStatusMessage("Authorization required.");
     setUploadState({
       conversationId: generateConversationId(),
       url: "",
@@ -833,6 +900,11 @@ function App() {
       );
       setIsQaExportModalOpen(false);
     } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to export QA monitoring questionnaire.",
       );

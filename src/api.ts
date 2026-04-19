@@ -7,6 +7,10 @@ import type {
   SpeakerSegment,
 } from "./types";
 
+type RequestError = Error & {
+  status?: number;
+};
+
 const trimSlash = (value: string) => value.replace(/\/+$/, "");
 
 const buildUrl = (settings: AppSettings, path: string, query?: URLSearchParams) => {
@@ -24,6 +28,12 @@ const jsonHeaders = (extra?: HeadersInit) => ({
   ...extra,
 });
 
+const createRequestError = (message: string, status: number): RequestError => {
+  const error = new Error(message) as RequestError;
+  error.status = status;
+  return error;
+};
+
 async function request<T>(
   settings: AppSettings,
   path: string,
@@ -37,7 +47,7 @@ async function request<T>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed with status ${response.status}`);
+    throw createRequestError(text || `Request failed with status ${response.status}`, response.status);
   }
 
   if (response.status === 204) {
@@ -238,7 +248,7 @@ export async function uploadCall(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Upload failed with status ${response.status}`);
+    throw createRequestError(text || `Upload failed with status ${response.status}`, response.status);
   }
 }
 
@@ -252,11 +262,7 @@ export async function fetchAudioBlob(settings: AppSettings, conversationId: stri
 
   if (!response.ok) {
     const text = await response.text();
-    const error = new Error(text || `Audio fetch failed with status ${response.status}`) as Error & {
-      status?: number;
-    };
-    error.status = response.status;
-    throw error;
+    throw createRequestError(text || `Audio fetch failed with status ${response.status}`, response.status);
   }
 
   return response.blob();
@@ -273,7 +279,7 @@ export async function exportQaQuestionnaire(settings: AppSettings, conversationI
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `QA export failed with status ${response.status}`);
+    throw createRequestError(text || `QA export failed with status ${response.status}`, response.status);
   }
 
   const contentDisposition = response.headers.get("content-disposition") ?? "";
@@ -302,7 +308,10 @@ export async function requestAuthToken(settings: AppSettings): Promise<AuthToken
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Authorization failed with status ${response.status}`);
+    throw createRequestError(
+      text || `Authorization failed with status ${response.status}`,
+      response.status,
+    );
   }
 
   return (await response.json()) as AuthTokenResponse;
