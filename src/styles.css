@@ -460,7 +460,7 @@ textarea:focus {
 
 .workspace {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 1rem;
   min-height: 620px;
 }
@@ -474,24 +474,63 @@ textarea:focus {
 }
 
 .list-column {
-  display: grid;
-  gap: 0.85rem;
-  align-content: start;
-  max-height: 80vh;
+  display: block;
+  max-height: none;
   overflow: auto;
 }
 
-.call-card {
+.calls-grid {
+  min-width: 980px;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.calls-grid-header,
+.call-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.6fr) 130px 140px 80px 120px minmax(180px, 1.2fr) 170px;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.calls-grid-header {
+  padding: 0.25rem 0.9rem;
+  color: var(--theme-text-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.call-row {
   width: 100%;
   text-align: left;
   background: rgba(15, 22, 35, 0.92);
   color: var(--theme-text);
   box-shadow: none;
-  display: block;
+  border-color: transparent;
+  padding: 0.9rem;
+  border-radius: 16px;
 }
 
-.call-card.selected {
+.call-row:hover {
+  background: rgba(20, 29, 45, 0.98);
+}
+
+.call-row.selected {
   outline: 1px solid var(--theme-warning);
+}
+
+.call-row-primary {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.call-row-error {
+  grid-column: 1 / -1;
+}
+
+.muted-cell {
+  color: var(--theme-text-muted);
 }
 
 .call-card-head,
@@ -556,7 +595,7 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .selection-toggle {

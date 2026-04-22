@@ -60,7 +60,7 @@ const defaultSettings: AppSettings = {
 
 const defaultFilters: CallFilters = {
   page: 1,
-  pageSize: 100,
+  pageSize: 15,
   search: "",
   conversationId: "",
   status: "",
@@ -1357,7 +1357,7 @@ function App() {
               max="100"
               value={filters.pageSize}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, pageSize: Number(event.target.value) || 100 }))
+                setFilters((current) => ({ ...current, pageSize: Number(event.target.value) || 15 }))
               }
               placeholder="Page size"
             />
@@ -1379,8 +1379,18 @@ function App() {
                   <p>Save your connection settings, then load or upload a call.</p>
                 </div>
               ) : (
-                calls.map((call) => (
-                  (() => {
+                <div className="calls-grid" role="table" aria-label="Conversations">
+                  <div className="calls-grid-header" role="row">
+                    <span>Conversation</span>
+                    <span>Status</span>
+                    <span>Sentiment</span>
+                    <span>Score</span>
+                    <span>Language</span>
+                    <span>Keywords</span>
+                    <span>Created</span>
+                  </div>
+
+                  {calls.map((call) => {
                     const keywordMatchesForList = keywordBadgeMatches[call.conversationId] ?? [];
                     const isKeywordScanPending =
                       keywordRules.length > 0 && transcriptCache[call.conversationId] == null;
@@ -1394,63 +1404,60 @@ function App() {
                       <button
                         key={call.conversationId}
                         type="button"
-                        className={`call-card ${selectedId === call.conversationId ? "selected" : ""}`}
+                        className={`call-row ${selectedId === call.conversationId ? "selected" : ""}`}
                         onClick={() => void handleLoadDetail(call.conversationId)}
+                        role="row"
                       >
-                        <div className="call-card-head">
-                          <strong>{call.conversationId}</strong>
-                          <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
-                            {isInProgressStatus(call.status) ? (
-                              <span className="status-inline">
-                                <span className="status-pulse" />
-                                {call.status}
-                              </span>
-                            ) : (
-                              call.status
-                            )}
-                          </span>
-                        </div>
-                        <div className="call-card-grid">
-                          <span className={classForSentiment(call.sentiment)}>{call.sentiment ?? "unknown"}</span>
-                          <span>Score: {call.satisfactionScore ?? "-"}</span>
-                          <span>{call.language ?? "No language"}</span>
-                          {keywordRules.length > 0 ? (
-                            <span className="keyword-list-badges">
-                              {isKeywordScanPending ? (
-                                <span className="tag keyword-list-badge">Checking keywords...</span>
-                              ) : keywordMatchesForList.length > 0 ? (
-                                <>
-                                  {visibleKeywordLabels.map((keywordMatch) => (
-                                    <span
-                                      key={`${call.conversationId}-${keywordMatch.label}`}
-                                      className="tag keyword-list-badge"
-                                      style={{
-                                        backgroundColor: `${keywordMatch.color}26`,
-                                        color: keywordMatch.color,
-                                        borderColor: `${keywordMatch.color}4d`,
-                                      }}
-                                    >
-                                      {keywordMatch.label}
-                                    </span>
-                                  ))}
-                                  {hiddenKeywordCount > 0 ? (
-                                    <span className="tag keyword-list-badge">
-                                      +{hiddenKeywordCount} more
-                                    </span>
-                                  ) : null}
-                                </>
-                              ) : (
-                                <span className="tag keyword-list-badge">No keyword</span>
-                              )}
+                        <span className="call-row-primary">{call.conversationId}</span>
+                        <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
+                          {isInProgressStatus(call.status) ? (
+                            <span className="status-inline">
+                              <span className="status-pulse" />
+                              {call.status}
                             </span>
-                          ) : null}
-                        </div>
-                        <small>Created {formatDate(call.createdUtc)}</small>
-                        {call.error ? <small className="error-text">{call.error}</small> : null}
+                          ) : (
+                            call.status
+                          )}
+                        </span>
+                        <span className={classForSentiment(call.sentiment)}>
+                          {call.sentiment ?? "unknown"}
+                        </span>
+                        <span>{call.satisfactionScore ?? "-"}</span>
+                        <span>{call.language ?? "No language"}</span>
+                        <span className="keyword-list-badges">
+                          {keywordRules.length === 0 ? (
+                            <span className="muted-cell">-</span>
+                          ) : isKeywordScanPending ? (
+                            <span className="tag keyword-list-badge">Checking...</span>
+                          ) : keywordMatchesForList.length > 0 ? (
+                            <>
+                              {visibleKeywordLabels.map((keywordMatch) => (
+                                <span
+                                  key={`${call.conversationId}-${keywordMatch.label}`}
+                                  className="tag keyword-list-badge"
+                                  style={{
+                                    backgroundColor: `${keywordMatch.color}26`,
+                                    color: keywordMatch.color,
+                                    borderColor: `${keywordMatch.color}4d`,
+                                  }}
+                                >
+                                  {keywordMatch.label}
+                                </span>
+                              ))}
+                              {hiddenKeywordCount > 0 ? (
+                                <span className="tag keyword-list-badge">+{hiddenKeywordCount} more</span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="muted-cell">No keyword</span>
+                          )}
+                        </span>
+                        <span>{formatDate(call.createdUtc)}</span>
+                        {call.error ? <span className="error-text call-row-error">{call.error}</span> : null}
                       </button>
                     );
-                  })()
-                ))
+                  })}
+                </div>
               )}
             </div>
 
