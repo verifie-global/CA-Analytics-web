@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   authorizeSettings,
   exportQaQuestionnaire,
@@ -248,6 +249,7 @@ function App() {
   const [calls, setCalls] = useState<CallSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
+  const [detailPortalTarget, setDetailPortalTarget] = useState<HTMLDivElement | null>(null);
   const [detail, setDetail] = useState<CallDetail | null>(null);
   const [audioUrl, setAudioUrl] = useState<string>("");
   const [audioRequestedFor, setAudioRequestedFor] = useState<string>("");
@@ -330,6 +332,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem(KEYWORD_RULES_STORAGE_KEY, JSON.stringify(keywordRules));
   }, [keywordRules]);
+
+  useEffect(() => {
+    setDetailPortalTarget(null);
+  }, [selectedId]);
 
   useEffect(() => {
     setTranscriptCache({});
@@ -1401,13 +1407,13 @@ function App() {
                     );
 
                     return (
-                      <button
-                        key={call.conversationId}
-                        type="button"
-                        className={`call-row ${selectedId === call.conversationId ? "selected" : ""}`}
-                        onClick={() => void handleLoadDetail(call.conversationId)}
-                        role="row"
-                      >
+                      <Fragment key={call.conversationId}>
+                        <button
+                          type="button"
+                          className={`call-row ${selectedId === call.conversationId ? "selected" : ""}`}
+                          onClick={() => void handleLoadDetail(call.conversationId)}
+                          role="row"
+                        >
                         <span className="call-row-primary">{call.conversationId}</span>
                         <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
                           {isInProgressStatus(call.status) ? (
@@ -1454,14 +1460,27 @@ function App() {
                         </span>
                         <span>{formatDate(call.createdUtc)}</span>
                         {call.error ? <span className="error-text call-row-error">{call.error}</span> : null}
-                      </button>
+                        </button>
+                        {selectedId === call.conversationId ? (
+                          <div
+                            className="inline-detail-target"
+                            ref={(node) => {
+                              if (node && detailPortalTarget !== node) {
+                                setDetailPortalTarget(node);
+                              }
+                            }}
+                          />
+                        ) : null}
+                      </Fragment>
                     );
                   })}
                 </div>
               )}
             </div>
 
-            <div className="detail-column">
+            {detailPortalTarget
+              ? createPortal(
+                  <div className="detail-column inline-detail">
               {!selectedId ? (
                 <div className="empty-state">
                   <h3>Select a call</h3>
@@ -1799,7 +1818,10 @@ function App() {
                   <p>Try refreshing the list or selecting a different conversation.</p>
                 </div>
               )}
-            </div>
+                  </div>,
+                  detailPortalTarget,
+                )
+              : null}
           </div>
         </section>
       </main>
