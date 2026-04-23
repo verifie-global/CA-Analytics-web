@@ -645,6 +645,32 @@ textarea:focus {
   animation: pulse-status 1.6s infinite;
 }
 
+@keyframes pulse-recorder {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(219, 55, 0, 0.22);
+  }
+
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 16px rgba(219, 55, 0, 0.04);
+  }
+}
+
+@keyframes recording-bars {
+  0%,
+  100% {
+    transform: scaleY(0.72);
+    opacity: 0.65;
+  }
+
+  50% {
+    transform: scaleY(1.1);
+    opacity: 1;
+  }
+}
+
 .status-animated-text {
   color: var(--theme-warning);
 }
@@ -1207,6 +1233,10 @@ textarea:focus {
   overflow-y: auto;
 }
 
+.recording-modal {
+  width: min(560px, 100%);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
@@ -1267,6 +1297,67 @@ textarea:focus {
   border-radius: 12px;
   background: rgba(8, 13, 23, 0.58);
   color: var(--theme-text);
+}
+
+.recording-splash,
+.recording-preview {
+  display: grid;
+  gap: 1rem;
+}
+
+.recording-splash {
+  justify-items: center;
+  text-align: center;
+  padding: 1rem 0 0.5rem;
+}
+
+.recording-splash p,
+.recording-preview-copy p {
+  margin: 0;
+  color: var(--theme-text-muted);
+}
+
+.recording-orb {
+  width: 104px;
+  height: 104px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(219, 55, 0, 0.22), rgba(219, 55, 0, 0.05));
+  animation: pulse-recorder 1.8s infinite;
+}
+
+.recording-orb-core {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #ff7a47;
+  box-shadow: 0 0 18px rgba(255, 122, 71, 0.48);
+}
+
+.recording-bars {
+  display: flex;
+  align-items: end;
+  gap: 0.35rem;
+  height: 44px;
+}
+
+.recording-bars span {
+  width: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffb097, #db3700);
+  animation: recording-bars 1s ease-in-out infinite;
+}
+
+.recording-bars span:nth-child(1) { height: 18px; animation-delay: 0s; }
+.recording-bars span:nth-child(2) { height: 34px; animation-delay: 0.1s; }
+.recording-bars span:nth-child(3) { height: 24px; animation-delay: 0.2s; }
+.recording-bars span:nth-child(4) { height: 38px; animation-delay: 0.3s; }
+.recording-bars span:nth-child(5) { height: 20px; animation-delay: 0.4s; }
+
+.recording-preview-copy {
+  display: grid;
+  gap: 0.35rem;
 }
 
 .upload-note {

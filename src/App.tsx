@@ -87,6 +87,12 @@ const formatTimestamp = (milliseconds?: number | null) => {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
+const formatRecordingDuration = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+};
+
 const classForSentiment = (value?: string) => {
   if (!value) return "tag";
   return `tag sentiment-${value.toLowerCase()}`;
@@ -264,6 +270,7 @@ function App() {
   const [authChecking, setAuthChecking] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
   const [copiedSection, setCopiedSection] = useState<string>("");
   const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
@@ -304,8 +311,18 @@ function App() {
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [qaExportSubmitting, setQaExportSubmitting] = useState(false);
+  const [recordingState, setRecordingState] = useState<"idle" | "recording" | "recorded">("idle");
+  const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(0);
+  const [recordingErrorMessage, setRecordingErrorMessage] = useState("");
+  const [recordedAudioUrl, setRecordedAudioUrl] = useState("");
+  const [recordedAudioFile, setRecordedAudioFile] = useState<File | null>(null);
+  const [recordingUploading, setRecordingUploading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const diarizationContainerRef = useRef<HTMLDivElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const discardRecordingRef = useRef(false);
   const [uploadState, setUploadState] = useState({
     conversationId: generateConversationId(),
     url: "",
@@ -332,6 +349,31 @@ function App() {
   useEffect(() => {
     localStorage.setItem(KEYWORD_RULES_STORAGE_KEY, JSON.stringify(keywordRules));
   }, [keywordRules]);
+
+  useEffect(
+    () => () => {
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl);
+      }
+    },
+    [recordedAudioUrl],
+  );
+
+  useEffect(() => {
+    if (recordingState !== "recording") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      if (recordingStartedAtRef.current != null) {
+        setRecordingDurationSeconds(
+          Math.max(0, Math.floor((Date.now() - recordingStartedAtRef.current) / 1000)),
+        );
+      }
+    }, 250);
+
+    return () => window.clearInterval(timer);
+  }, [recordingState]);
 
   useEffect(() => {
     setDetailPortalTarget(null);
@@ -665,6 +707,133 @@ function App() {
     setIsUploadModalOpen(true);
   };
 
+  const closeRecordingModal = () => {
+    discardRecordingRef.current = true;
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    recordingStartedAtRef.current = null;
+
+    if (recordedAudioUrl) {
+      URL.revokeObjectURL(recordedAudioUrl);
+    }
+
+    setRecordedAudioUrl("");
+    setRecordedAudioFile(null);
+    setRecordingDurationSeconds(0);
+    setRecordingErrorMessage("");
+    setRecordingState("idle");
+    setRecordingUploading(false);
+    setIsRecordingModalOpen(false);
+  };
+
+  const openRecordingModal = async () => {
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setErrorMessage("Audio recording is not supported in this browser.");
+      return;
+    }
+
+    try {
+      discardRecordingRef.current = false;
+
+      if (recordedAudioUrl) {
+        URL.revokeObjectURL(recordedAudioUrl);
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || "audio/webm";
+        const blob = new Blob(chunks, { type: mimeType });
+        const extension = mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : "webm";
+        const file = new File([blob], `recording-${Date.now()}.${extension}`, { type: mimeType });
+
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        recordingStartedAtRef.current = null;
+
+        if (discardRecordingRef.current) {
+          discardRecordingRef.current = false;
+          return;
+        }
+
+        setRecordedAudioFile(file);
+        setRecordedAudioUrl(URL.createObjectURL(blob));
+        setRecordingState("recorded");
+      };
+
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recordingStartedAtRef.current = Date.now();
+      setRecordingDurationSeconds(0);
+      setRecordingErrorMessage("");
+      setRecordedAudioUrl("");
+      setRecordedAudioFile(null);
+      setRecordingState("recording");
+      setIsRecordingModalOpen(true);
+      recorder.start();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start audio recording.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") {
+      return;
+    }
+
+    mediaRecorderRef.current.stop();
+  };
+
+  const handleRecordingUpload = async () => {
+    if (!recordedAudioFile) {
+      setRecordingErrorMessage("Record audio first before uploading.");
+      return;
+    }
+
+    setRecordingUploading(true);
+    setRecordingErrorMessage("");
+
+    try {
+      const conversationId = generateConversationId();
+      await uploadCall(settings, {
+        conversationId,
+        url: "",
+        file: recordedAudioFile,
+      });
+
+      setStatusMessage(`Upload accepted. ${conversationId} is now queued for analysis.`);
+      closeRecordingModal();
+      await refreshCalls();
+      await handleLoadDetail(conversationId);
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
+      setRecordingErrorMessage(
+        error instanceof Error ? error.message : "Unable to upload the recorded audio.",
+      );
+    } finally {
+      setRecordingUploading(false);
+    }
+  };
+
   const handleAudioLoad = async (conversationId: string) => {
     if (!conversationId) return;
 
@@ -808,6 +977,11 @@ function App() {
       URL.revokeObjectURL(audioUrl);
     }
 
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+
     localStorage.removeItem(STORAGE_KEY);
     setSettings(defaultSettings);
     setDraftSettings(defaultSettings);
@@ -820,6 +994,7 @@ function App() {
     setAudioPendingFor("");
     setIsAuthorized(false);
     setIsUploadModalOpen(false);
+    setIsRecordingModalOpen(false);
     setUploadSubmitting(false);
     setUploadValidationMessage("");
     setUploadErrorMessage("");
@@ -839,6 +1014,11 @@ function App() {
       URL.revokeObjectURL(audioUrl);
     }
 
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+
     localStorage.removeItem(STORAGE_KEY);
     setSettings(defaultSettings);
     setDraftSettings(defaultSettings);
@@ -851,6 +1031,7 @@ function App() {
     setAudioPendingFor("");
     setIsAuthorized(false);
     setIsUploadModalOpen(false);
+    setIsRecordingModalOpen(false);
     setIsKeywordManagerOpen(false);
     setIsHeaderEditorOpen(false);
     setIsQaExportModalOpen(false);
@@ -1302,6 +1483,9 @@ function App() {
           </div>
           <button type="button" onClick={openUploadModal}>
             Upload call
+          </button>
+          <button type="button" className="secondary-button" onClick={() => void openRecordingModal()}>
+            Record call
           </button>
           <button
             type="button"
@@ -1993,6 +2177,66 @@ function App() {
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      ) : null}
+
+      {isRecordingModalOpen ? (
+        <div className="modal-backdrop" onClick={closeRecordingModal}>
+          <section className="modal-card recording-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="section-heading">
+              <h2>Record call</h2>
+              <p>Use your microphone to capture a call recording, then upload it directly.</p>
+            </div>
+
+            {recordingState === "recording" ? (
+              <div className="recording-splash">
+                <div className="recording-orb">
+                  <span className="recording-orb-core" />
+                </div>
+                <div className="recording-bars" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <strong>Recording in progress</strong>
+                <p>{formatRecordingDuration(recordingDurationSeconds)}</p>
+                <button type="button" onClick={stopRecording}>
+                  Stop recording
+                </button>
+              </div>
+            ) : (
+              <div className="recording-preview">
+                <div className="recording-preview-copy">
+                  <strong>Recording ready</strong>
+                  <p>
+                    Duration: {formatRecordingDuration(recordingDurationSeconds)}. Review it, then upload
+                    it to the dashboard.
+                  </p>
+                </div>
+                {recordedAudioUrl ? (
+                  <audio controls src={recordedAudioUrl} className="audio-player" />
+                ) : null}
+                {recordingErrorMessage ? <p className="upload-error">{recordingErrorMessage}</p> : null}
+                <div className="modal-actions full-width">
+                  <button type="button" className="secondary-button" onClick={closeRecordingModal}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => void openRecordingModal()}
+                  >
+                    Record again
+                  </button>
+                  <button type="button" onClick={() => void handleRecordingUpload()} disabled={recordingUploading}>
+                    {recordingUploading ? "Uploading..." : "Upload recording"}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       ) : null}
