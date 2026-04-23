@@ -502,7 +502,7 @@ function App() {
 
   const refreshCalls = async (
     activeSettings: AppSettings = settings,
-    options?: { silent?: boolean },
+    options?: { silent?: boolean; filtersOverride?: CallFilters },
   ) => {
     if (!activeSettings.baseUrl || !activeSettings.companyId || !activeSettings.accessToken) {
       setErrorMessage("Authorize with a company ID and API token before loading calls.");
@@ -515,7 +515,8 @@ function App() {
     }
 
     try {
-      const nextCalls = await fetchCalls(activeSettings, filters);
+      const activeFilters = options?.filtersOverride ?? filters;
+      const nextCalls = await fetchCalls(activeSettings, activeFilters);
       setCalls(nextCalls);
       setSelectedConversationIds((current) =>
         current.filter((conversationId) =>
@@ -618,6 +619,39 @@ function App() {
         setDetailLoading(false);
       }
     }
+  };
+
+  const handleCloseDetail = () => {
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+    }
+
+    setSelectedId("");
+    setDetail(null);
+    setDetailPortalTarget(null);
+    setAudioUrl("");
+    setAudioRequestedFor("");
+    setAudioPendingFor("");
+    setPlaybackTimeSeconds(0);
+  };
+
+  const handleRowClick = (conversationId: string) => {
+    if (selectedId === conversationId) {
+      handleCloseDetail();
+      return;
+    }
+
+    void handleLoadDetail(conversationId);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    const nextFilters = {
+      ...filters,
+      page: Math.max(1, nextPage),
+    };
+
+    setFilters(nextFilters);
+    void refreshCalls(settings, { filtersOverride: nextFilters });
   };
 
   const openUploadModal = () => {
@@ -1304,7 +1338,9 @@ function App() {
             className="filters"
             onSubmit={(event) => {
               event.preventDefault();
-              void refreshCalls();
+              const nextFilters = { ...filters, page: Math.max(1, filters.page) };
+              setFilters(nextFilters);
+              void refreshCalls(settings, { filtersOverride: nextFilters });
             }}
           >
             <input
@@ -1411,7 +1447,7 @@ function App() {
                         <button
                           type="button"
                           className={`call-row ${selectedId === call.conversationId ? "selected" : ""}`}
-                          onClick={() => void handleLoadDetail(call.conversationId)}
+                          onClick={() => handleRowClick(call.conversationId)}
                           role="row"
                         >
                         <span className="call-row-primary">{call.conversationId}</span>
@@ -1476,6 +1512,28 @@ function App() {
                   })}
                 </div>
               )}
+            </div>
+
+            <div className="grid-pager">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => handlePageChange(filters.page - 1)}
+                disabled={callsLoading || filters.page <= 1}
+              >
+                Previous
+              </button>
+              <span>
+                Page {filters.page} · {calls.length} shown · {filters.pageSize} per page
+              </span>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => handlePageChange(filters.page + 1)}
+                disabled={callsLoading || calls.length < filters.pageSize}
+              >
+                Next
+              </button>
             </div>
 
             {detailPortalTarget

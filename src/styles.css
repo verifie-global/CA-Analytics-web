@@ -541,6 +541,14 @@ textarea:focus {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
+.grid-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.85rem;
+  color: var(--theme-text-muted);
+}
+
 .muted-cell {
   color: var(--theme-text-muted);
 }
@@ -1299,6 +1307,11 @@ textarea:focus {
   .explorer-actions {
     display: grid;
     justify-content: stretch;
+  }
+
+  .grid-pager {
+    justify-content: stretch;
+    flex-wrap: wrap;
   }
 
   .app-shell {
