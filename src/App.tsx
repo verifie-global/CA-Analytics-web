@@ -189,6 +189,15 @@ const CopyIcon = () => (
   </svg>
 );
 
+const RecordIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-record">
+    <path
+      d="M12 3a3 3 0 0 1 3 3v5a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3Zm6 8a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.06A8 8 0 0 1 4 11a1 1 0 1 1 2 0 6 6 0 1 0 12 0Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
   if (value == null) {
     return <span className="friendliness-value">N/A</span>;
@@ -1484,8 +1493,13 @@ function App() {
           <button type="button" onClick={openUploadModal}>
             Upload call
           </button>
-          <button type="button" className="secondary-button" onClick={() => void openRecordingModal()}>
-            Record call
+          <button
+            type="button"
+            className="secondary-button button-with-icon"
+            onClick={() => void openRecordingModal()}
+          >
+            <RecordIcon />
+            <span>Record call</span>
           </button>
           <button
             type="button"
