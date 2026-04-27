@@ -156,6 +156,20 @@ textarea:focus {
   box-sizing: border-box;
 }
 
+.app-shell ::selection,
+.auth-shell ::selection {
+  background: rgba(67, 130, 246, 0.38);
+  color: #ffffff;
+  text-shadow: none;
+}
+
+.app-shell ::-moz-selection,
+.auth-shell ::-moz-selection {
+  background: rgba(67, 130, 246, 0.38);
+  color: #ffffff;
+  text-shadow: none;
+}
+
 .app-shell h1,
 .app-shell h2,
 .app-shell h3,
