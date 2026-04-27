@@ -1659,6 +1659,14 @@ function App() {
             >
               QA settings
             </button>
+            <button
+              type="button"
+              className="secondary-button small-button button-with-icon"
+              onClick={() => void openRecordingModal()}
+            >
+              <RecordIcon />
+              <span>Record call</span>
+            </button>
             <button type="button" className="secondary-button small-button" onClick={toggleThemeMode}>
               {themeMode === "dark" ? "Light theme" : "Dark theme"}
             </button>
