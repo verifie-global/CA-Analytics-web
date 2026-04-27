@@ -20,6 +20,10 @@ export function QaEvaluationPanel({
 }: QaEvaluationPanelProps) {
   const evaluation = qa?.evaluation;
 
+  if (!qa && !recalculateError) {
+    return null;
+  }
+
   return (
     <section className="qa-panel">
       <div className="detail-header">
@@ -142,12 +146,7 @@ export function QaEvaluationPanel({
             <p className="qa-generated-label">Generated {generatedAtLabel}</p>
           ) : null}
         </div>
-      ) : (
-        <div className="empty-state compact-empty-state">
-          <h3>QA has not been generated yet</h3>
-          <p>This conversation does not have QA results yet. You can recalculate after analysis is complete.</p>
-        </div>
-      )}
+      ) : null}
 
       {recalculateError ? <p className="error-text">{recalculateError}</p> : null}
     </section>

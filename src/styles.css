@@ -965,6 +965,20 @@ textarea:focus {
   padding: 1rem;
 }
 
+.qa-question-editor .editor-group-head {
+  align-items: center;
+  margin-bottom: 0.9rem;
+}
+
+.qa-question-editor .editor-group-head h3 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: 1.85rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
 .qa-insight-card h5,
 .qa-question-results h5 {
   margin: 0 0 0.75rem;
