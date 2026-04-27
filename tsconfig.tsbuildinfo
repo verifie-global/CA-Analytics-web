@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts"],"version":"6.0.2"}
+{"root":["./src/app.tsx","./src/qaevaluationpanel.tsx","./src/qaprofilepage.tsx","./src/qaquestioneditor.tsx","./src/qascorebadge.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts"],"version":"6.0.2"}

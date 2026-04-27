@@ -4,6 +4,12 @@ import type {
   CallDetail,
   CallFilters,
   CallSummary,
+  QaEvaluation,
+  QaProfile,
+  QaProfileDefinition,
+  QaQuestionDefinition,
+  QaQuestionResult,
+  QaResult,
   SpeakerSegment,
 } from "./types";
 
@@ -120,6 +126,7 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
 const normalizeCallSummary = (item: unknown): CallSummary => {
   const record = asRecord(item);
   const rawAnalysis = asRecord(record.analysis);
+  const qa = asRecord(record.qa);
 
   return {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
@@ -128,6 +135,9 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
     satisfactionScore:
       readNumber(record, "satisfactionScore") ?? readNumber(rawAnalysis, "satisfactionScore"),
     friendlinessScore: readNumber(record, "friendlinessScore"),
+    qaScore: readNumber(record, "qaScore") ?? readNumber(qa, "score"),
+    qaEarnedPoints: readNumber(record, "qaEarnedPoints") ?? readNumber(qa, "earnedPoints"),
+    qaPossiblePoints: readNumber(record, "qaPossiblePoints") ?? readNumber(qa, "possiblePoints"),
     durationSeconds: readNumber(record, "durationSeconds", "callDurationSeconds"),
     language: readString(record, "language"),
     createdUtc: readString(record, "createdUtc", "createdAtUtc", "createdAt"),
@@ -142,6 +152,7 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
   const record = asRecord(item);
   const rawAnalysis = asRecord(record.analysis ?? record.rawAnalysis);
   const entities = asRecord(record.entities ?? rawAnalysis.entities);
+  const qa = normalizeQaResult(record.qa);
   const segments = toSegments(
     rawAnalysis.pseudoDiarization ??
       record.diarization ??
@@ -169,10 +180,84 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
     createdUtc: readString(record, "createdUtc", "createdAtUtc", "createdAt"),
     completedUtc: readString(record, "completedUtc", "completedAtUtc", "completedAt"),
     error: readString(record, "error"),
+    qa,
     segments,
     entities,
     analysis: rawAnalysis,
     raw: record,
+  };
+};
+
+const normalizeQaQuestionDefinition = (item: unknown): QaQuestionDefinition => {
+  const record = asRecord(item);
+  return {
+    id: readString(record, "id") ?? "",
+    title: readString(record, "title") ?? "",
+    description: readString(record, "description") ?? "",
+    weight: readNumber(record, "weight") ?? 0,
+    isEnabled: readBoolean(record, "isEnabled") ?? true,
+  };
+};
+
+const normalizeQaProfileDefinition = (value: unknown): QaProfileDefinition => {
+  const record = asRecord(value);
+  return {
+    businessContext: readString(record, "businessContext") ?? "",
+    mainGoalOfCallEvaluation: readString(record, "mainGoalOfCallEvaluation") ?? "",
+    businessPriorities: asArray(record.businessPriorities).map((item) => String(item)).filter(Boolean),
+    targetBusinessOutcome: readString(record, "targetBusinessOutcome") ?? "",
+    sentimentRules: readString(record, "sentimentRules") ?? "",
+    satisfactionRules: readString(record, "satisfactionRules") ?? "",
+    friendlinessRules: readString(record, "friendlinessRules") ?? "",
+    resolutionRules: readString(record, "resolutionRules") ?? "",
+    urgencyRules: readString(record, "urgencyRules") ?? "",
+    departmentRules: readString(record, "departmentRules") ?? "",
+    complianceRules: readString(record, "complianceRules") ?? "",
+    additionalInstructions: readString(record, "additionalInstructions") ?? "",
+    questions: asArray(record.questions).map(normalizeQaQuestionDefinition),
+  };
+};
+
+const normalizeQaQuestionResult = (item: unknown): QaQuestionResult => {
+  const record = asRecord(item);
+  return {
+    id: readString(record, "id") ?? "",
+    title: readString(record, "title") ?? "",
+    description: readString(record, "description") ?? "",
+    weight: readNumber(record, "weight") ?? 0,
+    score: readNumber(record, "score") ?? 0,
+    reason: readString(record, "reason") ?? "",
+  };
+};
+
+const normalizeQaEvaluation = (value: unknown): QaEvaluation | null => {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) {
+    return null;
+  }
+
+  return {
+    profileName: readString(record, "profileName") ?? null,
+    overallComment: readString(record, "overallComment") ?? null,
+    strengths: asArray(record.strengths).map((item) => String(item)).filter(Boolean),
+    improvements: asArray(record.improvements).map((item) => String(item)).filter(Boolean),
+    resolutionStatus: readString(record, "resolutionStatus") ?? null,
+    questionResults: asArray(record.questionResults).map(normalizeQaQuestionResult),
+    generatedAtUtc: readString(record, "generatedAtUtc") ?? null,
+  };
+};
+
+const normalizeQaResult = (value: unknown): QaResult | null => {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) {
+    return null;
+  }
+
+  return {
+    score: readNumber(record, "score") ?? null,
+    earnedPoints: readNumber(record, "earnedPoints") ?? null,
+    possiblePoints: readNumber(record, "possiblePoints") ?? null,
+    evaluation: normalizeQaEvaluation(record.evaluation),
   };
 };
 
@@ -203,6 +288,8 @@ export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
   if (filters.status) query.set("Status", filters.status);
   if (filters.sentiment) query.set("Sentiment", filters.sentiment);
   if (filters.hasError) query.set("HasError", filters.hasError);
+  if (filters.minQaScore) query.set("minQaScore", filters.minQaScore);
+  if (filters.maxQaScore) query.set("maxQaScore", filters.maxQaScore);
 
   const response = await request<unknown>(
     settings,
@@ -221,6 +308,63 @@ export async function fetchCallDetail(settings: AppSettings, conversationId: str
   );
 
   return normalizeCallDetail(response);
+}
+
+export async function fetchQaProfile(settings: AppSettings) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/qa-profile`,
+  );
+
+  const record = asRecord(response);
+  return {
+    companyId: readNumber(record, "companyId") ?? Number(settings.companyId),
+    isConfigured: readBoolean(record, "isConfigured") ?? false,
+    isEnabled: readBoolean(record, "isEnabled") ?? false,
+    profileName: readString(record, "profileName") ?? "",
+    definition: normalizeQaProfileDefinition(record.definition),
+    createdAt: readString(record, "createdAt") ?? null,
+    updatedAt: readString(record, "updatedAt") ?? null,
+  } satisfies QaProfile;
+}
+
+export async function saveQaProfile(settings: AppSettings, profile: QaProfile) {
+  const body = {
+    isEnabled: profile.isEnabled,
+    profileName: profile.profileName,
+    definition: profile.definition,
+  };
+
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/qa-profile`,
+    {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify(body),
+    },
+  );
+
+  const record = asRecord(response);
+  return {
+    companyId: readNumber(record, "companyId") ?? Number(settings.companyId),
+    isConfigured: readBoolean(record, "isConfigured") ?? true,
+    isEnabled: readBoolean(record, "isEnabled") ?? profile.isEnabled,
+    profileName: readString(record, "profileName") ?? profile.profileName,
+    definition: normalizeQaProfileDefinition(record.definition ?? profile.definition),
+    createdAt: readString(record, "createdAt") ?? profile.createdAt ?? null,
+    updatedAt: readString(record, "updatedAt") ?? profile.updatedAt ?? null,
+  } satisfies QaProfile;
+}
+
+export async function recalculateQaScore(settings: AppSettings, conversationId: string) {
+  await request<void>(
+    settings,
+    `/api/companies/${settings.companyId}/calls/${conversationId}/qa-score/recalculate`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export async function uploadCall(

@@ -6,14 +6,22 @@ import {
   fetchAudioBlob,
   fetchCallDetail,
   fetchCalls,
+  fetchQaProfile,
+  recalculateQaScore,
+  saveQaProfile,
   uploadCall,
 } from "./api";
-import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types";
+import { QaEvaluationPanel } from "./QaEvaluationPanel";
+import { QaProfilePage } from "./QaProfilePage";
+import { QaScoreBadge } from "./QaScoreBadge";
+import type { AppSettings, CallDetail, CallFilters, CallSummary, QaProfile } from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
+
+type AppRoute = "dashboard" | "qa-profile";
 
 type KeywordRule = {
   id: string;
@@ -68,7 +76,12 @@ const defaultFilters: CallFilters = {
   status: "",
   sentiment: "",
   hasError: "",
+  minQaScore: "",
+  maxQaScore: "",
 };
+
+const getRouteFromPath = (pathName: string): AppRoute =>
+  pathName === "/settings/qa-profile" ? "qa-profile" : "dashboard";
 
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
@@ -264,6 +277,9 @@ async function validateAudioFileSampleRate(file: File) {
 }
 
 function App() {
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>(() =>
+    getRouteFromPath(window.location.pathname),
+  );
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return defaultSettings;
@@ -351,6 +367,13 @@ function App() {
   const [recordedAudioUrl, setRecordedAudioUrl] = useState("");
   const [recordedAudioFile, setRecordedAudioFile] = useState<File | null>(null);
   const [recordingUploading, setRecordingUploading] = useState(false);
+  const [qaProfile, setQaProfile] = useState<QaProfile | null>(null);
+  const [qaProfileLoading, setQaProfileLoading] = useState(false);
+  const [qaProfileSaving, setQaProfileSaving] = useState(false);
+  const [qaProfileError, setQaProfileError] = useState("");
+  const [qaProfileSuccess, setQaProfileSuccess] = useState("");
+  const [qaRecalculating, setQaRecalculating] = useState(false);
+  const [qaRecalculateError, setQaRecalculateError] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const diarizationContainerRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -371,6 +394,12 @@ function App() {
         (error as { status?: number }).status === 401,
     );
 
+  const navigateTo = (route: AppRoute) => {
+    const nextPath = route === "qa-profile" ? "/settings/qa-profile" : "/";
+    window.history.pushState({}, "", nextPath);
+    setCurrentRoute(route);
+  };
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setDraftSettings(settings);
@@ -390,6 +419,15 @@ function App() {
   useEffect(() => {
     localStorage.setItem(KEYWORD_RULES_STORAGE_KEY, JSON.stringify(keywordRules));
   }, [keywordRules]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentRoute(getRouteFromPath(window.location.pathname));
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(
     () => () => {
@@ -528,6 +566,46 @@ function App() {
 
     void refreshCalls(settings, { silent: true });
   }, [isAuthorized]);
+
+  useEffect(() => {
+    if (!isAuthorized || currentRoute !== "qa-profile") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadQaProfile = async () => {
+      setQaProfileLoading(true);
+      setQaProfileError("");
+      setQaProfileSuccess("");
+
+      try {
+        const profile = await fetchQaProfile(settings);
+        if (!cancelled) {
+          setQaProfile(profile);
+        }
+      } catch (error) {
+        if (!cancelled && isUnauthorizedError(error)) {
+          handleUnauthorizedSession();
+          return;
+        }
+
+        if (!cancelled) {
+          setQaProfileError(error instanceof Error ? error.message : "Unable to load QA profile.");
+        }
+      } finally {
+        if (!cancelled) {
+          setQaProfileLoading(false);
+        }
+      }
+    };
+
+    void loadQaProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentRoute, isAuthorized, settings]);
 
   useEffect(
     () => () => {
@@ -735,6 +813,69 @@ function App() {
 
     setFilters(nextFilters);
     void refreshCalls(settings, { filtersOverride: nextFilters });
+  };
+
+  const handleSaveQaProfile = async (profile: QaProfile) => {
+    setQaProfileSaving(true);
+    setQaProfileError("");
+    setQaProfileSuccess("");
+
+    try {
+      const savedProfile = await saveQaProfile(settings, profile);
+      setQaProfile(savedProfile);
+      setQaProfileSuccess("QA profile saved successfully.");
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
+      setQaProfileError(error instanceof Error ? error.message : "Unable to save QA profile.");
+    } finally {
+      setQaProfileSaving(false);
+    }
+  };
+
+  const handleRecalculateQa = async () => {
+    if (!detail?.conversationId) {
+      return;
+    }
+
+    setQaRecalculating(true);
+    setQaRecalculateError("");
+
+    try {
+      await recalculateQaScore(settings, detail.conversationId);
+      const refreshedDetail = await fetchCallDetail(settings, detail.conversationId);
+      setDetail(refreshedDetail);
+      setTranscriptCache((current) => ({
+        ...current,
+        [detail.conversationId]: refreshedDetail.transcript?.trim() ?? "",
+      }));
+      setCalls((current) =>
+        current.map((call) =>
+          call.conversationId === detail.conversationId
+            ? {
+                ...call,
+                qaScore: refreshedDetail.qa?.score ?? call.qaScore,
+                qaEarnedPoints: refreshedDetail.qa?.earnedPoints ?? call.qaEarnedPoints,
+                qaPossiblePoints: refreshedDetail.qa?.possiblePoints ?? call.qaPossiblePoints,
+              }
+            : call,
+        ),
+      );
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
+      setQaRecalculateError(
+        error instanceof Error ? error.message : "Unable to recalculate QA score.",
+      );
+    } finally {
+      setQaRecalculating(false);
+    }
   };
 
   const openUploadModal = () => {
@@ -1041,7 +1182,15 @@ function App() {
     setUploadErrorMessage("");
     setErrorMessage("");
     setQaExportSubmitting(false);
+    setQaProfile(null);
+    setQaProfileLoading(false);
+    setQaProfileSaving(false);
+    setQaProfileError("");
+    setQaProfileSuccess("");
+    setQaRecalculating(false);
+    setQaRecalculateError("");
     setTranscriptCache({});
+    setCurrentRoute("dashboard");
     setStatusMessage("You have been logged out.");
     setUploadState({
       conversationId: generateConversationId(),
@@ -1078,9 +1227,17 @@ function App() {
     setIsQaExportModalOpen(false);
     setUploadSubmitting(false);
     setQaExportSubmitting(false);
+    setQaProfile(null);
+    setQaProfileLoading(false);
+    setQaProfileSaving(false);
+    setQaProfileError("");
+    setQaProfileSuccess("");
+    setQaRecalculating(false);
+    setQaRecalculateError("");
     setUploadValidationMessage("");
     setUploadErrorMessage("");
     setTranscriptCache({});
+    setCurrentRoute("dashboard");
     setErrorMessage("Your session expired. Please sign in again.");
     setStatusMessage("Authorization required.");
     setUploadState({
@@ -1459,14 +1616,30 @@ function App() {
     <div className="app-shell">
       {isHeaderGraphicCollapsed ? (
         <div className="hero-collapsed-bar">
-          <button
-            type="button"
-            className="secondary-button small-button button-with-icon"
-            onClick={() => setIsHeaderGraphicCollapsed(false)}
-          >
-            <BurgerIcon />
-            <span>Show header</span>
-          </button>
+          <div className="hero-collapsed-actions">
+            <button
+              type="button"
+              className="secondary-button small-button button-with-icon"
+              onClick={() => setIsHeaderGraphicCollapsed(false)}
+            >
+              <BurgerIcon />
+              <span>Show header</span>
+            </button>
+            <button
+              type="button"
+              className={`secondary-button small-button ${currentRoute === "dashboard" ? "is-active-nav" : ""}`}
+              onClick={() => navigateTo("dashboard")}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              className={`secondary-button small-button ${currentRoute === "qa-profile" ? "is-active-nav" : ""}`}
+              onClick={() => navigateTo("qa-profile")}
+            >
+              QA settings
+            </button>
+          </div>
         </div>
       ) : (
         <header className="hero">
@@ -1562,6 +1735,20 @@ function App() {
             >
               Keyword rules
             </button>
+            <button
+              type="button"
+              className={`secondary-button ${currentRoute === "dashboard" ? "is-active-nav" : ""}`}
+              onClick={() => navigateTo("dashboard")}
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              className={`secondary-button ${currentRoute === "qa-profile" ? "is-active-nav" : ""}`}
+              onClick={() => navigateTo("qa-profile")}
+            >
+              QA settings
+            </button>
             <button type="button" className="secondary-button" onClick={handleLogout}>
               Log out
             </button>
@@ -1570,32 +1757,42 @@ function App() {
       )}
 
       <main className="layout">
-        <section className="panel">
-          <div className="section-heading">
-            <h2>Call explorer</h2>
-            <p>Filter your company calls, then open one to inspect the full analysis.</p>
-          </div>
+        {currentRoute === "qa-profile" ? (
+          <QaProfilePage
+            profile={qaProfile}
+            loading={qaProfileLoading}
+            saving={qaProfileSaving}
+            errorMessage={qaProfileError}
+            successMessage={qaProfileSuccess}
+            onSave={handleSaveQaProfile}
+          />
+        ) : (
+          <section className="panel">
+            <div className="section-heading">
+              <h2>Call explorer</h2>
+              <p>Filter your company calls, then open one to inspect the full analysis.</p>
+            </div>
 
-          <div className="explorer-actions">
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={openQaExportModal}
-              disabled={exportableCalls.length === 0}
+            <div className="explorer-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={openQaExportModal}
+                disabled={exportableCalls.length === 0}
+              >
+                Export QA monitoring questionnaire
+              </button>
+            </div>
+
+            <form
+              className="filters"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const nextFilters = { ...filters, page: Math.max(1, filters.page) };
+                setFilters(nextFilters);
+                void refreshCalls(settings, { filtersOverride: nextFilters });
+              }}
             >
-              Export QA monitoring questionnaire
-            </button>
-          </div>
-
-          <form
-            className="filters"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const nextFilters = { ...filters, page: Math.max(1, filters.page) };
-              setFilters(nextFilters);
-              void refreshCalls(settings, { filtersOverride: nextFilters });
-            }}
-          >
             <input
               value={filters.search}
               onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
@@ -1639,6 +1836,22 @@ function App() {
             </select>
             <input
               type="number"
+              min="0"
+              max="100"
+              value={filters.minQaScore}
+              onChange={(event) => setFilters((current) => ({ ...current, minQaScore: event.target.value }))}
+              placeholder="Min QA score"
+            />
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={filters.maxQaScore}
+              onChange={(event) => setFilters((current) => ({ ...current, maxQaScore: event.target.value }))}
+              placeholder="Max QA score"
+            />
+            <input
+              type="number"
               min="1"
               value={filters.page}
               onChange={(event) =>
@@ -1659,136 +1872,143 @@ function App() {
             <button type="submit" disabled={!canQueryApi || callsLoading}>
               {callsLoading ? "Loading..." : "Refresh"}
             </button>
-          </form>
+            </form>
 
-          <div className="workspace">
-            <div className="list-column">
-              {calls.length === 0 ? (
-                <div className="empty-state">
-                  <h3>No calls loaded yet</h3>
-                  <p>Save your connection settings, then load or upload a call.</p>
-                </div>
-              ) : (
-                <div className="calls-grid" role="table" aria-label="Conversations">
-                  <div className="calls-grid-header" role="row">
-                    <span>Conversation</span>
-                    <span>Status</span>
-                    <span>Sentiment</span>
-                    <span>Score</span>
-                    <span>Duration</span>
-                    <span>Language</span>
-                    <span>Keywords</span>
-                    <span>Datetime</span>
+            <div className="workspace">
+              <div className="list-column">
+                {calls.length === 0 ? (
+                  <div className="empty-state">
+                    <h3>No calls loaded yet</h3>
+                    <p>Save your connection settings, then load or upload a call.</p>
                   </div>
+                ) : (
+                  <div className="calls-grid" role="table" aria-label="Conversations">
+                    <div className="calls-grid-header" role="row">
+                      <span>Conversation</span>
+                      <span>Status</span>
+                      <span>Sentiment</span>
+                      <span>Score</span>
+                      <span>QA Score</span>
+                      <span>Duration</span>
+                      <span>Language</span>
+                      <span>Keywords</span>
+                      <span>Datetime</span>
+                    </div>
 
-                  {calls.map((call) => {
-                    const keywordMatchesForList = keywordBadgeMatches[call.conversationId] ?? [];
-                    const isKeywordScanPending =
-                      keywordRules.length > 0 && transcriptCache[call.conversationId] == null;
-                    const visibleKeywordLabels = keywordMatchesForList.slice(0, 2);
-                    const hiddenKeywordCount = Math.max(
-                      0,
-                      keywordMatchesForList.length - visibleKeywordLabels.length,
-                    );
+                    {calls.map((call) => {
+                      const keywordMatchesForList = keywordBadgeMatches[call.conversationId] ?? [];
+                      const isKeywordScanPending =
+                        keywordRules.length > 0 && transcriptCache[call.conversationId] == null;
+                      const visibleKeywordLabels = keywordMatchesForList.slice(0, 2);
+                      const hiddenKeywordCount = Math.max(
+                        0,
+                        keywordMatchesForList.length - visibleKeywordLabels.length,
+                      );
 
-                    return (
-                      <Fragment key={call.conversationId}>
-                        <button
-                          type="button"
-                          className={`call-row ${selectedId === call.conversationId ? "selected" : ""}`}
-                          onClick={() => handleRowClick(call.conversationId)}
-                          role="row"
-                        >
-                        <span className="call-row-primary">{call.conversationId}</span>
-                        <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
-                          {isInProgressStatus(call.status) ? (
-                            <span className="status-inline">
-                              <span className="status-pulse" />
-                              {call.status}
-                            </span>
-                          ) : (
-                            call.status
-                          )}
-                        </span>
-                        <span className={classForSentiment(call.sentiment)}>
-                          {call.sentiment ?? "unknown"}
-                        </span>
-                        <span>{call.satisfactionScore ?? "-"}</span>
-                        <span>{formatDurationSeconds(call.durationSeconds)}</span>
-                        <span>{call.language ?? "No language"}</span>
-                        <span className="keyword-list-badges">
-                          {keywordRules.length === 0 ? (
-                            <span className="muted-cell">-</span>
-                          ) : isKeywordScanPending ? (
-                            <span className="tag keyword-list-badge">Checking...</span>
-                          ) : keywordMatchesForList.length > 0 ? (
-                            <>
-                              {visibleKeywordLabels.map((keywordMatch) => (
-                                <span
-                                  key={`${call.conversationId}-${keywordMatch.label}`}
-                                  className="tag keyword-list-badge"
-                                  style={{
-                                    backgroundColor: `${keywordMatch.color}26`,
-                                    color: keywordMatch.color,
-                                    borderColor: `${keywordMatch.color}4d`,
-                                  }}
-                                >
-                                  {keywordMatch.label}
+                      return (
+                        <Fragment key={call.conversationId}>
+                          <button
+                            type="button"
+                            className={`call-row ${selectedId === call.conversationId ? "selected" : ""}`}
+                            onClick={() => handleRowClick(call.conversationId)}
+                            role="row"
+                          >
+                            <span className="call-row-primary">{call.conversationId}</span>
+                            <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
+                              {isInProgressStatus(call.status) ? (
+                                <span className="status-inline">
+                                  <span className="status-pulse" />
+                                  {call.status}
                                 </span>
-                              ))}
-                              {hiddenKeywordCount > 0 ? (
-                                <span className="tag keyword-list-badge">+{hiddenKeywordCount} more</span>
-                              ) : null}
-                            </>
-                          ) : (
-                            <span className="muted-cell">No keyword</span>
-                          )}
-                        </span>
-                        <span>{formatDate(call.createdUtc)}</span>
-                        {call.error ? <span className="error-text call-row-error">{call.error}</span> : null}
-                        </button>
-                        {selectedId === call.conversationId ? (
-                          <div
-                            className="inline-detail-target"
-                            ref={(node) => {
-                              if (node && detailPortalTarget !== node) {
-                                setDetailPortalTarget(node);
-                              }
-                            }}
-                          />
-                        ) : null}
-                      </Fragment>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                              ) : (
+                                call.status
+                              )}
+                            </span>
+                            <span className={classForSentiment(call.sentiment)}>
+                              {call.sentiment ?? "unknown"}
+                            </span>
+                            <span>{call.satisfactionScore ?? "-"}</span>
+                            <QaScoreBadge
+                              score={call.qaScore}
+                              earnedPoints={call.qaEarnedPoints}
+                              possiblePoints={call.qaPossiblePoints}
+                              compact
+                            />
+                            <span>{formatDurationSeconds(call.durationSeconds)}</span>
+                            <span>{call.language ?? "No language"}</span>
+                            <span className="keyword-list-badges">
+                              {keywordRules.length === 0 ? (
+                                <span className="muted-cell">-</span>
+                              ) : isKeywordScanPending ? (
+                                <span className="tag keyword-list-badge">Checking...</span>
+                              ) : keywordMatchesForList.length > 0 ? (
+                                <>
+                                  {visibleKeywordLabels.map((keywordMatch) => (
+                                    <span
+                                      key={`${call.conversationId}-${keywordMatch.label}`}
+                                      className="tag keyword-list-badge"
+                                      style={{
+                                        backgroundColor: `${keywordMatch.color}26`,
+                                        color: keywordMatch.color,
+                                        borderColor: `${keywordMatch.color}4d`,
+                                      }}
+                                    >
+                                      {keywordMatch.label}
+                                    </span>
+                                  ))}
+                                  {hiddenKeywordCount > 0 ? (
+                                    <span className="tag keyword-list-badge">+{hiddenKeywordCount} more</span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span className="muted-cell">No keyword</span>
+                              )}
+                            </span>
+                            <span>{formatDate(call.createdUtc)}</span>
+                            {call.error ? <span className="error-text call-row-error">{call.error}</span> : null}
+                          </button>
+                          {selectedId === call.conversationId ? (
+                            <div
+                              className="inline-detail-target"
+                              ref={(node) => {
+                                if (node && detailPortalTarget !== node) {
+                                  setDetailPortalTarget(node);
+                                }
+                              }}
+                            />
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
-            <div className="grid-pager">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => handlePageChange(filters.page - 1)}
-                disabled={callsLoading || filters.page <= 1}
-              >
-                Previous
-              </button>
-              <span>
-                Page {filters.page} · {calls.length} shown · {filters.pageSize} per page
-              </span>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => handlePageChange(filters.page + 1)}
-                disabled={callsLoading || calls.length < filters.pageSize}
-              >
-                Next
-              </button>
-            </div>
+              <div className="grid-pager">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => handlePageChange(filters.page - 1)}
+                  disabled={callsLoading || filters.page <= 1}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {filters.page} · {calls.length} shown · {filters.pageSize} per page
+                </span>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => handlePageChange(filters.page + 1)}
+                  disabled={callsLoading || calls.length < filters.pageSize}
+                >
+                  Next
+                </button>
+              </div>
 
-            {detailPortalTarget
-              ? createPortal(
-                  <div className="detail-column inline-detail">
+              {detailPortalTarget
+                ? createPortal(
+                    <div className="detail-column inline-detail">
               {!selectedId ? (
                 <div className="empty-state">
                   <h3>Select a call</h3>
@@ -1869,6 +2089,15 @@ function App() {
                   )}
 
                   <div className="detail-panels">
+                    <QaEvaluationPanel
+                      qa={detail.qa}
+                      isCompleted={isCompletedStatus(detail.status)}
+                      isRecalculating={qaRecalculating}
+                      onRecalculate={() => void handleRecalculateQa()}
+                      recalculateError={qaRecalculateError}
+                      generatedAtLabel={formatDate(detail.qa?.evaluation?.generatedAtUtc)}
+                    />
+
                     <section>
                       <h4>Keyword alerts</h4>
                       <div className="scroll-panel keyword-panel">
@@ -2126,12 +2355,13 @@ function App() {
                   <p>Try refreshing the list or selecting a different conversation.</p>
                 </div>
               )}
-                  </div>,
-                  detailPortalTarget,
-                )
-              : null}
-          </div>
-        </section>
+                    </div>,
+                    detailPortalTarget,
+                  )
+                : null}
+            </div>
+          </section>
+        )}
       </main>
 
       {isUploadModalOpen ? (
