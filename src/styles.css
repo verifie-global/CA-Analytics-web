@@ -1293,9 +1293,10 @@ textarea:focus {
 .qa-settings-grid label,
 .qa-question-grid label {
   color: rgba(245, 248, 255, 0.96);
-  font-size: 1rem;
+  font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: 0.01em;
+  line-height: 1.15;
 }
 
 .qa-settings-grid textarea,
