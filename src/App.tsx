@@ -308,7 +308,7 @@ function App() {
   const [isQaExportModalOpen, setIsQaExportModalOpen] = useState(false);
   const [isHeaderGraphicCollapsed, setIsHeaderGraphicCollapsed] = useState<boolean>(() => {
     const saved = localStorage.getItem(HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY);
-    return saved === "true";
+    return saved == null ? true : saved === "true";
   });
   const [headerGraphicConfig, setHeaderGraphicConfig] = useState<HeaderGraphicConfig>(() => {
     const saved = localStorage.getItem(HEADER_GRAPHIC_STORAGE_KEY);
