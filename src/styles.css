@@ -1304,6 +1304,8 @@ textarea:focus {
 .qa-settings-grid input,
 .qa-question-grid input {
   color: #f7faff;
+  font-size: 1rem;
+  line-height: 1.45;
 }
 
 .qa-settings-grid textarea::placeholder,
