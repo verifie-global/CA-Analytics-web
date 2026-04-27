@@ -121,7 +121,7 @@ export function QaProfilePage({
       <div className="qa-settings-form">
         <div className="qa-settings-grid">
           <label className="keyword-toggle">
-            <span>Profile enabled</span>
+            <span className="qa-field-label">Profile enabled</span>
             <input
               type="checkbox"
               checked={draftProfile.isEnabled}
@@ -133,7 +133,7 @@ export function QaProfilePage({
           </label>
 
           <label>
-            Profile name
+            <span className="qa-field-label">Profile name</span>
             <input
               value={draftProfile.profileName}
               onChange={(event) => {
@@ -144,7 +144,7 @@ export function QaProfilePage({
           </label>
 
           <label className="full-width">
-            Business priorities
+            <span className="qa-field-label">Business priorities</span>
             <input
               value={draftProfile.definition.businessPriorities.join(", ")}
               onChange={(event) => {
@@ -163,7 +163,7 @@ export function QaProfilePage({
 
           {qaDefinitionFields.map(({ key, label }) => (
             <label key={key} className="full-width">
-              {label}
+              <span className="qa-field-label">{label}</span>
               <textarea
                 rows={4}
                 value={draftProfile.definition[key]}

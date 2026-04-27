@@ -28,7 +28,7 @@ export function QaQuestionEditor({
 
       <div className="grid-form qa-question-grid">
         <label>
-          Question ID
+          <span className="qa-field-label">Question ID</span>
           <input
             value={question.id}
             onChange={(event) => onChange({ ...question, id: event.target.value })}
@@ -37,7 +37,7 @@ export function QaQuestionEditor({
         </label>
 
         <label>
-          Weight
+          <span className="qa-field-label">Weight</span>
           <input
             type="number"
             min="1"
@@ -50,7 +50,7 @@ export function QaQuestionEditor({
         </label>
 
         <label className="full-width">
-          Title
+          <span className="qa-field-label">Title</span>
           <input
             value={question.title}
             onChange={(event) => onChange({ ...question, title: event.target.value })}
@@ -60,7 +60,7 @@ export function QaQuestionEditor({
         </label>
 
         <label className="full-width">
-          Description
+          <span className="qa-field-label">Description</span>
           <textarea
             rows={3}
             value={question.description}
@@ -70,7 +70,7 @@ export function QaQuestionEditor({
         </label>
 
         <label className="keyword-toggle">
-          <span>Enabled</span>
+          <span className="qa-field-label">Enabled</span>
           <input
             type="checkbox"
             checked={question.isEnabled}
