@@ -307,6 +307,14 @@ textarea:focus {
   box-shadow: 0 14px 32px rgba(28, 49, 86, 0.08);
 }
 
+:root[data-theme="light"] .hero > div:first-child {
+  border-color: rgba(28, 49, 86, 0.1);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(242, 247, 255, 0.94)),
+    radial-gradient(circle at top left, rgba(47, 111, 224, 0.08), transparent 36%);
+  box-shadow: 0 14px 30px rgba(28, 49, 86, 0.08);
+}
+
 :root[data-theme="light"] .hero-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.94));
 }
@@ -356,6 +364,21 @@ textarea:focus {
 
 :root[data-theme="light"] .hero-bar-shell {
   background: rgba(23, 34, 53, 0.08);
+}
+
+:root[data-theme="light"] .hero-summary div,
+:root[data-theme="light"] .hero-stat,
+:root[data-theme="light"] .hero-edit-button {
+  background: rgba(247, 250, 255, 0.92);
+  border: 1px solid rgba(28, 49, 86, 0.08);
+  box-shadow: 0 10px 22px rgba(28, 49, 86, 0.06);
+}
+
+:root[data-theme="light"] .hero h1,
+:root[data-theme="light"] .hero-bar-group strong,
+:root[data-theme="light"] .hero-summary strong,
+:root[data-theme="light"] .hero-stat span {
+  color: var(--theme-text);
 }
 
 :root[data-theme="light"] input,
