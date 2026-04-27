@@ -368,7 +368,16 @@ textarea:focus {
 
 :root[data-theme="light"] .hero-summary div,
 :root[data-theme="light"] .hero-stat,
-:root[data-theme="light"] .hero-edit-button {
+:root[data-theme="light"] .hero-edit-button,
+:root[data-theme="light"] .stat-grid article,
+:root[data-theme="light"] .audio-placeholder,
+:root[data-theme="light"] .main-topic-badge,
+:root[data-theme="light"] .redacted-panel,
+:root[data-theme="light"] .entity-group,
+:root[data-theme="light"] .routing-card,
+:root[data-theme="light"] .keyword-card,
+:root[data-theme="light"] .concern-card,
+:root[data-theme="light"] .coaching-card {
   background: rgba(247, 250, 255, 0.92);
   border: 1px solid rgba(28, 49, 86, 0.08);
   box-shadow: 0 10px 22px rgba(28, 49, 86, 0.06);
@@ -377,8 +386,68 @@ textarea:focus {
 :root[data-theme="light"] .hero h1,
 :root[data-theme="light"] .hero-bar-group strong,
 :root[data-theme="light"] .hero-summary strong,
-:root[data-theme="light"] .hero-stat span {
+:root[data-theme="light"] .hero-stat span,
+:root[data-theme="light"] .stat-grid article strong,
+:root[data-theme="light"] .detail-header h3,
+:root[data-theme="light"] .segment-card p,
+:root[data-theme="light"] .friendliness-value {
   color: var(--theme-text);
+}
+
+:root[data-theme="light"] .detail-header-tags .tag,
+:root[data-theme="light"] .tag {
+  background: rgba(23, 34, 53, 0.06);
+  color: var(--theme-text);
+  border: 1px solid rgba(28, 49, 86, 0.08);
+}
+
+:root[data-theme="light"] .tag-progress,
+:root[data-theme="light"] .tag-warning {
+  background: rgba(197, 139, 0, 0.12);
+  color: #9c7200;
+  border-color: rgba(197, 139, 0, 0.2);
+}
+
+:root[data-theme="light"] .qa-badge-muted,
+:root[data-theme="light"] .token-chip {
+  background: rgba(23, 34, 53, 0.05);
+  color: var(--theme-text);
+  border-color: rgba(28, 49, 86, 0.08);
+}
+
+:root[data-theme="light"] .main-topic-badge {
+  background: linear-gradient(135deg, rgba(47, 111, 224, 0.12), rgba(87, 147, 236, 0.1));
+  border-color: rgba(47, 111, 224, 0.18);
+  color: var(--theme-text);
+}
+
+:root[data-theme="light"] .main-topic-label {
+  background: rgba(47, 111, 224, 0.1);
+  color: var(--theme-primary);
+}
+
+:root[data-theme="light"] .redacted-panel {
+  background: rgba(194, 75, 39, 0.06);
+  border-color: rgba(194, 75, 39, 0.16);
+  color: #935240;
+}
+
+:root[data-theme="light"] .redacted-panel .redacted-token {
+  color: #9c7200;
+}
+
+:root[data-theme="light"] .entity-group strong,
+:root[data-theme="light"] .routing-card strong,
+:root[data-theme="light"] .keyword-card strong,
+:root[data-theme="light"] .concern-card strong,
+:root[data-theme="light"] .coaching-card strong,
+:root[data-theme="light"] .bool-badge,
+:root[data-theme="light"] .urgency-badge {
+  color: var(--theme-text);
+}
+
+:root[data-theme="light"] .audio-player {
+  filter: none;
 }
 
 :root[data-theme="light"] input,
