@@ -73,6 +73,8 @@ button:hover {
   padding: 0.45rem 0.8rem;
   border-radius: 10px;
   font-size: 0.84rem;
+  min-height: 40px;
+  line-height: 1;
 }
 
 .button-with-icon {
@@ -124,7 +126,7 @@ textarea:focus {
 
 .app-shell {
   color: var(--theme-text);
-  width: min(1440px, calc(100% - 2rem));
+  width: min(1560px, calc(100% - 2rem));
   margin: 0 auto;
   padding: 2rem 0 3rem;
 }
@@ -193,6 +195,7 @@ textarea:focus {
 .hero-collapsed-bar {
   display: flex;
   justify-content: flex-start;
+  align-items: center;
   margin-bottom: 1.2rem;
   padding: 0.85rem 1rem;
   border-radius: 20px;
@@ -200,6 +203,20 @@ textarea:focus {
   background: rgba(28, 36, 52, 0.82);
   backdrop-filter: blur(20px);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16);
+}
+
+.hero-collapsed-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.hero-collapsed-actions .secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
 }
 
 .hero h1,
@@ -501,11 +518,18 @@ textarea:focus {
 .list-column {
   display: block;
   max-height: none;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.list-column::-webkit-scrollbar {
+  display: none;
 }
 
 .calls-grid {
-  min-width: 1240px;
+  min-width: 1320px;
   display: grid;
   gap: 0.55rem;
 }
@@ -1629,6 +1653,6 @@ textarea:focus {
   }
 
   .app-shell {
-    width: min(100% - 1rem, 1440px);
+    width: min(100% - 1rem, 1560px);
   }
 }

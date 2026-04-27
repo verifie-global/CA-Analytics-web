@@ -1630,7 +1630,7 @@ function App() {
               className={`secondary-button small-button ${currentRoute === "dashboard" ? "is-active-nav" : ""}`}
               onClick={() => navigateTo("dashboard")}
             >
-              Dashboard
+              Grid
             </button>
             <button
               type="button"
@@ -1740,7 +1740,7 @@ function App() {
               className={`secondary-button ${currentRoute === "dashboard" ? "is-active-nav" : ""}`}
               onClick={() => navigateTo("dashboard")}
             >
-              Dashboard
+              Grid
             </button>
             <button
               type="button"
