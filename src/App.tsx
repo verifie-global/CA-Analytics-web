@@ -20,8 +20,10 @@ const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
+const THEME_STORAGE_KEY = "ca-analytics-theme";
 
 type AppRoute = "dashboard" | "qa-profile";
+type ThemeMode = "dark" | "light";
 
 type KeywordRule = {
   id: string;
@@ -356,6 +358,10 @@ function App() {
       return [];
     }
   });
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    return saved === "light" ? "light" : "dark";
+  });
   const [transcriptCache, setTranscriptCache] = useState<Record<string, string>>({});
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
@@ -400,6 +406,10 @@ function App() {
     setCurrentRoute(route);
   };
 
+  const toggleThemeMode = () => {
+    setThemeMode((current) => (current === "dark" ? "light" : "dark"));
+  };
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setDraftSettings(settings);
@@ -419,6 +429,11 @@ function App() {
   useEffect(() => {
     localStorage.setItem(KEYWORD_RULES_STORAGE_KEY, JSON.stringify(keywordRules));
   }, [keywordRules]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+    localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -1558,6 +1573,11 @@ function App() {
     return (
       <div className="app-shell auth-shell">
         <section className="auth-card">
+          <div className="auth-theme-toggle">
+            <button type="button" className="secondary-button small-button" onClick={toggleThemeMode}>
+              {themeMode === "dark" ? "Light theme" : "Dark theme"}
+            </button>
+          </div>
           <p className="eyebrow">Authorization</p>
           <h1>Call Analytics Dashboard</h1>
           <p className="hero-copy">
@@ -1638,6 +1658,9 @@ function App() {
               onClick={() => navigateTo("qa-profile")}
             >
               QA settings
+            </button>
+            <button type="button" className="secondary-button small-button" onClick={toggleThemeMode}>
+              {themeMode === "dark" ? "Light theme" : "Dark theme"}
             </button>
           </div>
         </div>
@@ -1748,6 +1771,9 @@ function App() {
               onClick={() => navigateTo("qa-profile")}
             >
               QA settings
+            </button>
+            <button type="button" className="secondary-button" onClick={toggleThemeMode}>
+              {themeMode === "dark" ? "Light theme" : "Dark theme"}
             </button>
             <button type="button" className="secondary-button" onClick={handleLogout}>
               Log out
