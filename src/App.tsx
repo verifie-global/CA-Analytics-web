@@ -1449,108 +1449,117 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Authorized workspace</p>
-          <h1>Call Analytics Dashboard</h1>
-          <p className="hero-copy">
-            Upload audio, monitor processing, and inspect transcripts, diarization, sentiment,
-            and satisfaction scores from your backend.
-          </p>
+      {isHeaderGraphicCollapsed ? (
+        <div className="hero-collapsed-bar">
           <button
             type="button"
-            className="secondary-button small-button hero-edit-button button-with-icon"
-            onClick={() => setIsHeaderGraphicCollapsed((current) => !current)}
+            className="secondary-button small-button button-with-icon"
+            onClick={() => setIsHeaderGraphicCollapsed(false)}
           >
             <BurgerIcon />
-            <span>{isHeaderGraphicCollapsed ? "Show graphics" : "Hide graphics"}</span>
-          </button>
-          {!isHeaderGraphicCollapsed ? (
-            <>
-              <div className="hero-graphic-actions">
-                <button
-                  type="button"
-                  className="secondary-button small-button"
-                  onClick={() => setIsHeaderEditorOpen(true)}
-                >
-                  Edit graphic
-                </button>
-              </div>
-              <div className="hero-graphic">
-                <div className="hero-bars" aria-label="Sentiment overview">
-                  {headerGraphicConfig.bars.map((metric) => {
-                    const metricData = metricValues[metric];
-                    const optionLabel =
-                      headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
-                    const heightPercent =
-                      metricData.value == null || metricData.max <= 0
-                        ? 0
-                        : (metricData.value / metricData.max) * 100;
-
-                    return (
-                      <div key={metric} className="hero-bar-group">
-                        <div className="hero-bar-shell">
-                          <span
-                            className={`hero-bar ${headerBarClassByMetric(metric)}`}
-                            style={{ height: `${heightPercent}%` }}
-                          />
-                        </div>
-                        <label>{optionLabel}</label>
-                        <strong>{metricData.formatted}</strong>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="hero-summary">
-                  {headerGraphicConfig.summaries.map((metric) => {
-                    const metricData = metricValues[metric];
-                    const optionLabel =
-                      headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
-
-                    return (
-                      <div key={metric}>
-                        <span>{optionLabel}</span>
-                        <strong>{metricData.formatted}</strong>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          ) : null}
-        </div>
-        <div className="hero-card">
-          <div className="hero-stat">
-            <span>{calls.length}</span>
-            <label>visible calls</label>
-          </div>
-          <div className="hero-stat">
-            <span>{detail?.status ?? "Idle"}</span>
-            <label>selected status</label>
-          </div>
-          <button type="button" onClick={openUploadModal}>
-            Upload call
-          </button>
-          <button
-            type="button"
-            className="secondary-button button-with-icon"
-            onClick={() => void openRecordingModal()}
-          >
-            <RecordIcon />
-            <span>Record call</span>
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setIsKeywordManagerOpen(true)}
-          >
-            Keyword rules
-          </button>
-          <button type="button" className="secondary-button" onClick={handleLogout}>
-            Log out
+            <span>Show header</span>
           </button>
         </div>
-      </header>
+      ) : (
+        <header className="hero">
+          <div>
+            <p className="eyebrow">Authorized workspace</p>
+            <h1>Call Analytics Dashboard</h1>
+            <p className="hero-copy">
+              Upload audio, monitor processing, and inspect transcripts, diarization, sentiment,
+              and satisfaction scores from your backend.
+            </p>
+            <button
+              type="button"
+              className="secondary-button small-button hero-edit-button button-with-icon"
+              onClick={() => setIsHeaderGraphicCollapsed(true)}
+            >
+              <BurgerIcon />
+              <span>Hide header</span>
+            </button>
+            <div className="hero-graphic-actions">
+              <button
+                type="button"
+                className="secondary-button small-button"
+                onClick={() => setIsHeaderEditorOpen(true)}
+              >
+                Edit graphic
+              </button>
+            </div>
+            <div className="hero-graphic">
+              <div className="hero-bars" aria-label="Sentiment overview">
+                {headerGraphicConfig.bars.map((metric) => {
+                  const metricData = metricValues[metric];
+                  const optionLabel =
+                    headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+                  const heightPercent =
+                    metricData.value == null || metricData.max <= 0
+                      ? 0
+                      : (metricData.value / metricData.max) * 100;
+
+                  return (
+                    <div key={metric} className="hero-bar-group">
+                      <div className="hero-bar-shell">
+                        <span
+                          className={`hero-bar ${headerBarClassByMetric(metric)}`}
+                          style={{ height: `${heightPercent}%` }}
+                        />
+                      </div>
+                      <label>{optionLabel}</label>
+                      <strong>{metricData.formatted}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="hero-summary">
+                {headerGraphicConfig.summaries.map((metric) => {
+                  const metricData = metricValues[metric];
+                  const optionLabel =
+                    headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+
+                  return (
+                    <div key={metric}>
+                      <span>{optionLabel}</span>
+                      <strong>{metricData.formatted}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="hero-card">
+            <div className="hero-stat">
+              <span>{calls.length}</span>
+              <label>visible calls</label>
+            </div>
+            <div className="hero-stat">
+              <span>{detail?.status ?? "Idle"}</span>
+              <label>selected status</label>
+            </div>
+            <button type="button" onClick={openUploadModal}>
+              Upload call
+            </button>
+            <button
+              type="button"
+              className="secondary-button button-with-icon"
+              onClick={() => void openRecordingModal()}
+            >
+              <RecordIcon />
+              <span>Record call</span>
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setIsKeywordManagerOpen(true)}
+            >
+              Keyword rules
+            </button>
+            <button type="button" className="secondary-button" onClick={handleLogout}>
+              Log out
+            </button>
+          </div>
+        </header>
+      )}
 
       <main className="layout">
         <section className="panel">
