@@ -303,6 +303,12 @@ textarea:focus {
   margin-top: 0.25rem;
 }
 
+.hero-graphic-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.9rem;
+}
+
 .hero-card,
 .panel {
   border: 1px solid var(--theme-border);
@@ -840,6 +846,12 @@ textarea:focus {
 }
 
 .icon-record {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.icon-burger {
   width: 1rem;
   height: 1rem;
   flex: 0 0 auto;

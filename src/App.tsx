@@ -12,6 +12,7 @@ import type { AppSettings, CallDetail, CallFilters, CallSummary } from "./types"
 
 const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
+const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
 type KeywordRule = {
@@ -198,6 +199,18 @@ const RecordIcon = () => (
   </svg>
 );
 
+const BurgerIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-burger">
+    <path
+      d="M4 7h16M4 12h16M4 17h16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
   if (value == null) {
     return <span className="friendliness-value">N/A</span>;
@@ -285,6 +298,10 @@ function App() {
   const [isHeaderEditorOpen, setIsHeaderEditorOpen] = useState(false);
   const [isKeywordManagerOpen, setIsKeywordManagerOpen] = useState(false);
   const [isQaExportModalOpen, setIsQaExportModalOpen] = useState(false);
+  const [isHeaderGraphicCollapsed, setIsHeaderGraphicCollapsed] = useState<boolean>(() => {
+    const saved = localStorage.getItem(HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY);
+    return saved === "true";
+  });
   const [headerGraphicConfig, setHeaderGraphicConfig] = useState<HeaderGraphicConfig>(() => {
     const saved = localStorage.getItem(HEADER_GRAPHIC_STORAGE_KEY);
     if (!saved) {
@@ -354,6 +371,13 @@ function App() {
   useEffect(() => {
     localStorage.setItem(HEADER_GRAPHIC_STORAGE_KEY, JSON.stringify(headerGraphicConfig));
   }, [headerGraphicConfig]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY,
+      String(isHeaderGraphicCollapsed),
+    );
+  }, [isHeaderGraphicCollapsed]);
 
   useEffect(() => {
     localStorage.setItem(KEYWORD_RULES_STORAGE_KEY, JSON.stringify(keywordRules));
@@ -1435,51 +1459,65 @@ function App() {
           </p>
           <button
             type="button"
-            className="secondary-button small-button hero-edit-button"
-            onClick={() => setIsHeaderEditorOpen(true)}
+            className="secondary-button small-button hero-edit-button button-with-icon"
+            onClick={() => setIsHeaderGraphicCollapsed((current) => !current)}
           >
-            Edit graphic
+            <BurgerIcon />
+            <span>{isHeaderGraphicCollapsed ? "Show graphics" : "Hide graphics"}</span>
           </button>
-          <div className="hero-graphic">
-            <div className="hero-bars" aria-label="Sentiment overview">
-              {headerGraphicConfig.bars.map((metric) => {
-                const metricData = metricValues[metric];
-                const optionLabel =
-                  headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
-                const heightPercent =
-                  metricData.value == null || metricData.max <= 0
-                    ? 0
-                    : (metricData.value / metricData.max) * 100;
+          {!isHeaderGraphicCollapsed ? (
+            <>
+              <div className="hero-graphic-actions">
+                <button
+                  type="button"
+                  className="secondary-button small-button"
+                  onClick={() => setIsHeaderEditorOpen(true)}
+                >
+                  Edit graphic
+                </button>
+              </div>
+              <div className="hero-graphic">
+                <div className="hero-bars" aria-label="Sentiment overview">
+                  {headerGraphicConfig.bars.map((metric) => {
+                    const metricData = metricValues[metric];
+                    const optionLabel =
+                      headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+                    const heightPercent =
+                      metricData.value == null || metricData.max <= 0
+                        ? 0
+                        : (metricData.value / metricData.max) * 100;
 
-                return (
-                  <div key={metric} className="hero-bar-group">
-                    <div className="hero-bar-shell">
-                      <span
-                        className={`hero-bar ${headerBarClassByMetric(metric)}`}
-                        style={{ height: `${heightPercent}%` }}
-                      />
-                    </div>
-                    <label>{optionLabel}</label>
-                    <strong>{metricData.formatted}</strong>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="hero-summary">
-              {headerGraphicConfig.summaries.map((metric) => {
-                const metricData = metricValues[metric];
-                const optionLabel =
-                  headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+                    return (
+                      <div key={metric} className="hero-bar-group">
+                        <div className="hero-bar-shell">
+                          <span
+                            className={`hero-bar ${headerBarClassByMetric(metric)}`}
+                            style={{ height: `${heightPercent}%` }}
+                          />
+                        </div>
+                        <label>{optionLabel}</label>
+                        <strong>{metricData.formatted}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="hero-summary">
+                  {headerGraphicConfig.summaries.map((metric) => {
+                    const metricData = metricValues[metric];
+                    const optionLabel =
+                      headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
 
-                return (
-                  <div key={metric}>
-                    <span>{optionLabel}</span>
-                    <strong>{metricData.formatted}</strong>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+                    return (
+                      <div key={metric}>
+                        <span>{optionLabel}</span>
+                        <strong>{metricData.formatted}</strong>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          ) : null}
         </div>
         <div className="hero-card">
           <div className="hero-stat">
