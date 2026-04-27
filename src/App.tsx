@@ -1678,7 +1678,7 @@ function App() {
                     <span>Duration</span>
                     <span>Language</span>
                     <span>Keywords</span>
-                    <span>Created</span>
+                    <span>Datetime</span>
                   </div>
 
                   {calls.map((call) => {
