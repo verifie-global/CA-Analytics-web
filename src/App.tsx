@@ -62,7 +62,7 @@ const defaultSettings: AppSettings = {
 
 const defaultFilters: CallFilters = {
   page: 1,
-  pageSize: 15,
+  pageSize: 10,
   search: "",
   conversationId: "",
   status: "",
@@ -86,6 +86,14 @@ const formatTimestamp = (milliseconds?: number | null) => {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
+
+const formatDurationSeconds = (seconds?: number | null) => {
+  if (seconds == null || Number.isNaN(seconds)) return "-";
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
 };
 
 const formatRecordingDuration = (seconds: number) => {
@@ -1644,7 +1652,7 @@ function App() {
               max="100"
               value={filters.pageSize}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, pageSize: Number(event.target.value) || 15 }))
+                setFilters((current) => ({ ...current, pageSize: Number(event.target.value) || 10 }))
               }
               placeholder="Page size"
             />
@@ -1652,11 +1660,6 @@ function App() {
               {callsLoading ? "Loading..." : "Refresh"}
             </button>
           </form>
-
-          <div className="status-strip">
-            <span>{statusMessage}</span>
-            {errorMessage ? <strong>{errorMessage}</strong> : null}
-          </div>
 
           <div className="workspace">
             <div className="list-column">
@@ -1672,6 +1675,7 @@ function App() {
                     <span>Status</span>
                     <span>Sentiment</span>
                     <span>Score</span>
+                    <span>Duration</span>
                     <span>Language</span>
                     <span>Keywords</span>
                     <span>Created</span>
@@ -1710,6 +1714,7 @@ function App() {
                           {call.sentiment ?? "unknown"}
                         </span>
                         <span>{call.satisfactionScore ?? "-"}</span>
+                        <span>{formatDurationSeconds(call.durationSeconds)}</span>
                         <span>{call.language ?? "No language"}</span>
                         <span className="keyword-list-badges">
                           {keywordRules.length === 0 ? (
