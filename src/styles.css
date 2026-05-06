@@ -1929,6 +1929,64 @@ textarea:focus {
   color: #ffb097;
 }
 
+:root[data-theme="light"] .stat-grid article,
+:root[data-theme="light"] .scroll-panel,
+:root[data-theme="light"] .segment-card,
+:root[data-theme="light"] .audio-placeholder,
+:root[data-theme="light"] .keyword-card,
+:root[data-theme="light"] .routing-card,
+:root[data-theme="light"] .concern-card,
+:root[data-theme="light"] .coaching-card {
+  background: rgba(247, 250, 255, 0.94);
+  border-color: rgba(28, 49, 86, 0.08);
+  box-shadow: 0 10px 22px rgba(28, 49, 86, 0.06);
+}
+
+:root[data-theme="light"] .stat-grid article strong,
+:root[data-theme="light"] .segment-card p,
+:root[data-theme="light"] .routing-card strong,
+:root[data-theme="light"] .entity-group strong,
+:root[data-theme="light"] .detail-header h3 {
+  color: var(--theme-text);
+}
+
+:root[data-theme="light"] .redacted-panel {
+  background: rgba(194, 75, 39, 0.06);
+  border-color: rgba(194, 75, 39, 0.16);
+  color: #935240;
+}
+
+:root[data-theme="light"] .redacted-panel .redacted-token {
+  color: #9c7200;
+}
+
+:root[data-theme="light"] .main-topic-badge {
+  background: linear-gradient(135deg, rgba(47, 111, 224, 0.12), rgba(87, 147, 236, 0.1));
+  border-color: rgba(47, 111, 224, 0.18);
+  color: var(--theme-text);
+  box-shadow: none;
+}
+
+:root[data-theme="light"] .main-topic-label,
+:root[data-theme="light"] .token-chip,
+:root[data-theme="light"] .tag,
+:root[data-theme="light"] .detail-header-tags .tag {
+  background: rgba(23, 34, 53, 0.05);
+  border-color: rgba(28, 49, 86, 0.08);
+  color: var(--theme-text);
+}
+
+:root[data-theme="light"] .main-topic-label {
+  color: var(--theme-primary);
+}
+
+:root[data-theme="light"] .tag-progress,
+:root[data-theme="light"] .tag-warning {
+  background: rgba(197, 139, 0, 0.12);
+  color: #9c7200;
+  border-color: rgba(197, 139, 0, 0.2);
+}
+
 @media (max-width: 1100px) {
   .hero,
   .hero-graphic,
