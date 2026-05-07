@@ -37,36 +37,42 @@ flowchart TD
     U --> V[Refresh grid]
     V --> H
 
-    G --> W[Click Record call]
+    G --> W[Click Record conversation]
     W --> X[Grant microphone access]
-    X --> Y[Record audio]
-    Y --> Z[Stop recording]
-    Z --> AA[Preview recording]
-    AA --> AB[Upload recording]
-    AB --> V
+    X --> Y[Start live conversation session]
+    Y --> Z[Real-time ASR transcribes conversation]
+    Z --> AA[Real-time diarization separates speakers]
+    AA --> AB[Detect when agent is talking]
+    AB --> AC[Show live hints from knowledge base to the agent]
+    AC --> AD{Conversation finished?}
+    AD -- No --> Z
+    AD -- Yes --> AE[Stop conversation]
+    AE --> AF[Preview recording]
+    AF --> AG[Upload conversation]
+    AG --> V
 
-    G --> AC[Open Keyword rules]
-    AC --> AD[Add, edit, color, enable, delete rules]
-    AD --> AE[Save in browser local storage]
-    AE --> AF[Keywords applied to transcripts and call badges]
-    AF --> H
+    G --> AH[Open Keyword rules]
+    AH --> AI[Add, edit, color, enable, delete rules]
+    AI --> AJ[Save in browser local storage]
+    AJ --> AK[Keywords applied to transcripts and call badges]
+    AK --> H
 
-    G --> AG[Open QA settings]
-    AG --> AH[Load company QA profile]
-    AH --> AI[Edit profile fields and weighted questions]
-    AI --> AJ[Save QA profile]
-    AJ --> AG
+    G --> AL[Open QA settings]
+    AL --> AM[Load company QA profile]
+    AM --> AN[Edit profile fields and weighted questions]
+    AN --> AO[Save QA profile]
+    AO --> AL
 
-    G --> AK[Open QA export modal]
-    AK --> AL[Select completed conversations]
-    AL --> AM[Export QA monitoring questionnaire files]
-    AM --> H
+    G --> AP[Open QA export modal]
+    AP --> AQ[Select completed conversations]
+    AQ --> AR[Export QA monitoring questionnaire files]
+    AR --> H
 
-    G --> AN[Toggle dark or light theme]
-    AN --> G
+    G --> AS[Toggle dark or light theme]
+    AS --> G
 
-    G --> AO[Log out]
-    AO --> C
+    G --> AT[Log out]
+    AT --> C
 ```
 
 ## Main User Paths
@@ -81,7 +87,7 @@ flowchart TD
    User uploads local audio files or a presigned URL, then watches the grid refresh with new calls.
 
 4. Recording flow
-   User records audio in-browser, previews it, and uploads it into the same processing pipeline.
+   User starts `Record conversation`, sees live ASR and diarization during the call, gets agent-focused knowledge-base hints in real time, then stops, previews, and uploads the conversation.
 
 5. QA management
    User edits the company QA profile, reviews QA results on completed calls, and can recalculate QA.
