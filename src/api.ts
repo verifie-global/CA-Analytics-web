@@ -305,6 +305,8 @@ const buildCallsFilterQuery = (filters: CallFilters, includePagination = true) =
 
   if (filters.search) query.set("Search", filters.search);
   if (filters.conversationId) query.set("ConversationId", filters.conversationId);
+  if (filters.createdFromUtc) query.set("createdFromUtc", filters.createdFromUtc);
+  if (filters.createdToUtc) query.set("createdToUtc", filters.createdToUtc);
   if (filters.status) query.set("Status", filters.status);
   if (filters.sentiment) query.set("Sentiment", filters.sentiment);
   if (filters.hasError) query.set("HasError", filters.hasError);

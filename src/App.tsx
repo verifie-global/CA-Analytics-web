@@ -76,6 +76,8 @@ const defaultFilters: CallFilters = {
   pageSize: 10,
   search: "",
   conversationId: "",
+  createdFromUtc: "",
+  createdToUtc: "",
   status: "",
   sentiment: "",
   hasError: "",
@@ -1897,6 +1899,24 @@ function App() {
                 setFilters((current) => ({ ...current, conversationId: event.target.value }))
               }
               placeholder="Conversation ID"
+            />
+            <input
+              type="date"
+              value={filters.createdFromUtc}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, createdFromUtc: event.target.value }))
+              }
+              aria-label="Created from date"
+              title="Created from"
+            />
+            <input
+              type="date"
+              value={filters.createdToUtc}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, createdToUtc: event.target.value }))
+              }
+              aria-label="Created to date"
+              title="Created to"
             />
             <select
               value={filters.status}

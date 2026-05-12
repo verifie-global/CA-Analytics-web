@@ -5,6 +5,8 @@ export type CallFilters = {
   pageSize: number;
   search: string;
   conversationId: string;
+  createdFromUtc: string;
+  createdToUtc: string;
   status: string;
   sentiment: string;
   hasError: string;
