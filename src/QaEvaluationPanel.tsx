@@ -20,8 +20,27 @@ export function QaEvaluationPanel({
 }: QaEvaluationPanelProps) {
   const evaluation = qa?.evaluation;
 
-  if (!qa && !recalculateError) {
+  if (!qa && !isCompleted && !recalculateError) {
     return null;
+  }
+
+  if (!qa && isCompleted) {
+    return (
+      <section className="qa-panel qa-panel-compact">
+        <div className="detail-header">
+          <div>
+            <h4>QA evaluation</h4>
+            <p className="qa-panel-copy">
+              QA is not available for this completed call yet. You can trigger recalculation any time.
+            </p>
+          </div>
+          <button type="button" className="secondary-button" onClick={onRecalculate} disabled={isRecalculating}>
+            {isRecalculating ? "Recalculating..." : "Recalculate QA Score"}
+          </button>
+        </div>
+        {recalculateError ? <p className="error-text">{recalculateError}</p> : null}
+      </section>
+    );
   }
 
   return (
