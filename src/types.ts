@@ -9,7 +9,6 @@ export type CallFilters = {
   createdToUtc: string;
   status: string;
   sentiment: string;
-  hasError: string;
   minQaScore: string;
   maxQaScore: string;
 };

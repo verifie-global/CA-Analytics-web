@@ -309,7 +309,6 @@ const buildCallsFilterQuery = (filters: CallFilters, includePagination = true) =
   if (filters.createdToUtc) query.set("createdToUtc", filters.createdToUtc);
   if (filters.status) query.set("Status", filters.status);
   if (filters.sentiment) query.set("Sentiment", filters.sentiment);
-  if (filters.hasError) query.set("HasError", filters.hasError);
   if (filters.minQaScore) query.set("minQaScore", filters.minQaScore);
   if (filters.maxQaScore) query.set("maxQaScore", filters.maxQaScore);
 

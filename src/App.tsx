@@ -80,7 +80,6 @@ const defaultFilters: CallFilters = {
   createdToUtc: "",
   status: "",
   sentiment: "",
-  hasError: "",
   minQaScore: "",
   maxQaScore: "",
 };
@@ -1939,14 +1938,6 @@ function App() {
               <option value="neutral">Neutral</option>
               <option value="negative">Negative</option>
             </select>
-            <select
-              value={filters.hasError}
-              onChange={(event) => setFilters((current) => ({ ...current, hasError: event.target.value }))}
-            >
-              <option value="">Errors or not</option>
-              <option value="true">Only errors</option>
-              <option value="false">No errors</option>
-            </select>
             <input
               type="number"
               min="0"
@@ -1962,25 +1953,6 @@ function App() {
               value={filters.maxQaScore}
               onChange={(event) => setFilters((current) => ({ ...current, maxQaScore: event.target.value }))}
               placeholder="Max QA score"
-            />
-            <input
-              type="number"
-              min="1"
-              value={filters.page}
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, page: Number(event.target.value) || 1 }))
-              }
-              placeholder="Page"
-            />
-            <input
-              type="number"
-              min="1"
-              max="100"
-              value={filters.pageSize}
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, pageSize: Number(event.target.value) || 10 }))
-              }
-              placeholder="Page size"
             />
             <button type="submit" disabled={!canQueryApi || callsLoading}>
               {callsLoading ? "Loading..." : "Refresh"}
