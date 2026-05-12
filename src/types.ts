@@ -56,9 +56,19 @@ export type SpeakerSegment = {
   text: string;
 };
 
+export type PartyInfo = {
+  name?: string | null;
+  externalId?: string | null;
+  phone?: string | null;
+};
+
 export type CallDetail = {
   conversationId: string;
   status: string;
+  companyId?: number | null;
+  agentInfo?: PartyInfo | null;
+  customerInfo?: PartyInfo | null;
+  isInbound?: boolean | null;
   transcript?: string | null;
   redactedTranscript?: string | null;
   summary?: string | null;

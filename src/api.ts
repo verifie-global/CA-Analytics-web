@@ -4,6 +4,7 @@ import type {
   CallDetail,
   CallFilters,
   CallSummary,
+  PartyInfo,
   QaEvaluation,
   QaProfile,
   QaProfileDefinition,
@@ -123,6 +124,19 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
     })
     .filter((segment) => segment.text);
 
+const normalizePartyInfo = (value: unknown): PartyInfo | null => {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) {
+    return null;
+  }
+
+  return {
+    name: readString(record, "name") ?? null,
+    externalId: readString(record, "externalId") ?? null,
+    phone: readString(record, "phone") ?? null,
+  };
+};
+
 const normalizeCallSummary = (item: unknown): CallSummary => {
   const record = asRecord(item);
   const rawAnalysis = asRecord(record.analysis);
@@ -165,6 +179,10 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
   return {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
     status: readString(record, "status") ?? "Unknown",
+    companyId: readNumber(record, "companyId") ?? null,
+    agentInfo: normalizePartyInfo(record.agentInfo),
+    customerInfo: normalizePartyInfo(record.customerInfo),
+    isInbound: readBoolean(record, "isInbound") ?? null,
     transcript:
       readString(record, "transcript") ??
       readString(rawAnalysis, "summary", "rawTranscript") ??
@@ -277,11 +295,13 @@ const listFromResponse = (payload: unknown) => {
   return asArray(candidate);
 };
 
-export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
-  const query = new URLSearchParams({
-    Page: String(filters.page),
-    PageSize: String(filters.pageSize),
-  });
+const buildCallsFilterQuery = (filters: CallFilters, includePagination = true) => {
+  const query = new URLSearchParams();
+
+  if (includePagination) {
+    query.set("Page", String(filters.page));
+    query.set("PageSize", String(filters.pageSize));
+  }
 
   if (filters.search) query.set("Search", filters.search);
   if (filters.conversationId) query.set("ConversationId", filters.conversationId);
@@ -291,6 +311,12 @@ export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
   if (filters.minQaScore) query.set("minQaScore", filters.minQaScore);
   if (filters.maxQaScore) query.set("maxQaScore", filters.maxQaScore);
 
+  return query;
+};
+
+export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
+  const query = buildCallsFilterQuery(filters);
+
   const response = await request<unknown>(
     settings,
     `/api/companies/${settings.companyId}/calls`,
@@ -299,6 +325,37 @@ export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
   );
 
   return listFromResponse(response).map(normalizeCallSummary);
+}
+
+export async function exportCallsCsv(settings: AppSettings, filters: CallFilters) {
+  const response = await fetch(
+    buildUrl(
+      settings,
+      `/api/companies/${settings.companyId}/calls/export`,
+      buildCallsFilterQuery(filters, false),
+    ),
+    {
+      headers: authHeaders(settings),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw createRequestError(text || `Calls export failed with status ${response.status}`, response.status);
+  }
+
+  const contentDisposition = response.headers.get("content-disposition") ?? "";
+  const fileNameMatch =
+    contentDisposition.match(/filename\*=UTF-8''([^;]+)/i) ??
+    contentDisposition.match(/filename="?([^"]+)"?/i);
+  const fileName = fileNameMatch?.[1]
+    ? decodeURIComponent(fileNameMatch[1]).trim()
+    : `calls-export-${settings.companyId}.csv`;
+
+  return {
+    blob: await response.blob(),
+    fileName,
+  };
 }
 
 export async function fetchCallDetail(settings: AppSettings, conversationId: string) {

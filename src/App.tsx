@@ -2,6 +2,7 @@ import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import {
   authorizeSettings,
+  exportCallsCsv,
   exportQaQuestionnaire,
   fetchAudioBlob,
   fetchCallDetail,
@@ -136,6 +137,29 @@ const isInProgressStatus = (value?: string | null) => {
 };
 
 const isCompletedStatus = (value?: string | null) => value?.toLowerCase() === "completed";
+
+const formatCallDirection = (isInbound?: boolean | null) => {
+  if (isInbound == null) return "Unknown";
+  return isInbound ? "Inbound" : "Outbound";
+};
+
+const getPartySummary = (party?: { name?: string | null; externalId?: string | null; phone?: string | null } | null) => {
+  if (!party) {
+    return {
+      primary: "N/A",
+      meta: [] as string[],
+    };
+  }
+
+  const primary = party.name?.trim() || party.externalId?.trim() || party.phone?.trim() || "N/A";
+  const meta = [
+    party.name?.trim() ? `Name: ${party.name.trim()}` : "",
+    party.externalId?.trim() ? `External ID: ${party.externalId.trim()}` : "",
+    party.phone?.trim() ? `Phone: ${party.phone.trim()}` : "",
+  ].filter(Boolean);
+
+  return { primary, meta };
+};
 
 const renderRedactedTranscript = (value: string) =>
   value.split(/(\[REDACTED\])/g).map((part, index) =>
@@ -367,6 +391,7 @@ function App() {
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [qaExportSubmitting, setQaExportSubmitting] = useState(false);
+  const [csvExportSubmitting, setCsvExportSubmitting] = useState(false);
   const [recordingState, setRecordingState] = useState<"idle" | "recording" | "recorded">("idle");
   const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(0);
   const [recordingErrorMessage, setRecordingErrorMessage] = useState("");
@@ -1197,6 +1222,7 @@ function App() {
     setUploadErrorMessage("");
     setErrorMessage("");
     setQaExportSubmitting(false);
+    setCsvExportSubmitting(false);
     setQaProfile(null);
     setQaProfileLoading(false);
     setQaProfileSaving(false);
@@ -1242,6 +1268,7 @@ function App() {
     setIsQaExportModalOpen(false);
     setUploadSubmitting(false);
     setQaExportSubmitting(false);
+    setCsvExportSubmitting(false);
     setQaProfile(null);
     setQaProfileLoading(false);
     setQaProfileSaving(false);
@@ -1344,6 +1371,27 @@ function App() {
       );
     } finally {
       setQaExportSubmitting(false);
+    }
+  };
+
+  const handleCallsCsvExport = async () => {
+    setCsvExportSubmitting(true);
+    setErrorMessage("");
+
+    try {
+      setStatusMessage("Exporting calls CSV with current filters...");
+      const result = await exportCallsCsv(settings, filters);
+      downloadBlobFile(result.blob, result.fileName);
+      setStatusMessage(`Downloaded ${result.fileName}.`);
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
+      setErrorMessage(error instanceof Error ? error.message : "Unable to export calls CSV.");
+    } finally {
+      setCsvExportSubmitting(false);
     }
   };
 
@@ -1517,6 +1565,9 @@ function App() {
     typeof detail?.analysis?.department === "string" ? detail.analysis.department : null;
   const taskUrgency =
     typeof detail?.analysis?.taskUrgency === "string" ? detail.analysis.taskUrgency : null;
+  const agentSummary = getPartySummary(detail?.agentInfo);
+  const customerSummary = getPartySummary(detail?.customerInfo);
+  const callDirection = formatCallDirection(detail?.isInbound);
 
   const addHeaderBar = () => {
     setHeaderGraphicConfig((current) => ({
@@ -1808,6 +1859,14 @@ function App() {
             </div>
 
             <div className="explorer-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void handleCallsCsvExport()}
+                disabled={csvExportSubmitting || callsLoading}
+              >
+                {csvExportSubmitting ? "Exporting CSV..." : "Export calls CSV"}
+              </button>
               <button
                 type="button"
                 className="secondary-button"
@@ -2271,6 +2330,34 @@ function App() {
                         ) : (
                           <p>No topics available.</p>
                         )}
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4>Conversation info</h4>
+                      <div className="scroll-panel routing-panel">
+                        <article className="routing-card">
+                          <label>Direction</label>
+                          <strong>{callDirection}</strong>
+                        </article>
+                        <article className="routing-card">
+                          <label>Company ID</label>
+                          <strong>{detail.companyId ?? "N/A"}</strong>
+                        </article>
+                        <article className="routing-card">
+                          <label>Agent</label>
+                          <strong>{agentSummary.primary}</strong>
+                          {agentSummary.meta.map((item) => (
+                            <span key={item} className="routing-meta">{item}</span>
+                          ))}
+                        </article>
+                        <article className="routing-card">
+                          <label>Customer</label>
+                          <strong>{customerSummary.primary}</strong>
+                          {customerSummary.meta.map((item) => (
+                            <span key={item} className="routing-meta">{item}</span>
+                          ))}
+                        </article>
                       </div>
                     </section>
 

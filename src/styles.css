@@ -1408,6 +1408,13 @@ textarea:focus {
   letter-spacing: 0.08em;
 }
 
+.routing-meta {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--theme-text-muted);
+  font-size: 0.88rem;
+}
+
 .urgency-badge {
   display: inline-flex;
   align-items: center;
