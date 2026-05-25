@@ -1176,6 +1176,18 @@ textarea:focus {
   color: var(--theme-text-muted);
 }
 
+.qa-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.qa-collapse-button {
+  min-width: 86px;
+}
+
 .qa-panel-body {
   display: grid;
   gap: 1rem;
