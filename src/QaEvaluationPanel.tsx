@@ -20,7 +20,7 @@ export function QaEvaluationPanel({
   generatedAtLabel,
 }: QaEvaluationPanelProps) {
   const evaluation = qa?.evaluation;
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   if (!qa && !isCompleted && !recalculateError) {
     return null;
