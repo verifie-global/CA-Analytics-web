@@ -15,7 +15,7 @@ import {
 import { QaEvaluationPanel } from "./QaEvaluationPanel";
 import { QaProfilePage } from "./QaProfilePage";
 import { QaScoreBadge } from "./QaScoreBadge";
-import type { AppSettings, CallDetail, CallFilters, CallSummary, QaProfile } from "./types";
+import type { AppSettings, CallDetail, CallFilters, CallSummary, QaProfile, SegmentEmotion } from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
@@ -122,6 +122,31 @@ const formatRecordingDuration = (seconds: number) => {
 const classForSentiment = (value?: string) => {
   if (!value) return "tag";
   return `tag sentiment-${value.toLowerCase()}`;
+};
+
+const formatEmotionLabel = (label: string) => {
+  const readable = label.trim().replace(/[-_]+/g, " ");
+  return readable
+    ? readable.replace(/\b\w/g, (character) => character.toUpperCase())
+    : "Unknown";
+};
+
+const formatPercentage = (score: number) =>
+  `${Math.round(Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0)) * 100)}%`;
+
+const classForEmotion = (label: string) => {
+  switch (label.trim().toLowerCase()) {
+    case "positive":
+      return "emotion-positive";
+    case "angry":
+    case "frustrated":
+    case "stress":
+      return "emotion-alert";
+    case "sad":
+      return "emotion-sad";
+    default:
+      return "emotion-neutral";
+  }
 };
 
 const getFriendlinessLabel = (value?: number | null) => {
@@ -272,6 +297,33 @@ const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
       <span className="friendliness-value">{clampedValue}/10</span>
       <span className={`friendliness-label friendliness-${label.toLowerCase()}`}>{label}</span>
     </div>
+  );
+};
+
+const EmotionBadge = ({ emotion }: { emotion: SegmentEmotion }) => {
+  const scores = Object.entries(emotion.scores).sort(([, first], [, second]) => second - first);
+  const isUnknown = emotion.label.toLowerCase() === "unknown";
+  const badge = isUnknown
+    ? "Emotion unavailable"
+    : `${formatEmotionLabel(emotion.label)} ${formatPercentage(emotion.confidence)}`;
+  const badgeClassName = `emotion-badge ${classForEmotion(emotion.label)} ${isUnknown ? "emotion-unavailable" : ""}`;
+
+  if (scores.length === 0) {
+    return <span className={badgeClassName}>{badge}</span>;
+  }
+
+  return (
+    <details className="emotion-detail" onClick={(event) => event.stopPropagation()}>
+      <summary className={badgeClassName}>{badge}</summary>
+      <div className="emotion-scores" aria-label={`${formatEmotionLabel(emotion.label)} emotion scores`}>
+        {scores.map(([label, score]) => (
+          <div key={label}>
+            <span>{formatEmotionLabel(label)}</span>
+            <strong>{formatPercentage(score)}</strong>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 };
 
@@ -2265,9 +2317,12 @@ function App() {
                                       ? "Customer"
                                       : segment.speaker}
                                 </strong>
-                                <span>
-                                  {formatTimestamp(segment.startMs)} - {formatTimestamp(segment.endMs)}
-                                </span>
+                                <div className="segment-signals">
+                                  <EmotionBadge emotion={segment.emotion} />
+                                  <span>
+                                    {formatTimestamp(segment.startMs)} - {formatTimestamp(segment.endMs)}
+                                  </span>
+                                </div>
                               </div>
                               <p>{segment.text}</p>
                             </article>

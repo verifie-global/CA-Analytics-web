@@ -11,6 +11,7 @@ import type {
   QaQuestionDefinition,
   QaQuestionResult,
   QaResult,
+  SegmentEmotion,
   SpeakerSegment,
 } from "./types";
 
@@ -102,6 +103,36 @@ const readBoolean = (record: Record<string, unknown>, ...keys: string[]) => {
   return undefined;
 };
 
+const unknownEmotion: SegmentEmotion = {
+  label: "unknown",
+  confidence: 0,
+  scores: {},
+};
+
+const normalizeEmotion = (value: unknown): SegmentEmotion => {
+  const emotion = asRecord(value);
+  const label = readString(emotion, "label");
+  if (!label) {
+    return unknownEmotion;
+  }
+
+  const scores = Object.entries(asRecord(emotion.scores)).reduce<Record<string, number>>(
+    (result, [scoreLabel, score]) => {
+      if (typeof score === "number" && Number.isFinite(score)) {
+        result[scoreLabel] = score;
+      }
+      return result;
+    },
+    {},
+  );
+
+  return {
+    label,
+    confidence: readNumber(emotion, "confidence") ?? 0,
+    scores,
+  };
+};
+
 const toSegments = (value: unknown): SpeakerSegment[] =>
   asArray(value)
     .map((item) => asRecord(item))
@@ -120,6 +151,7 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
         startMs: readNumber(segment, "startMs", "start", "offsetMs"),
         endMs: readNumber(segment, "endMs", "end"),
         text: readString(segment, "text", "transcript") ?? "",
+        emotion: normalizeEmotion(segment.emotion),
       };
     })
     .filter((segment) => segment.text);

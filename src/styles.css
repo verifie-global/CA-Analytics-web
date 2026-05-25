@@ -1741,6 +1741,93 @@ textarea:focus {
   font-size: 0.85rem;
 }
 
+.segment-signals {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.segment-card .segment-meta {
+  align-items: flex-start;
+}
+
+.emotion-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.24rem 0.62rem;
+  border: 1px solid transparent;
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.emotion-detail {
+  display: grid;
+  justify-items: end;
+}
+
+.emotion-detail summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.emotion-detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.emotion-positive {
+  background: rgba(83, 163, 54, 0.16);
+  border-color: rgba(83, 163, 54, 0.32);
+  color: #98d47e;
+}
+
+.emotion-alert {
+  background: rgba(219, 55, 0, 0.14);
+  border-color: rgba(219, 55, 0, 0.3);
+  color: #ffb097;
+}
+
+.emotion-sad {
+  background: rgba(55, 121, 235, 0.16);
+  border-color: rgba(55, 121, 235, 0.3);
+  color: #9bbfff;
+}
+
+.emotion-neutral {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--theme-border);
+  color: var(--theme-text-muted);
+}
+
+.emotion-unavailable {
+  font-weight: 500;
+}
+
+.emotion-scores {
+  min-width: 168px;
+  margin-top: 0.4rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--theme-border);
+  border-radius: 12px;
+  background: var(--theme-surface);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
+}
+
+.emotion-scores div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--theme-text);
+  font-size: 0.78rem;
+}
+
+.emotion-scores div + div {
+  margin-top: 0.36rem;
+}
+
 .code-block {
   margin: 0;
   font-family: "Cascadia Code", "Consolas", monospace;

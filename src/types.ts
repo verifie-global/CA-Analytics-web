@@ -49,12 +49,19 @@ export type CallSummary = {
   raw: unknown;
 };
 
+export type SegmentEmotion = {
+  label: string;
+  confidence: number;
+  scores: Record<string, number>;
+};
+
 export type SpeakerSegment = {
   speaker: string;
   role?: "AGENT" | "CUSTOMER" | "UNKNOWN";
   startMs?: number | null;
   endMs?: number | null;
   text: string;
+  emotion: SegmentEmotion;
 };
 
 export type PartyInfo = {
