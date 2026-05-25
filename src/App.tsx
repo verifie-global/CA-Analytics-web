@@ -15,7 +15,15 @@ import {
 import { QaEvaluationPanel } from "./QaEvaluationPanel";
 import { QaProfilePage } from "./QaProfilePage";
 import { QaScoreBadge } from "./QaScoreBadge";
-import type { AppSettings, CallDetail, CallFilters, CallSummary, QaProfile, SegmentEmotion } from "./types";
+import type {
+  AppSettings,
+  CallDetail,
+  CallFilters,
+  CallSummary,
+  QaProfile,
+  SegmentEmotion,
+  SpeakerSegment,
+} from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
@@ -324,6 +332,144 @@ const EmotionBadge = ({ emotion }: { emotion: SegmentEmotion }) => {
         ))}
       </div>
     </details>
+  );
+};
+
+const EmotionalTimeline = ({
+  segments,
+  durationSeconds,
+  playbackTimeSeconds,
+  onSeek,
+}: {
+  segments: SpeakerSegment[];
+  durationSeconds?: number | null;
+  playbackTimeSeconds: number;
+  onSeek: (startMs?: number | null) => void;
+}) => {
+  const emotionalSegments = segments.filter(
+    (segment) => segment.emotion.label.toLowerCase() !== "unknown",
+  );
+  if (emotionalSegments.length === 0) {
+    return <p className="emotion-timeline-empty">No emotional signals available for this call.</p>;
+  }
+
+  const getTrackKey = (segment: SpeakerSegment) =>
+    segment.role && segment.role !== "UNKNOWN" ? segment.role : segment.speaker;
+  const getTrackLabel = (key: string) =>
+    key === "AGENT" ? "Agent" : key === "CUSTOMER" ? "Customer" : formatEmotionLabel(key);
+  const trackKeys = Array.from(new Set(emotionalSegments.map(getTrackKey))).sort((left, right) => {
+    const priority = (key: string) => (key === "AGENT" ? 0 : key === "CUSTOMER" ? 1 : 2);
+    return priority(left) - priority(right) || left.localeCompare(right);
+  });
+  const totalMs = Math.max(
+    (durationSeconds ?? 0) * 1000,
+    ...emotionalSegments.map((segment) => segment.endMs ?? segment.startMs ?? 0),
+    1000,
+  );
+  const labelWidth = 84;
+  const chartWidth = 760;
+  const trackHeight = 62;
+  const chartStart = labelWidth + 10;
+  const plotWidth = chartWidth - chartStart - 12;
+  const svgHeight = trackKeys.length * trackHeight + 34;
+  const toX = (milliseconds: number) => chartStart + (milliseconds / totalMs) * plotWidth;
+  const cursorX = toX(Math.min(totalMs, Math.max(0, playbackTimeSeconds * 1000)));
+  const tickCount = 4;
+
+  return (
+    <div className="emotion-timeline">
+      <svg
+        viewBox={`0 0 ${chartWidth} ${svgHeight}`}
+        role="img"
+        aria-label="Emotional signals timeline separated by speaker"
+      >
+        {trackKeys.map((key, trackIndex) => {
+          const baseline = 22 + trackIndex * trackHeight;
+          return (
+            <g key={key}>
+              <text className="emotion-track-label" x={0} y={baseline + 5}>
+                {getTrackLabel(key)}
+              </text>
+              <line
+                className="emotion-track-baseline"
+                x1={chartStart}
+                x2={chartWidth - 12}
+                y1={baseline}
+                y2={baseline}
+              />
+            </g>
+          );
+        })}
+        {Array.from({ length: tickCount + 1 }, (_, index) => {
+          const tickMs = (index / tickCount) * totalMs;
+          const x = toX(tickMs);
+          return (
+            <g key={`tick-${index}`}>
+              <line
+                className="emotion-timeline-grid"
+                x1={x}
+                x2={x}
+                y1={8}
+                y2={trackKeys.length * trackHeight}
+              />
+              <text className="emotion-timeline-tick" x={x} y={svgHeight - 6}>
+                {formatTimestamp(tickMs)}
+              </text>
+            </g>
+          );
+        })}
+        {emotionalSegments.map((segment, index) => {
+          const trackIndex = trackKeys.indexOf(getTrackKey(segment));
+          const baseline = 22 + trackIndex * trackHeight;
+          const startMs = segment.startMs ?? 0;
+          const endMs = Math.max(startMs + 100, segment.endMs ?? startMs + 100);
+          const startX = toX(startMs);
+          const endX = toX(Math.min(endMs, totalMs));
+          const amplitude = 4 + Math.max(0, Math.min(1, segment.emotion.confidence)) * 13;
+          const waveCount = Math.max(1, Math.min(4, (endMs - startMs) / 2500));
+          const points = Array.from({ length: 25 }, (_, pointIndex) => {
+            const progress = pointIndex / 24;
+            const x = startX + (endX - startX) * progress;
+            const envelope = Math.sin(Math.PI * progress);
+            const y =
+              baseline -
+              Math.sin(progress * waveCount * 2 * Math.PI) * amplitude * envelope;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+          }).join(" ");
+          const description = `${getTrackLabel(getTrackKey(segment))}: ${formatEmotionLabel(segment.emotion.label)} ${formatPercentage(segment.emotion.confidence)} (${formatTimestamp(segment.startMs)} - ${formatTimestamp(segment.endMs)})`;
+
+          return (
+            <polyline
+              key={`${getTrackKey(segment)}-${startMs}-${index}`}
+              className={`emotion-wave ${classForEmotion(segment.emotion.label)}`}
+              points={points}
+              role="button"
+              tabIndex={0}
+              aria-label={`${description}. Seek to segment.`}
+              onClick={() => onSeek(segment.startMs)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSeek(segment.startMs);
+                }
+              }}
+            >
+              <title>{description}</title>
+            </polyline>
+          );
+        })}
+        {playbackTimeSeconds > 0 ? (
+          <line
+            className="emotion-timeline-cursor"
+            x1={cursorX}
+            x2={cursorX}
+            y1={8}
+            y2={trackKeys.length * trackHeight}
+          />
+        ) : null}
+      </svg>
+      <p className="emotion-timeline-note">Wave height shows confidence. Hover a wave for details; click to seek.</p>
+    </div>
   );
 };
 
@@ -2293,6 +2439,18 @@ function App() {
                           <CopyIcon />
                         </button>
                         {summary ? summary : "No summary available yet."}
+                      </div>
+                    </section>
+
+                    <section className="emotion-timeline-section">
+                      <h4>Emotional Timeline</h4>
+                      <div className="scroll-panel emotion-timeline-panel">
+                        <EmotionalTimeline
+                          segments={detail.segments}
+                          durationSeconds={detail.durationSeconds}
+                          playbackTimeSeconds={playbackTimeSeconds}
+                          onSeek={handleSeekToSegment}
+                        />
                       </div>
                     </section>
 
