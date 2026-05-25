@@ -157,6 +157,71 @@ const classForEmotion = (label: string) => {
   }
 };
 
+const emotionColor = (label: string) => {
+  switch (label.trim().toLowerCase()) {
+    case "positive":
+      return "#8ccc6c";
+    case "angry":
+    case "frustrated":
+    case "stress":
+      return "#ff8060";
+    case "sad":
+      return "#82b1ff";
+    default:
+      return "#aab4c8";
+  }
+};
+
+const emotionValence = (label: string) => {
+  switch (label.trim().toLowerCase()) {
+    case "positive":
+      return 1;
+    case "angry":
+    case "frustrated":
+    case "stress":
+      return -1;
+    case "sad":
+      return -0.7;
+    default:
+      return 0;
+  }
+};
+
+const emotionSignal = (emotion: SegmentEmotion) => {
+  const scores = Object.entries(emotion.scores);
+  if (scores.length > 0) {
+    return Math.max(
+      -1,
+      Math.min(
+        1,
+        scores.reduce((signal, [label, score]) => signal + emotionValence(label) * score, 0),
+      ),
+    );
+  }
+
+  return emotionValence(emotion.label) * Math.max(0, Math.min(1, emotion.confidence));
+};
+
+const buildSmoothPath = (points: Array<{ x: number; y: number }>) => {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+  return points.slice(0, -1).reduce((path, point, index) => {
+    const previous = points[Math.max(0, index - 1)];
+    const next = points[index + 1];
+    const following = points[Math.min(points.length - 1, index + 2)];
+    const controlStart = {
+      x: point.x + (next.x - previous.x) / 6,
+      y: point.y + (next.y - previous.y) / 6,
+    };
+    const controlEnd = {
+      x: next.x - (following.x - point.x) / 6,
+      y: next.y - (following.y - point.y) / 6,
+    };
+    return `${path} C ${controlStart.x.toFixed(1)} ${controlStart.y.toFixed(1)}, ${controlEnd.x.toFixed(1)} ${controlEnd.y.toFixed(1)}, ${next.x.toFixed(1)} ${next.y.toFixed(1)}`;
+  }, `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`);
+};
+
 const getFriendlinessLabel = (value?: number | null) => {
   if (value == null) return "N/A";
   if (value <= 3) return "Low";
@@ -368,27 +433,67 @@ const EmotionalTimeline = ({
   );
   const labelWidth = 84;
   const chartWidth = 760;
-  const trackHeight = 62;
+  const trackHeight = 78;
   const chartStart = labelWidth + 10;
   const plotWidth = chartWidth - chartStart - 12;
-  const svgHeight = trackKeys.length * trackHeight + 34;
+  const svgHeight = trackKeys.length * trackHeight + 32;
   const toX = (milliseconds: number) => chartStart + (milliseconds / totalMs) * plotWidth;
   const cursorX = toX(Math.min(totalMs, Math.max(0, playbackTimeSeconds * 1000)));
   const tickCount = 4;
 
   return (
     <div className="emotion-timeline">
+      <div className="emotion-timeline-legend" aria-hidden="true">
+        <span className="emotion-legend-positive">Positive</span>
+        <span className="emotion-legend-neutral">Neutral</span>
+        <span className="emotion-legend-alert">Strained</span>
+      </div>
       <svg
         viewBox={`0 0 ${chartWidth} ${svgHeight}`}
         role="img"
         aria-label="Emotional signals timeline separated by speaker"
       >
         {trackKeys.map((key, trackIndex) => {
-          const baseline = 22 + trackIndex * trackHeight;
+          const baseline = 38 + trackIndex * trackHeight;
+          const speakerSegments = emotionalSegments
+            .filter((segment) => getTrackKey(segment) === key)
+            .sort((left, right) => (left.startMs ?? 0) - (right.startMs ?? 0));
+          const dataPoints = speakerSegments.map((segment) => ({
+            segment,
+            x: toX(((segment.startMs ?? 0) + (segment.endMs ?? segment.startMs ?? 0)) / 2),
+            y: baseline - emotionSignal(segment.emotion) * 25,
+          }));
+          const curvePoints = [
+            { x: chartStart, y: baseline },
+            ...dataPoints.map(({ x, y }) => ({ x, y })),
+            { x: chartWidth - 12, y: baseline },
+          ];
+          const gradientId = `emotion-flow-${key.replace(/[^a-z0-9_-]/gi, "-")}-${trackIndex}`;
           return (
             <g key={key}>
+              <defs>
+                <linearGradient id={gradientId} x1="0%" x2="100%">
+                  {dataPoints.length === 0 ? (
+                    <stop stopColor={emotionColor("neutral")} />
+                  ) : (
+                    dataPoints.map(({ segment, x }, index) => (
+                      <stop
+                        key={`${segment.emotion.label}-${index}`}
+                        offset={`${((x - chartStart) / plotWidth) * 100}%`}
+                        stopColor={emotionColor(segment.emotion.label)}
+                      />
+                    ))
+                  )}
+                </linearGradient>
+              </defs>
               <text className="emotion-track-label" x={0} y={baseline + 5}>
                 {getTrackLabel(key)}
+              </text>
+              <text className="emotion-track-positive" x={chartStart - 7} y={baseline - 20}>
+                +
+              </text>
+              <text className="emotion-track-negative" x={chartStart - 7} y={baseline + 26}>
+                -
               </text>
               <line
                 className="emotion-track-baseline"
@@ -397,6 +502,40 @@ const EmotionalTimeline = ({
                 y1={baseline}
                 y2={baseline}
               />
+              <path
+                className="emotion-flow-shadow"
+                d={buildSmoothPath(curvePoints)}
+              />
+              <path
+                className="emotion-flow-line"
+                d={buildSmoothPath(curvePoints)}
+                stroke={`url(#${gradientId})`}
+              />
+              {dataPoints.map(({ segment, x, y }, index) => {
+                const description = `${getTrackLabel(key)}: ${formatEmotionLabel(segment.emotion.label)} ${formatPercentage(segment.emotion.confidence)} (${formatTimestamp(segment.startMs)} - ${formatTimestamp(segment.endMs)})`;
+                return (
+                  <circle
+                    key={`${segment.startMs ?? 0}-${index}`}
+                    className="emotion-flow-point"
+                    cx={x}
+                    cy={y}
+                    r={5}
+                    fill={emotionColor(segment.emotion.label)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${description}. Seek to segment.`}
+                    onClick={() => onSeek(segment.startMs)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSeek(segment.startMs);
+                      }
+                    }}
+                  >
+                    <title>{description}</title>
+                  </circle>
+                );
+              })}
             </g>
           );
         })}
@@ -409,8 +548,8 @@ const EmotionalTimeline = ({
                 className="emotion-timeline-grid"
                 x1={x}
                 x2={x}
-                y1={8}
-                y2={trackKeys.length * trackHeight}
+                y1={12}
+                y2={trackKeys.length * trackHeight + 4}
               />
               <text className="emotion-timeline-tick" x={x} y={svgHeight - 6}>
                 {formatTimestamp(tickMs)}
@@ -418,57 +557,17 @@ const EmotionalTimeline = ({
             </g>
           );
         })}
-        {emotionalSegments.map((segment, index) => {
-          const trackIndex = trackKeys.indexOf(getTrackKey(segment));
-          const baseline = 22 + trackIndex * trackHeight;
-          const startMs = segment.startMs ?? 0;
-          const endMs = Math.max(startMs + 100, segment.endMs ?? startMs + 100);
-          const startX = toX(startMs);
-          const endX = toX(Math.min(endMs, totalMs));
-          const amplitude = 4 + Math.max(0, Math.min(1, segment.emotion.confidence)) * 13;
-          const waveCount = Math.max(1, Math.min(4, (endMs - startMs) / 2500));
-          const points = Array.from({ length: 25 }, (_, pointIndex) => {
-            const progress = pointIndex / 24;
-            const x = startX + (endX - startX) * progress;
-            const envelope = Math.sin(Math.PI * progress);
-            const y =
-              baseline -
-              Math.sin(progress * waveCount * 2 * Math.PI) * amplitude * envelope;
-            return `${x.toFixed(1)},${y.toFixed(1)}`;
-          }).join(" ");
-          const description = `${getTrackLabel(getTrackKey(segment))}: ${formatEmotionLabel(segment.emotion.label)} ${formatPercentage(segment.emotion.confidence)} (${formatTimestamp(segment.startMs)} - ${formatTimestamp(segment.endMs)})`;
-
-          return (
-            <polyline
-              key={`${getTrackKey(segment)}-${startMs}-${index}`}
-              className={`emotion-wave ${classForEmotion(segment.emotion.label)}`}
-              points={points}
-              role="button"
-              tabIndex={0}
-              aria-label={`${description}. Seek to segment.`}
-              onClick={() => onSeek(segment.startMs)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSeek(segment.startMs);
-                }
-              }}
-            >
-              <title>{description}</title>
-            </polyline>
-          );
-        })}
         {playbackTimeSeconds > 0 ? (
           <line
             className="emotion-timeline-cursor"
             x1={cursorX}
             x2={cursorX}
-            y1={8}
-            y2={trackKeys.length * trackHeight}
+            y1={12}
+            y2={trackKeys.length * trackHeight + 4}
           />
         ) : null}
       </svg>
-      <p className="emotion-timeline-note">Wave height shows confidence. Hover a wave for details; click to seek.</p>
+      <p className="emotion-timeline-note">Position shows positive or strained signals. Hover a point for details; click to seek.</p>
     </div>
   );
 };

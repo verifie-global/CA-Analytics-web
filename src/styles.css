@@ -1324,10 +1324,44 @@ textarea:focus {
 
 .emotion-timeline-panel {
   max-height: none;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .emotion-timeline {
   min-width: 560px;
+}
+
+.emotion-timeline-legend {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-bottom: 0.35rem;
+  color: var(--theme-text-muted);
+  font-size: 0.76rem;
+}
+
+.emotion-timeline-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.38rem;
+  border-radius: 999px;
+  vertical-align: -0.02rem;
+  background: currentColor;
+}
+
+.emotion-legend-positive {
+  color: #8ccc6c;
+}
+
+.emotion-legend-neutral {
+  color: #aab4c8;
+}
+
+.emotion-legend-alert {
+  color: #ff8060;
 }
 
 .emotion-timeline svg {
@@ -1344,12 +1378,19 @@ textarea:focus {
 }
 
 .emotion-track-baseline {
-  stroke: var(--theme-border);
-  stroke-width: 2;
+  stroke: rgba(204, 206, 209, 0.16);
+  stroke-width: 1.5;
+}
+
+.emotion-track-positive,
+.emotion-track-negative {
+  fill: var(--theme-text-muted);
+  font-size: 12px;
+  text-anchor: end;
 }
 
 .emotion-timeline-grid {
-  stroke: rgba(204, 206, 209, 0.1);
+  stroke: rgba(204, 206, 209, 0.08);
   stroke-width: 1;
   stroke-dasharray: 2 5;
 }
@@ -1360,18 +1401,35 @@ textarea:focus {
   text-anchor: middle;
 }
 
-.emotion-wave {
+.emotion-flow-shadow {
   fill: none;
-  stroke: currentColor;
-  stroke-width: 3;
+  stroke: rgba(10, 15, 26, 0.5);
+  stroke-width: 7;
   stroke-linecap: round;
   stroke-linejoin: round;
-  cursor: pointer;
-  transition: stroke-width 140ms ease;
 }
 
-.emotion-wave:hover {
-  stroke-width: 5;
+.emotion-flow-line {
+  fill: none;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.emotion-flow-point {
+  cursor: pointer;
+  stroke: var(--theme-surface);
+  stroke-width: 2.5;
+  transition:
+    r 140ms ease,
+    stroke-width 140ms ease;
+}
+
+.emotion-flow-point:hover,
+.emotion-flow-point:focus {
+  r: 7px;
+  stroke-width: 3px;
+  outline: none;
 }
 
 .emotion-timeline-cursor {
