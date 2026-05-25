@@ -446,7 +446,7 @@ const EmotionalTimeline = ({
       <div className="emotion-timeline-legend" aria-hidden="true">
         <span className="emotion-legend-positive">Positive</span>
         <span className="emotion-legend-neutral">Neutral</span>
-        <span className="emotion-legend-alert">Strained</span>
+        <span className="emotion-legend-alert">Negative</span>
       </div>
       <svg
         viewBox={`0 0 ${chartWidth} ${svgHeight}`}

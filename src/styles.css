@@ -1322,14 +1322,13 @@ textarea:focus {
   grid-column: 1 / -1;
 }
 
-.emotion-timeline-panel {
+.scroll-panel.emotion-timeline-panel {
   max-height: none;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
 }
 
 .emotion-timeline {
-  min-width: 560px;
+  min-width: 0;
 }
 
 .emotion-timeline-legend {
@@ -1352,15 +1351,15 @@ textarea:focus {
   background: currentColor;
 }
 
-.emotion-legend-positive {
+.emotion-timeline-legend .emotion-legend-positive {
   color: #8ccc6c;
 }
 
-.emotion-legend-neutral {
+.emotion-timeline-legend .emotion-legend-neutral {
   color: #aab4c8;
 }
 
-.emotion-legend-alert {
+.emotion-timeline-legend .emotion-legend-alert {
   color: #ff8060;
 }
 
