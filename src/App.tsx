@@ -142,6 +142,11 @@ const formatEmotionLabel = (label: string) => {
 const formatPercentage = (score: number) =>
   `${Math.round(Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0)) * 100)}%`;
 
+const hasDisplayEmotion = (
+  emotion?: SegmentEmotion | null,
+): emotion is SegmentEmotion & { label: string } =>
+  Boolean(emotion?.label?.trim() && emotion.label.trim().toLowerCase() !== "unknown");
+
 const classForEmotion = (label: string) => {
   switch (label.trim().toLowerCase()) {
     case "positive":
@@ -188,7 +193,7 @@ const emotionValence = (label: string) => {
 };
 
 const emotionSignal = (emotion: SegmentEmotion) => {
-  const scores = Object.entries(emotion.scores);
+  const scores = Object.entries(emotion.scores ?? {});
   if (scores.length > 0) {
     return Math.max(
       -1,
@@ -199,7 +204,10 @@ const emotionSignal = (emotion: SegmentEmotion) => {
     );
   }
 
-  return emotionValence(emotion.label) * Math.max(0, Math.min(1, emotion.confidence));
+  return (
+    emotionValence(emotion.label ?? "unknown") *
+    Math.max(0, Math.min(1, emotion.confidence ?? 0))
+  );
 };
 
 const buildSmoothPath = (points: Array<{ x: number; y: number }>) => {
@@ -373,15 +381,22 @@ const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
   );
 };
 
-const EmotionBadge = ({ emotion }: { emotion: SegmentEmotion }) => {
-  const scores = Object.entries(emotion.scores).sort(([, first], [, second]) => second - first);
-  const isUnknown = emotion.label.toLowerCase() === "unknown";
-  const badge = isUnknown
-    ? "Emotion unavailable"
-    : `${formatEmotionLabel(emotion.label)} ${formatPercentage(emotion.confidence)}`;
-  const badgeClassName = `emotion-badge ${classForEmotion(emotion.label)} ${isUnknown ? "emotion-unavailable" : ""}`;
+const EmotionBadge = ({ emotion }: { emotion?: SegmentEmotion | null }) => {
+  if (!hasDisplayEmotion(emotion)) {
+    return null;
+  }
 
-  if (scores.length === 0) {
+  const scores = Object.entries(emotion.scores ?? {}).sort(([, first], [, second]) => second - first);
+  const confidence =
+    typeof emotion.confidence === "number" ? ` ${formatPercentage(emotion.confidence)}` : "";
+  const badge = `${formatEmotionLabel(emotion.label)}${confidence}`;
+  const badgeClassName = `emotion-badge ${classForEmotion(emotion.label)}`;
+  const hasDetails =
+    scores.length > 0 ||
+    typeof emotion.confidence === "number" ||
+    Boolean(emotion.rawLabel || emotion.model);
+
+  if (!hasDetails) {
     return <span className={badgeClassName}>{badge}</span>;
   }
 
@@ -389,6 +404,25 @@ const EmotionBadge = ({ emotion }: { emotion: SegmentEmotion }) => {
     <details className="emotion-detail" onClick={(event) => event.stopPropagation()}>
       <summary className={badgeClassName}>{badge}</summary>
       <div className="emotion-scores" aria-label={`${formatEmotionLabel(emotion.label)} emotion scores`}>
+        {emotion.rawLabel ? (
+          <div className="emotion-score-meta">
+            <span>Raw label</span>
+            <strong>{emotion.rawLabel}</strong>
+          </div>
+        ) : null}
+        {typeof emotion.confidence === "number" ? (
+          <div className="emotion-score-meta">
+            <span>Confidence</span>
+            <strong>{formatPercentage(emotion.confidence)}</strong>
+          </div>
+        ) : null}
+        {emotion.model ? (
+          <div className="emotion-score-meta">
+            <span>Model</span>
+            <strong>{emotion.model}</strong>
+          </div>
+        ) : null}
+        {scores.length > 0 ? <span className="emotion-scores-label">Scores</span> : null}
         {scores.map(([label, score]) => (
           <div key={label}>
             <span>{formatEmotionLabel(label)}</span>
@@ -412,7 +446,8 @@ const EmotionalTimeline = ({
   onSeek: (startMs?: number | null) => void;
 }) => {
   const emotionalSegments = segments.filter(
-    (segment) => segment.emotion.label.toLowerCase() !== "unknown",
+    (segment): segment is SpeakerSegment & { emotion: SegmentEmotion & { label: string } } =>
+      hasDisplayEmotion(segment.emotion),
   );
   if (emotionalSegments.length === 0) {
     return <p className="emotion-timeline-empty">No emotional signals available for this call.</p>;
@@ -512,7 +547,11 @@ const EmotionalTimeline = ({
                 stroke={`url(#${gradientId})`}
               />
               {dataPoints.map(({ segment, x, y }, index) => {
-                const description = `${getTrackLabel(key)}: ${formatEmotionLabel(segment.emotion.label)} ${formatPercentage(segment.emotion.confidence)} (${formatTimestamp(segment.startMs)} - ${formatTimestamp(segment.endMs)})`;
+                const confidence =
+                  typeof segment.emotion.confidence === "number"
+                    ? ` ${formatPercentage(segment.emotion.confidence)}`
+                    : "";
+                const description = `${getTrackLabel(key)}: ${formatEmotionLabel(segment.emotion.label)}${confidence} (${formatTimestamp(segment.startMs)} - ${formatTimestamp(segment.endMs)})`;
                 return (
                   <circle
                     key={`${segment.startMs ?? 0}-${index}`}

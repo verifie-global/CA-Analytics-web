@@ -1948,7 +1948,7 @@ textarea:focus {
 }
 
 .emotion-scores {
-  min-width: 168px;
+  min-width: 206px;
   margin-top: 0.4rem;
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--theme-border);
@@ -1967,6 +1967,27 @@ textarea:focus {
 
 .emotion-scores div + div {
   margin-top: 0.36rem;
+}
+
+.emotion-score-meta {
+  padding-bottom: 0.38rem;
+  margin-bottom: 0.38rem;
+  border-bottom: 1px solid var(--theme-border);
+}
+
+.emotion-score-meta strong {
+  max-width: 210px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.emotion-scores-label {
+  display: block;
+  margin: 0.2rem 0 0.4rem;
+  color: var(--theme-text-muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .code-block {

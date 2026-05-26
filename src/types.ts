@@ -50,9 +50,11 @@ export type CallSummary = {
 };
 
 export type SegmentEmotion = {
-  label: string;
-  confidence: number;
-  scores: Record<string, number>;
+  label?: string | null;
+  rawLabel?: string | null;
+  confidence?: number | null;
+  scores?: Record<string, number> | null;
+  model?: string | null;
 };
 
 export type SpeakerSegment = {
@@ -61,7 +63,7 @@ export type SpeakerSegment = {
   startMs?: number | null;
   endMs?: number | null;
   text: string;
-  emotion: SegmentEmotion;
+  emotion?: SegmentEmotion | null;
 };
 
 export type PartyInfo = {

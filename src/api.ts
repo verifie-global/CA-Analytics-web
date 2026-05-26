@@ -103,17 +103,10 @@ const readBoolean = (record: Record<string, unknown>, ...keys: string[]) => {
   return undefined;
 };
 
-const unknownEmotion: SegmentEmotion = {
-  label: "unknown",
-  confidence: 0,
-  scores: {},
-};
-
-const normalizeEmotion = (value: unknown): SegmentEmotion => {
+const normalizeEmotion = (value: unknown): SegmentEmotion | null => {
   const emotion = asRecord(value);
-  const label = readString(emotion, "label");
-  if (!label) {
-    return unknownEmotion;
+  if (Object.keys(emotion).length === 0) {
+    return null;
   }
 
   const scores = Object.entries(asRecord(emotion.scores)).reduce<Record<string, number>>(
@@ -127,9 +120,11 @@ const normalizeEmotion = (value: unknown): SegmentEmotion => {
   );
 
   return {
-    label,
-    confidence: readNumber(emotion, "confidence") ?? 0,
+    label: readString(emotion, "label"),
+    rawLabel: readString(emotion, "rawLabel") ?? undefined,
+    confidence: readNumber(emotion, "confidence"),
     scores,
+    model: readString(emotion, "model") ?? null,
   };
 };
 
@@ -144,12 +139,20 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
         normalizedSpeaker === "AGENT" || normalizedSpeaker === "CUSTOMER"
           ? (normalizedSpeaker as "AGENT" | "CUSTOMER")
           : "UNKNOWN";
+      const startSeconds = readNumber(segment, "start");
+      const endSeconds = readNumber(segment, "end");
+      const startMs =
+        readNumber(segment, "startMs", "offsetMs") ??
+        (startSeconds == null ? undefined : startSeconds * 1000);
+      const endMs =
+        readNumber(segment, "endMs") ??
+        (endSeconds == null ? undefined : endSeconds * 1000);
 
       return {
         speaker,
         role,
-        startMs: readNumber(segment, "startMs", "start", "offsetMs"),
-        endMs: readNumber(segment, "endMs", "end"),
+        startMs,
+        endMs,
         text: readString(segment, "text", "transcript") ?? "",
         emotion: normalizeEmotion(segment.emotion),
       };
