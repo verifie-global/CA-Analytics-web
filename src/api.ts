@@ -4,6 +4,8 @@ import type {
   CallDetail,
   CallFilters,
   CallSummary,
+  DiarizationSegment,
+  EmotionInfo,
   PartyInfo,
   QaEvaluation,
   QaProfile,
@@ -11,7 +13,6 @@ import type {
   QaQuestionDefinition,
   QaQuestionResult,
   QaResult,
-  SegmentEmotion,
   SpeakerSegment,
 } from "./types";
 
@@ -103,13 +104,8 @@ const readBoolean = (record: Record<string, unknown>, ...keys: string[]) => {
   return undefined;
 };
 
-const normalizeEmotion = (value: unknown): SegmentEmotion | null => {
-  const emotion = asRecord(value);
-  if (Object.keys(emotion).length === 0) {
-    return null;
-  }
-
-  const scores = Object.entries(asRecord(emotion.scores)).reduce<Record<string, number>>(
+const normalizeScores = (value: unknown) =>
+  Object.entries(asRecord(value)).reduce<Record<string, number>>(
     (result, [scoreLabel, score]) => {
       if (typeof score === "number" && Number.isFinite(score)) {
         result[scoreLabel] = score;
@@ -119,12 +115,18 @@ const normalizeEmotion = (value: unknown): SegmentEmotion | null => {
     {},
   );
 
+export const getEmotion = (segment: DiarizationSegment): EmotionInfo => {
+  const emotion = segment.emotion ?? {};
+  const scores = emotion.scores ?? segment.emotionScores;
+  const rawScores = emotion.rawScores ?? segment.emotionRawScores;
+
   return {
-    label: readString(emotion, "label"),
-    rawLabel: readString(emotion, "rawLabel") ?? undefined,
-    confidence: readNumber(emotion, "confidence"),
-    scores,
-    model: readString(emotion, "model") ?? null,
+    label: emotion.label ?? segment.emotionLabel ?? "unknown",
+    rawLabel: emotion.rawLabel ?? segment.emotionRawLabel ?? "unknown",
+    confidence: emotion.confidence ?? segment.emotionConfidence ?? 0,
+    scores: normalizeScores(scores),
+    rawScores: normalizeScores(rawScores),
+    model: emotion.model ?? segment.emotionModel ?? "",
   };
 };
 
@@ -132,6 +134,7 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
   asArray(value)
     .map((item) => asRecord(item))
     .map((segment) => {
+      const diarizationSegment = segment as unknown as DiarizationSegment;
       const speaker =
         readString(segment, "speaker", "speakerName", "speakerLabel") ?? "Speaker";
       const normalizedSpeaker = speaker.toUpperCase();
@@ -154,7 +157,7 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
         startMs,
         endMs,
         text: readString(segment, "text", "transcript") ?? "",
-        emotion: normalizeEmotion(segment.emotion),
+        emotion: getEmotion(diarizationSegment),
       };
     })
     .filter((segment) => segment.text);

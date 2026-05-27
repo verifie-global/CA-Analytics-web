@@ -49,12 +49,32 @@ export type CallSummary = {
   raw: unknown;
 };
 
-export type SegmentEmotion = {
+export type EmotionInfo = {
   label?: string | null;
   rawLabel?: string | null;
   confidence?: number | null;
   scores?: Record<string, number> | null;
+  rawScores?: Record<string, number> | null;
   model?: string | null;
+};
+
+export type SegmentEmotion = EmotionInfo;
+
+export type DiarizationSegment = {
+  speaker: string;
+  speakerLabel?: string;
+  start?: number | null;
+  end?: number | null;
+  startMs?: number | null;
+  endMs?: number | null;
+  text?: string | null;
+  emotionLabel?: string | null;
+  emotionRawLabel?: string | null;
+  emotionConfidence?: number | null;
+  emotionScores?: Record<string, number> | null;
+  emotionRawScores?: Record<string, number> | null;
+  emotionModel?: string | null;
+  emotion?: EmotionInfo | null;
 };
 
 export type SpeakerSegment = {

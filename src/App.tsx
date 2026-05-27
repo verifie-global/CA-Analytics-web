@@ -149,6 +149,7 @@ const hasDisplayEmotion = (
 
 const classForEmotion = (label: string) => {
   switch (label.trim().toLowerCase()) {
+    case "happy":
     case "positive":
       return "emotion-positive";
     case "angry":
@@ -164,6 +165,7 @@ const classForEmotion = (label: string) => {
 
 const emotionColor = (label: string) => {
   switch (label.trim().toLowerCase()) {
+    case "happy":
     case "positive":
       return "#8ccc6c";
     case "angry":
@@ -179,6 +181,7 @@ const emotionColor = (label: string) => {
 
 const emotionValence = (label: string) => {
   switch (label.trim().toLowerCase()) {
+    case "happy":
     case "positive":
       return 1;
     case "angry":
@@ -404,6 +407,10 @@ const EmotionBadge = ({ emotion }: { emotion?: SegmentEmotion | null }) => {
     <details className="emotion-detail" onClick={(event) => event.stopPropagation()}>
       <summary className={badgeClassName}>{badge}</summary>
       <div className="emotion-scores" aria-label={`${formatEmotionLabel(emotion.label)} emotion scores`}>
+        <div className="emotion-score-meta">
+          <span>Emotion</span>
+          <strong>{formatEmotionLabel(emotion.label)}</strong>
+        </div>
         {emotion.rawLabel ? (
           <div className="emotion-score-meta">
             <span>Raw label</span>
