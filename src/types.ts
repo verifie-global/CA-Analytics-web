@@ -11,6 +11,41 @@ export type CallFilters = {
   sentiment: string;
   minQaScore: string;
   maxQaScore: string;
+  agentName: string;
+  agentNames: string[];
+  agentExternalId: string;
+  agentExternalIds: string[];
+  agentPhone: string;
+  agentPhones: string[];
+  customerName: string;
+  customerNames: string[];
+  customerExternalId: string;
+  customerExternalIds: string[];
+  customerPhone: string;
+  customerPhones: string[];
+};
+
+export type ScoreMetricSummary = {
+  cumulative?: number | null;
+  average?: number | null;
+  scoredCount?: number | null;
+  missingCount?: number | null;
+};
+
+export type CallScoreSummary = {
+  callCount?: number | null;
+  customerSatisfactionScore?: ScoreMetricSummary | null;
+  agentFriendlinessScore?: ScoreMetricSummary | null;
+  qaScore?: ScoreMetricSummary | null;
+};
+
+export type CallsListResult = {
+  companyId?: number | null;
+  page: number;
+  pageSize: number;
+  total: number;
+  scoreSummary?: CallScoreSummary | null;
+  items: CallSummary[];
 };
 
 export type AppSettings = {
@@ -34,6 +69,8 @@ export type AuthTokenResponse = {
 export type CallSummary = {
   conversationId: string;
   status: string;
+  agentInfo?: PartyInfo | null;
+  customerInfo?: PartyInfo | null;
   sentiment?: Sentiment;
   satisfactionScore?: number | null;
   friendlinessScore?: number | null;

@@ -19,8 +19,10 @@ import type {
   AppSettings,
   CallDetail,
   CallFilters,
+  CallScoreSummary,
   CallSummary,
   QaProfile,
+  ScoreMetricSummary,
   SegmentEmotion,
   SpeakerSegment,
 } from "./types";
@@ -69,6 +71,112 @@ type HeaderGraphicConfig = {
   summaries: HeaderMetric[];
 };
 
+type MultiSelectOption = {
+  value: string;
+  label: string;
+};
+
+type MultiSelectDropdownProps = {
+  label: string;
+  options: MultiSelectOption[];
+  selectedValues: string[];
+  onChange: (values: string[]) => void;
+};
+
+const uniqueTextValues = (values: Array<string | null | undefined>) => {
+  const uniqueValues = new Set<string>();
+
+  values.forEach((value) => {
+    const trimmed = value?.trim();
+    if (trimmed) {
+      uniqueValues.add(trimmed);
+    }
+  });
+
+  return [...uniqueValues].sort((first, second) =>
+    first.localeCompare(second, undefined, { sensitivity: "base" }),
+  );
+};
+
+const selectedFilterValues = (...values: Array<string | string[] | undefined>) =>
+  uniqueTextValues(
+    values.flatMap((value) => {
+      if (Array.isArray(value)) {
+        return value;
+      }
+
+      return value ? [value] : [];
+    }),
+  );
+
+const toMultiSelectOptions = (values: Array<string | null | undefined>): MultiSelectOption[] =>
+  uniqueTextValues(values).map((value) => ({
+    value,
+    label: value,
+  }));
+
+const formatSummaryNumber = (value?: number | null, maximumFractionDigits = 2) => {
+  if (value == null || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits,
+  }).format(value);
+};
+
+function MultiSelectDropdown({
+  label,
+  options,
+  selectedValues,
+  onChange,
+}: MultiSelectDropdownProps) {
+  const selectedSet = new Set(selectedValues);
+  const visibleOptions = [
+    ...options,
+    ...selectedValues
+      .filter((value) => !options.some((option) => option.value === value))
+      .map((value) => ({ value, label: value })),
+  ];
+  const summaryText =
+    selectedValues.length === 0
+      ? `All ${label.toLowerCase()}`
+      : selectedValues.length === 1
+        ? selectedValues[0]
+        : `${selectedValues.length} selected`;
+
+  return (
+    <details className="multi-select">
+      <summary aria-label={label}>
+        <span>{label}</span>
+        <strong>{summaryText}</strong>
+      </summary>
+      <div className="multi-select-panel">
+        {visibleOptions.length > 0 ? (
+          visibleOptions.map((option) => (
+            <label key={option.value} className="multi-select-option">
+              <input
+                type="checkbox"
+                checked={selectedSet.has(option.value)}
+                onChange={(event) =>
+                  onChange(
+                    event.target.checked
+                      ? [...selectedValues, option.value]
+                      : selectedValues.filter((value) => value !== option.value),
+                  )
+                }
+              />
+              <span>{option.label}</span>
+            </label>
+          ))
+        ) : (
+          <div className="multi-select-empty">No values loaded</div>
+        )}
+      </div>
+    </details>
+  );
+}
+
 const defaultSettings: AppSettings = {
   baseUrl: "https://ca.satisfai.cx",
   companyId: "",
@@ -90,6 +198,18 @@ const defaultFilters: CallFilters = {
   sentiment: "",
   minQaScore: "",
   maxQaScore: "",
+  agentName: "",
+  agentNames: [],
+  agentExternalId: "",
+  agentExternalIds: [],
+  agentPhone: "",
+  agentPhones: [],
+  customerName: "",
+  customerNames: [],
+  customerExternalId: "",
+  customerExternalIds: [],
+  customerPhone: "",
+  customerPhones: [],
 };
 
 const getRouteFromPath = (pathName: string): AppRoute =>
@@ -669,6 +789,8 @@ function App() {
   const [draftSettings, setDraftSettings] = useState<AppSettings>(settings);
   const [filters, setFilters] = useState<CallFilters>(defaultFilters);
   const [calls, setCalls] = useState<CallSummary[]>([]);
+  const [callsTotal, setCallsTotal] = useState<number | null>(null);
+  const [callScoreSummary, setCallScoreSummary] = useState<CallScoreSummary | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
   const [detailPortalTarget, setDetailPortalTarget] = useState<HTMLDivElement | null>(null);
@@ -1045,6 +1167,39 @@ function App() {
     [settings],
   );
 
+  const updateCallFilters = (patch: Partial<CallFilters>) => {
+    setFilters((current) => ({
+      ...current,
+      ...patch,
+      page: 1,
+    }));
+  };
+
+  const updateMultiFilter = (
+    pluralKey:
+      | "agentNames"
+      | "agentExternalIds"
+      | "agentPhones"
+      | "customerNames"
+      | "customerExternalIds"
+      | "customerPhones",
+    legacyKey:
+      | "agentName"
+      | "agentExternalId"
+      | "agentPhone"
+      | "customerName"
+      | "customerExternalId"
+      | "customerPhone",
+    values: string[],
+  ) => {
+    setFilters((current) => ({
+      ...current,
+      [pluralKey]: uniqueTextValues(values),
+      [legacyKey]: "",
+      page: 1,
+    }));
+  };
+
   const refreshCalls = async (
     activeSettings: AppSettings = settings,
     options?: { silent?: boolean; filtersOverride?: CallFilters },
@@ -1061,8 +1216,11 @@ function App() {
 
     try {
       const activeFilters = options?.filtersOverride ?? filters;
-      const nextCalls = await fetchCalls(activeSettings, activeFilters);
+      const result = await fetchCalls(activeSettings, activeFilters);
+      const nextCalls = result.items;
       setCalls(nextCalls);
+      setCallsTotal(result.total);
+      setCallScoreSummary(result.scoreSummary ?? null);
       setSelectedConversationIds((current) =>
         current.filter((conversationId) =>
           nextCalls.some(
@@ -1071,7 +1229,11 @@ function App() {
         ),
       );
       if (!options?.silent) {
-        setStatusMessage(`Loaded ${nextCalls.length} call${nextCalls.length === 1 ? "" : "s"}.`);
+        setStatusMessage(
+          result.total > nextCalls.length
+            ? `Loaded ${nextCalls.length} of ${result.total} calls.`
+            : `Loaded ${nextCalls.length} call${nextCalls.length === 1 ? "" : "s"}.`,
+        );
       }
 
       if (selectedId && !nextCalls.some((call) => call.conversationId === selectedId)) {
@@ -1552,6 +1714,8 @@ function App() {
     setSettings(defaultSettings);
     setDraftSettings(defaultSettings);
     setCalls([]);
+    setCallsTotal(null);
+    setCallScoreSummary(null);
     setSelectedId("");
     setSelectedConversationIds([]);
     setDetail(null);
@@ -1598,6 +1762,8 @@ function App() {
     setSettings(defaultSettings);
     setDraftSettings(defaultSettings);
     setCalls([]);
+    setCallsTotal(null);
+    setCallScoreSummary(null);
     setSelectedId("");
     setSelectedConversationIds([]);
     setDetail(null);
@@ -1795,6 +1961,65 @@ function App() {
   const allExportableSelected =
     exportableCalls.length > 0 &&
     exportableCalls.every((call) => selectedConversationIds.includes(call.conversationId));
+  const agentNameValues = selectedFilterValues(filters.agentNames, filters.agentName);
+  const agentExternalIdValues = selectedFilterValues(
+    filters.agentExternalIds,
+    filters.agentExternalId,
+  );
+  const agentPhoneValues = selectedFilterValues(filters.agentPhones, filters.agentPhone);
+  const customerNameValues = selectedFilterValues(filters.customerNames, filters.customerName);
+  const customerExternalIdValues = selectedFilterValues(
+    filters.customerExternalIds,
+    filters.customerExternalId,
+  );
+  const customerPhoneValues = selectedFilterValues(filters.customerPhones, filters.customerPhone);
+  const agentNameOptions = useMemo(
+    () => toMultiSelectOptions(calls.map((call) => call.agentInfo?.name)),
+    [calls],
+  );
+  const agentExternalIdOptions = useMemo(
+    () => toMultiSelectOptions(calls.map((call) => call.agentInfo?.externalId)),
+    [calls],
+  );
+  const agentPhoneOptions = useMemo(
+    () => toMultiSelectOptions(calls.map((call) => call.agentInfo?.phone)),
+    [calls],
+  );
+  const customerNameOptions = useMemo(
+    () => toMultiSelectOptions(calls.map((call) => call.customerInfo?.name)),
+    [calls],
+  );
+  const customerExternalIdOptions = useMemo(
+    () => toMultiSelectOptions(calls.map((call) => call.customerInfo?.externalId)),
+    [calls],
+  );
+  const customerPhoneOptions = useMemo(
+    () => toMultiSelectOptions(calls.map((call) => call.customerInfo?.phone)),
+    [calls],
+  );
+  const scoreSummaryMetrics: Array<{
+    label: string;
+    summary?: ScoreMetricSummary | null;
+  }> = [
+    {
+      label: "Customer Satisfaction",
+      summary: callScoreSummary?.customerSatisfactionScore,
+    },
+    {
+      label: "Agent Friendliness",
+      summary: callScoreSummary?.agentFriendlinessScore,
+    },
+    {
+      label: "QA Score",
+      summary: callScoreSummary?.qaScore,
+    },
+  ];
+  const canLoadNextCallsPage =
+    callsTotal == null ? calls.length >= filters.pageSize : filters.page * filters.pageSize < callsTotal;
+  const pagerSummary =
+    callsTotal == null
+      ? `${calls.length} shown`
+      : `${calls.length} shown of ${callsTotal}`;
   const positiveCount = calls.filter((call) => call.sentiment?.toLowerCase() === "positive").length;
   const neutralCount = calls.filter((call) => call.sentiment?.toLowerCase() === "neutral").length;
   const negativeCount = calls.filter((call) => call.sentiment?.toLowerCase() === "negative").length;
@@ -2225,20 +2450,20 @@ function App() {
               className="filters"
               onSubmit={(event) => {
                 event.preventDefault();
-                const nextFilters = { ...filters, page: Math.max(1, filters.page) };
+                const nextFilters = { ...filters, page: 1 };
                 setFilters(nextFilters);
                 void refreshCalls(settings, { filtersOverride: nextFilters });
               }}
             >
             <input
               value={filters.search}
-              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+              onChange={(event) => updateCallFilters({ search: event.target.value })}
               placeholder="Search transcript or metadata"
             />
             <input
               value={filters.conversationId}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, conversationId: event.target.value }))
+                updateCallFilters({ conversationId: event.target.value })
               }
               placeholder="Conversation ID"
             />
@@ -2246,7 +2471,7 @@ function App() {
               type="date"
               value={filters.createdFromUtc}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, createdFromUtc: event.target.value }))
+                updateCallFilters({ createdFromUtc: event.target.value })
               }
               aria-label="Created from date"
               title="Created from"
@@ -2255,14 +2480,14 @@ function App() {
               type="date"
               value={filters.createdToUtc}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, createdToUtc: event.target.value }))
+                updateCallFilters({ createdToUtc: event.target.value })
               }
               aria-label="Created to date"
               title="Created to"
             />
             <select
               value={filters.status}
-              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+              onChange={(event) => updateCallFilters({ status: event.target.value })}
             >
               <option value="">All statuses</option>
               <option value="Queued">Queued</option>
@@ -2273,7 +2498,7 @@ function App() {
             <select
               value={filters.sentiment}
               onChange={(event) =>
-                setFilters((current) => ({ ...current, sentiment: event.target.value }))
+                updateCallFilters({ sentiment: event.target.value })
               }
             >
               <option value="">All sentiment</option>
@@ -2286,7 +2511,7 @@ function App() {
               min="0"
               max="100"
               value={filters.minQaScore}
-              onChange={(event) => setFilters((current) => ({ ...current, minQaScore: event.target.value }))}
+              onChange={(event) => updateCallFilters({ minQaScore: event.target.value })}
               placeholder="Min QA score"
             />
             <input
@@ -2294,13 +2519,63 @@ function App() {
               min="0"
               max="100"
               value={filters.maxQaScore}
-              onChange={(event) => setFilters((current) => ({ ...current, maxQaScore: event.target.value }))}
+              onChange={(event) => updateCallFilters({ maxQaScore: event.target.value })}
               placeholder="Max QA score"
+            />
+            <MultiSelectDropdown
+              label="Agent names"
+              options={agentNameOptions}
+              selectedValues={agentNameValues}
+              onChange={(values) => updateMultiFilter("agentNames", "agentName", values)}
+            />
+            <MultiSelectDropdown
+              label="Agent IDs"
+              options={agentExternalIdOptions}
+              selectedValues={agentExternalIdValues}
+              onChange={(values) =>
+                updateMultiFilter("agentExternalIds", "agentExternalId", values)
+              }
+            />
+            <MultiSelectDropdown
+              label="Agent phones"
+              options={agentPhoneOptions}
+              selectedValues={agentPhoneValues}
+              onChange={(values) => updateMultiFilter("agentPhones", "agentPhone", values)}
+            />
+            <MultiSelectDropdown
+              label="Customer names"
+              options={customerNameOptions}
+              selectedValues={customerNameValues}
+              onChange={(values) => updateMultiFilter("customerNames", "customerName", values)}
+            />
+            <MultiSelectDropdown
+              label="Customer IDs"
+              options={customerExternalIdOptions}
+              selectedValues={customerExternalIdValues}
+              onChange={(values) =>
+                updateMultiFilter("customerExternalIds", "customerExternalId", values)
+              }
+            />
+            <MultiSelectDropdown
+              label="Customer phones"
+              options={customerPhoneOptions}
+              selectedValues={customerPhoneValues}
+              onChange={(values) => updateMultiFilter("customerPhones", "customerPhone", values)}
             />
             <button type="submit" disabled={!canQueryApi || callsLoading}>
               {callsLoading ? "Loading..." : "Refresh"}
             </button>
             </form>
+
+            <div className="score-summary-grid" aria-label="Score summary">
+              {scoreSummaryMetrics.map((metric) => (
+                <article key={metric.label}>
+                  <span>{metric.label}</span>
+                  <strong>{formatSummaryNumber(metric.summary?.average)}</strong>
+                  <small>Cumulative {formatSummaryNumber(metric.summary?.cumulative)}</small>
+                </article>
+              ))}
+            </div>
 
             <div className="workspace">
               <div className="list-column">
@@ -2422,13 +2697,13 @@ function App() {
                   Previous
                 </button>
                 <span>
-                  Page {filters.page} · {calls.length} shown · {filters.pageSize} per page
+                  Page {filters.page} - {pagerSummary} - {filters.pageSize} per page
                 </span>
                 <button
                   type="button"
                   className="secondary-button"
                   onClick={() => handlePageChange(filters.page + 1)}
-                  disabled={callsLoading || calls.length < filters.pageSize}
+                  disabled={callsLoading || !canLoadNextCallsPage}
                 >
                   Next
                 </button>

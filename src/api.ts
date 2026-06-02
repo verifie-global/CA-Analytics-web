@@ -3,6 +3,8 @@ import type {
   AuthTokenResponse,
   CallDetail,
   CallFilters,
+  CallsListResult,
+  CallScoreSummary,
   CallSummary,
   DiarizationSegment,
   EmotionInfo,
@@ -13,6 +15,7 @@ import type {
   QaQuestionDefinition,
   QaQuestionResult,
   QaResult,
+  ScoreMetricSummary,
   SpeakerSegment,
 } from "./types";
 
@@ -162,16 +165,68 @@ const toSegments = (value: unknown): SpeakerSegment[] =>
     })
     .filter((segment) => segment.text);
 
-const normalizePartyInfo = (value: unknown): PartyInfo | null => {
+const normalizePartyInfo = (value: unknown, fallback?: Partial<PartyInfo>): PartyInfo | null => {
   const record = asRecord(value);
-  if (Object.keys(record).length === 0) {
+  const name = readString(record, "name") ?? fallback?.name ?? null;
+  const externalId = readString(record, "externalId") ?? fallback?.externalId ?? null;
+  const phone = readString(record, "phone") ?? fallback?.phone ?? null;
+
+  if (!name && !externalId && !phone) {
     return null;
   }
 
   return {
-    name: readString(record, "name") ?? null,
-    externalId: readString(record, "externalId") ?? null,
-    phone: readString(record, "phone") ?? null,
+    name,
+    externalId,
+    phone,
+  };
+};
+
+const normalizeScoreMetricSummary = (value: unknown): ScoreMetricSummary | null => {
+  const record = asRecord(value);
+  const cumulative = readNumber(record, "cumulative");
+  const average = readNumber(record, "average");
+  const scoredCount = readNumber(record, "scoredCount");
+  const missingCount = readNumber(record, "missingCount");
+
+  if (
+    cumulative == null &&
+    average == null &&
+    scoredCount == null &&
+    missingCount == null
+  ) {
+    return null;
+  }
+
+  return {
+    cumulative: cumulative ?? null,
+    average: average ?? null,
+    scoredCount: scoredCount ?? null,
+    missingCount: missingCount ?? null,
+  };
+};
+
+const normalizeCallScoreSummary = (value: unknown): CallScoreSummary | null => {
+  const record = asRecord(value);
+  const customerSatisfactionScore = normalizeScoreMetricSummary(record.customerSatisfactionScore);
+  const agentFriendlinessScore = normalizeScoreMetricSummary(record.agentFriendlinessScore);
+  const qaScore = normalizeScoreMetricSummary(record.qaScore);
+  const callCount = readNumber(record, "callCount");
+
+  if (
+    callCount == null &&
+    !customerSatisfactionScore &&
+    !agentFriendlinessScore &&
+    !qaScore
+  ) {
+    return null;
+  }
+
+  return {
+    callCount: callCount ?? null,
+    customerSatisfactionScore,
+    agentFriendlinessScore,
+    qaScore,
   };
 };
 
@@ -183,6 +238,16 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
   return {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
     status: readString(record, "status") ?? "Unknown",
+    agentInfo: normalizePartyInfo(record.agentInfo ?? record.agent, {
+      name: readString(record, "agentName"),
+      externalId: readString(record, "agentExternalId"),
+      phone: readString(record, "agentPhone"),
+    }),
+    customerInfo: normalizePartyInfo(record.customerInfo ?? record.customer, {
+      name: readString(record, "customerName"),
+      externalId: readString(record, "customerExternalId"),
+      phone: readString(record, "customerPhone"),
+    }),
     sentiment: readString(record, "sentiment") ?? readString(rawAnalysis, "sentiment"),
     satisfactionScore:
       readNumber(record, "satisfactionScore") ?? readNumber(rawAnalysis, "satisfactionScore"),
@@ -333,6 +398,71 @@ const listFromResponse = (payload: unknown) => {
   return asArray(candidate);
 };
 
+const normalizeCallsListResponse = (
+  payload: unknown,
+  filters: CallFilters,
+): CallsListResult => {
+  const items = listFromResponse(payload).map(normalizeCallSummary);
+
+  if (Array.isArray(payload)) {
+    return {
+      companyId: null,
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total: items.length,
+      scoreSummary: null,
+      items,
+    };
+  }
+
+  const record = asRecord(payload);
+
+  return {
+    companyId: readNumber(record, "companyId") ?? null,
+    page: readNumber(record, "page", "Page") ?? filters.page,
+    pageSize: readNumber(record, "pageSize", "PageSize") ?? filters.pageSize,
+    total: readNumber(record, "total", "totalCount", "count") ?? items.length,
+    scoreSummary: normalizeCallScoreSummary(record.scoreSummary),
+    items,
+  };
+};
+
+const normalizeQueryValues = (...values: Array<string | string[] | undefined>) => {
+  const uniqueValues = new Set<string>();
+
+  values.forEach((value) => {
+    const nextValues = Array.isArray(value) ? value : [value];
+    nextValues.forEach((nextValue) => {
+      const trimmed = nextValue?.trim();
+      if (trimmed) {
+        uniqueValues.add(trimmed);
+      }
+    });
+  });
+
+  return [...uniqueValues];
+};
+
+const setMultiValueFilterParam = (
+  query: URLSearchParams,
+  pluralParam: string,
+  pluralValues: string[] | undefined,
+  singleParam: string,
+  singleValue: string | undefined,
+) => {
+  const values = normalizeQueryValues(pluralValues);
+
+  if (values.length > 0) {
+    query.set(pluralParam, values.join(","));
+    return;
+  }
+
+  const legacyValue = singleValue?.trim();
+  if (legacyValue) {
+    query.set(singleParam, legacyValue);
+  }
+};
+
 const buildCallsFilterQuery = (filters: CallFilters, includePagination = true) => {
   const query = new URLSearchParams();
 
@@ -349,6 +479,36 @@ const buildCallsFilterQuery = (filters: CallFilters, includePagination = true) =
   if (filters.sentiment) query.set("Sentiment", filters.sentiment);
   if (filters.minQaScore) query.set("minQaScore", filters.minQaScore);
   if (filters.maxQaScore) query.set("maxQaScore", filters.maxQaScore);
+  setMultiValueFilterParam(query, "agentNames", filters.agentNames, "agentName", filters.agentName);
+  setMultiValueFilterParam(
+    query,
+    "agentExternalIds",
+    filters.agentExternalIds,
+    "agentExternalId",
+    filters.agentExternalId,
+  );
+  setMultiValueFilterParam(query, "agentPhones", filters.agentPhones, "agentPhone", filters.agentPhone);
+  setMultiValueFilterParam(
+    query,
+    "customerNames",
+    filters.customerNames,
+    "customerName",
+    filters.customerName,
+  );
+  setMultiValueFilterParam(
+    query,
+    "customerExternalIds",
+    filters.customerExternalIds,
+    "customerExternalId",
+    filters.customerExternalId,
+  );
+  setMultiValueFilterParam(
+    query,
+    "customerPhones",
+    filters.customerPhones,
+    "customerPhone",
+    filters.customerPhone,
+  );
 
   return query;
 };
@@ -363,7 +523,7 @@ export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
     query,
   );
 
-  return listFromResponse(response).map(normalizeCallSummary);
+  return normalizeCallsListResponse(response, filters);
 }
 
 export async function exportCallsCsv(settings: AppSettings, filters: CallFilters) {
