@@ -168,6 +168,7 @@ function MultiSelectDropdown({
   selectedValues,
   onChange,
 }: MultiSelectDropdownProps) {
+  const [searchValue, setSearchValue] = useState("");
   const selectedSet = new Set(selectedValues);
   const visibleOptions = [
     ...options,
@@ -175,6 +176,15 @@ function MultiSelectDropdown({
       .filter((value) => !options.some((option) => option.value === value))
       .map((value) => ({ value, label: value })),
   ];
+  const normalizedSearch = searchValue.trim().toLowerCase();
+  const filteredOptions = normalizedSearch
+    ? visibleOptions.filter(
+        (option) =>
+          selectedSet.has(option.value) ||
+          option.label.toLowerCase().includes(normalizedSearch) ||
+          option.value.toLowerCase().includes(normalizedSearch),
+      )
+    : visibleOptions;
   const summaryText =
     selectedValues.length === 0
       ? `All ${label.toLowerCase()}`
@@ -189,8 +199,16 @@ function MultiSelectDropdown({
         <strong>{summaryText}</strong>
       </summary>
       <div className="multi-select-panel">
-        {visibleOptions.length > 0 ? (
-          visibleOptions.map((option) => (
+        <input
+          type="search"
+          className="multi-select-search"
+          value={searchValue}
+          onChange={(event) => setSearchValue(event.target.value)}
+          placeholder={`Search ${label.toLowerCase()}`}
+          aria-label={`Search ${label}`}
+        />
+        {filteredOptions.length > 0 ? (
+          filteredOptions.map((option) => (
             <label key={option.value} className="multi-select-option">
               <input
                 type="checkbox"
@@ -207,7 +225,9 @@ function MultiSelectDropdown({
             </label>
           ))
         ) : (
-          <div className="multi-select-empty">No values loaded</div>
+          <div className="multi-select-empty">
+            {visibleOptions.length > 0 ? "No matching values" : "No values loaded"}
+          </div>
         )}
       </div>
     </details>
