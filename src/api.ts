@@ -2,6 +2,8 @@ import type {
   AppSettings,
   AuthTokenResponse,
   CallDetail,
+  CallFilterOption,
+  CallFilterOptions,
   CallFilters,
   CallsListResult,
   CallScoreSummary,
@@ -79,6 +81,21 @@ const readString = (record: Record<string, unknown>, ...keys: string[]) => {
     const value = record[key];
     if (typeof value === "string" && value.length > 0) {
       return value;
+    }
+  }
+
+  return undefined;
+};
+
+const readStringLike = (record: Record<string, unknown>, ...keys: string[]) => {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
     }
   }
 
@@ -227,6 +244,78 @@ const normalizeCallScoreSummary = (value: unknown): CallScoreSummary | null => {
     customerSatisfactionScore,
     agentFriendlinessScore,
     qaScore,
+  };
+};
+
+const normalizeCallFilterOption = (
+  item: unknown,
+  partyPrefix: "agent" | "customer",
+): CallFilterOption | null => {
+  if (typeof item === "string") {
+    const phone = item.trim();
+    return phone ? { name: null, phone } : null;
+  }
+
+  if (typeof item === "number" && Number.isFinite(item)) {
+    return { name: null, phone: String(item) };
+  }
+
+  const record = asRecord(item);
+  const phone =
+    readStringLike(record, "phone", "phoneNumber", `${partyPrefix}Phone`, "number") ?? "";
+  const name =
+    readString(record, "name", "displayName", "fullName", `${partyPrefix}Name`) ?? null;
+
+  return phone.trim()
+    ? {
+        name,
+        phone: phone.trim(),
+      }
+    : null;
+};
+
+const normalizeCallFilterOptionList = (
+  value: unknown,
+  partyPrefix: "agent" | "customer",
+) => {
+  const optionsByPhone = new Map<string, CallFilterOption>();
+
+  asArray(value)
+    .map((item) => normalizeCallFilterOption(item, partyPrefix))
+    .forEach((option) => {
+      if (!option) {
+        return;
+      }
+
+      const existing = optionsByPhone.get(option.phone);
+      optionsByPhone.set(option.phone, {
+        phone: option.phone,
+        name: existing?.name ?? option.name ?? null,
+      });
+    });
+
+  return [...optionsByPhone.values()].sort((first, second) => {
+    const firstLabel = first.name ? `${first.name} ${first.phone}` : first.phone;
+    const secondLabel = second.name ? `${second.name} ${second.phone}` : second.phone;
+    return firstLabel.localeCompare(secondLabel, undefined, { sensitivity: "base" });
+  });
+};
+
+const normalizeCallFilterOptions = (payload: unknown): CallFilterOptions => {
+  const record = asRecord(payload);
+
+  return {
+    agents: normalizeCallFilterOptionList(
+      record.agents ?? record.agentPhones ?? record.agentOptions ?? record.agentPhoneOptions,
+      "agent",
+    ),
+    customers: normalizeCallFilterOptionList(
+      record.customers ??
+        record.customerPhones ??
+        record.customerOptions ??
+        record.customerPhoneOptions,
+      "customer",
+    ),
   };
 };
 
@@ -524,6 +613,15 @@ export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
   );
 
   return normalizeCallsListResponse(response, filters);
+}
+
+export async function fetchCallFilterOptions(settings: AppSettings) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/calls/filter-options`,
+  );
+
+  return normalizeCallFilterOptions(response);
 }
 
 export async function exportCallsCsv(settings: AppSettings, filters: CallFilters) {

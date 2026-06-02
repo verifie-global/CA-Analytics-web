@@ -48,6 +48,16 @@ export type CallsListResult = {
   items: CallSummary[];
 };
 
+export type CallFilterOption = {
+  name?: string | null;
+  phone: string;
+};
+
+export type CallFilterOptions = {
+  agents: CallFilterOption[];
+  customers: CallFilterOption[];
+};
+
 export type AppSettings = {
   baseUrl: string;
   companyId: string;

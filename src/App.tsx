@@ -6,6 +6,7 @@ import {
   exportQaQuestionnaire,
   fetchAudioBlob,
   fetchCallDetail,
+  fetchCallFilterOptions,
   fetchCalls,
   fetchQaProfile,
   recalculateQaScore,
@@ -18,6 +19,8 @@ import { QaScoreBadge } from "./QaScoreBadge";
 import type {
   AppSettings,
   CallDetail,
+  CallFilterOption,
+  CallFilterOptions,
   CallFilters,
   CallScoreSummary,
   CallSummary,
@@ -71,6 +74,11 @@ type HeaderGraphicConfig = {
   summaries: HeaderMetric[];
 };
 
+const emptyCallFilterOptions: CallFilterOptions = {
+  agents: [],
+  customers: [],
+};
+
 type MultiSelectOption = {
   value: string;
   label: string;
@@ -109,11 +117,40 @@ const selectedFilterValues = (...values: Array<string | string[] | undefined>) =
     }),
   );
 
-const toMultiSelectOptions = (values: Array<string | null | undefined>): MultiSelectOption[] =>
-  uniqueTextValues(values).map((value) => ({
-    value,
-    label: value,
-  }));
+const formatPhoneFilterLabel = (option: CallFilterOption) => {
+  const name = option.name?.trim();
+  return name ? `${name} - ${option.phone}` : option.phone;
+};
+
+const toPhoneMultiSelectOptions = (
+  options: CallFilterOption[],
+  fallbackPhones: Array<string | null | undefined>,
+): MultiSelectOption[] => {
+  const optionsByPhone = new Map<string, MultiSelectOption>();
+
+  options.forEach((option) => {
+    const phone = option.phone.trim();
+    if (phone) {
+      optionsByPhone.set(phone, {
+        value: phone,
+        label: formatPhoneFilterLabel({ ...option, phone }),
+      });
+    }
+  });
+
+  uniqueTextValues(fallbackPhones).forEach((phone) => {
+    if (!optionsByPhone.has(phone)) {
+      optionsByPhone.set(phone, {
+        value: phone,
+        label: phone,
+      });
+    }
+  });
+
+  return [...optionsByPhone.values()].sort((first, second) =>
+    first.label.localeCompare(second.label, undefined, { sensitivity: "base" }),
+  );
+};
 
 const formatSummaryNumber = (value?: number | null, maximumFractionDigits = 2) => {
   if (value == null || !Number.isFinite(value)) {
@@ -791,6 +828,9 @@ function App() {
   const [calls, setCalls] = useState<CallSummary[]>([]);
   const [callsTotal, setCallsTotal] = useState<number | null>(null);
   const [callScoreSummary, setCallScoreSummary] = useState<CallScoreSummary | null>(null);
+  const [callFilterOptions, setCallFilterOptions] = useState<CallFilterOptions>(
+    emptyCallFilterOptions,
+  );
   const [selectedId, setSelectedId] = useState<string>("");
   const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
   const [detailPortalTarget, setDetailPortalTarget] = useState<HTMLDivElement | null>(null);
@@ -1072,6 +1112,41 @@ function App() {
 
     void refreshCalls(settings, { silent: true });
   }, [isAuthorized]);
+
+  useEffect(() => {
+    if (!isAuthorized) {
+      setCallFilterOptions(emptyCallFilterOptions);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCallFilterOptions = async () => {
+      try {
+        const nextOptions = await fetchCallFilterOptions(settings);
+        if (!cancelled) {
+          setCallFilterOptions(nextOptions);
+        }
+      } catch (error) {
+        if (!cancelled && isUnauthorizedError(error)) {
+          handleUnauthorizedSession();
+          return;
+        }
+
+        if (!cancelled) {
+          setErrorMessage(
+            error instanceof Error ? error.message : "Unable to load call filter options.",
+          );
+        }
+      }
+    };
+
+    void loadCallFilterOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthorized, settings]);
 
   useEffect(() => {
     if (!isAuthorized || currentRoute !== "qa-profile") {
@@ -1716,6 +1791,7 @@ function App() {
     setCalls([]);
     setCallsTotal(null);
     setCallScoreSummary(null);
+    setCallFilterOptions(emptyCallFilterOptions);
     setSelectedId("");
     setSelectedConversationIds([]);
     setDetail(null);
@@ -1764,6 +1840,7 @@ function App() {
     setCalls([]);
     setCallsTotal(null);
     setCallScoreSummary(null);
+    setCallFilterOptions(emptyCallFilterOptions);
     setSelectedId("");
     setSelectedConversationIds([]);
     setDetail(null);
@@ -1961,41 +2038,23 @@ function App() {
   const allExportableSelected =
     exportableCalls.length > 0 &&
     exportableCalls.every((call) => selectedConversationIds.includes(call.conversationId));
-  const agentNameValues = selectedFilterValues(filters.agentNames, filters.agentName);
-  const agentExternalIdValues = selectedFilterValues(
-    filters.agentExternalIds,
-    filters.agentExternalId,
-  );
   const agentPhoneValues = selectedFilterValues(filters.agentPhones, filters.agentPhone);
-  const customerNameValues = selectedFilterValues(filters.customerNames, filters.customerName);
-  const customerExternalIdValues = selectedFilterValues(
-    filters.customerExternalIds,
-    filters.customerExternalId,
-  );
   const customerPhoneValues = selectedFilterValues(filters.customerPhones, filters.customerPhone);
-  const agentNameOptions = useMemo(
-    () => toMultiSelectOptions(calls.map((call) => call.agentInfo?.name)),
-    [calls],
-  );
-  const agentExternalIdOptions = useMemo(
-    () => toMultiSelectOptions(calls.map((call) => call.agentInfo?.externalId)),
-    [calls],
-  );
   const agentPhoneOptions = useMemo(
-    () => toMultiSelectOptions(calls.map((call) => call.agentInfo?.phone)),
-    [calls],
-  );
-  const customerNameOptions = useMemo(
-    () => toMultiSelectOptions(calls.map((call) => call.customerInfo?.name)),
-    [calls],
-  );
-  const customerExternalIdOptions = useMemo(
-    () => toMultiSelectOptions(calls.map((call) => call.customerInfo?.externalId)),
-    [calls],
+    () =>
+      toPhoneMultiSelectOptions(
+        callFilterOptions.agents,
+        calls.map((call) => call.agentInfo?.phone),
+      ),
+    [callFilterOptions.agents, calls],
   );
   const customerPhoneOptions = useMemo(
-    () => toMultiSelectOptions(calls.map((call) => call.customerInfo?.phone)),
-    [calls],
+    () =>
+      toPhoneMultiSelectOptions(
+        callFilterOptions.customers,
+        calls.map((call) => call.customerInfo?.phone),
+      ),
+    [callFilterOptions.customers, calls],
   );
   const scoreSummaryMetrics: Array<{
     label: string;
@@ -2523,38 +2582,10 @@ function App() {
               placeholder="Max QA score"
             />
             <MultiSelectDropdown
-              label="Agent names"
-              options={agentNameOptions}
-              selectedValues={agentNameValues}
-              onChange={(values) => updateMultiFilter("agentNames", "agentName", values)}
-            />
-            <MultiSelectDropdown
-              label="Agent IDs"
-              options={agentExternalIdOptions}
-              selectedValues={agentExternalIdValues}
-              onChange={(values) =>
-                updateMultiFilter("agentExternalIds", "agentExternalId", values)
-              }
-            />
-            <MultiSelectDropdown
               label="Agent phones"
               options={agentPhoneOptions}
               selectedValues={agentPhoneValues}
               onChange={(values) => updateMultiFilter("agentPhones", "agentPhone", values)}
-            />
-            <MultiSelectDropdown
-              label="Customer names"
-              options={customerNameOptions}
-              selectedValues={customerNameValues}
-              onChange={(values) => updateMultiFilter("customerNames", "customerName", values)}
-            />
-            <MultiSelectDropdown
-              label="Customer IDs"
-              options={customerExternalIdOptions}
-              selectedValues={customerExternalIdValues}
-              onChange={(values) =>
-                updateMultiFilter("customerExternalIds", "customerExternalId", values)
-              }
             />
             <MultiSelectDropdown
               label="Customer phones"
