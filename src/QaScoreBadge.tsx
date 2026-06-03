@@ -1,5 +1,10 @@
+import { formatQaNotApplicableReason, isQaNotApplicable } from "./qaDisplay";
+
 type QaScoreBadgeProps = {
   score?: number | null;
+  isApplicable?: boolean | null;
+  status?: string | null;
+  notApplicableReason?: string | null;
   earnedPoints?: number | null;
   possiblePoints?: number | null;
   compact?: boolean;
@@ -14,10 +19,27 @@ const getQaScoreTone = (score?: number | null) => {
 
 export function QaScoreBadge({
   score,
+  isApplicable,
+  status,
+  notApplicableReason,
   earnedPoints,
   possiblePoints,
   compact = false,
 }: QaScoreBadgeProps) {
+  if (isQaNotApplicable({ isApplicable, status })) {
+    const reason = formatQaNotApplicableReason(notApplicableReason);
+
+    return (
+      <span
+        className={`qa-badge qa-badge-muted qa-badge-not-applicable ${compact ? "qa-badge-compact" : ""}`}
+        title={reason ? `Reason: ${reason}` : "QA not applicable"}
+      >
+        <strong>QA not applicable</strong>
+        {reason && !compact ? <small>{reason}</small> : null}
+      </span>
+    );
+  }
+
   if (score == null) {
     return <span className="qa-badge qa-badge-muted">Not scored</span>;
   }

@@ -1047,6 +1047,21 @@ textarea:focus {
   padding: 0.38rem 0.55rem;
 }
 
+.qa-badge-not-applicable {
+  min-width: 126px;
+  text-align: center;
+}
+
+.qa-badge-not-applicable strong {
+  font-size: 0.82rem;
+  line-height: 1.15;
+}
+
+.qa-badge-not-applicable small {
+  max-width: 150px;
+  overflow-wrap: anywhere;
+}
+
 .qa-badge-muted {
   background: rgba(255, 255, 255, 0.06);
   color: var(--theme-text-muted);
@@ -1822,10 +1837,21 @@ textarea:focus {
   gap: 1.25rem;
 }
 
+.qa-scoring-settings-block {
+  display: grid;
+  gap: 0.9rem;
+  padding-bottom: 1.15rem;
+  border-bottom: 1px solid var(--theme-border);
+}
+
 .qa-settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
+}
+
+.qa-scoring-settings-grid {
+  max-width: 520px;
 }
 
 .qa-settings-grid label,
@@ -1841,6 +1867,20 @@ textarea:focus {
 .qa-field-label {
   display: block;
   margin-bottom: 0.95rem;
+}
+
+.qa-field-helper,
+.qa-settings-status {
+  display: block;
+  margin-top: 0.5rem;
+  color: var(--theme-text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.qa-settings-status {
+  margin: 0;
 }
 
 .qa-settings-grid textarea,

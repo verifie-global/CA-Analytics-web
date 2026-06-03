@@ -30,6 +30,7 @@ export type ScoreMetricSummary = {
   average?: number | null;
   scoredCount?: number | null;
   missingCount?: number | null;
+  notApplicableCount?: number | null;
 };
 
 export type CallScoreSummary = {
@@ -85,6 +86,9 @@ export type CallSummary = {
   satisfactionScore?: number | null;
   friendlinessScore?: number | null;
   qaScore?: number | null;
+  qaIsApplicable?: boolean | null;
+  qaStatus?: string | null;
+  qaNotApplicableReason?: string | null;
   qaEarnedPoints?: number | null;
   qaPossiblePoints?: number | null;
   durationSeconds?: number | null;
@@ -198,6 +202,14 @@ export type QaProfile = {
   updatedAt?: string | null;
 };
 
+export type QaScoringSettings = {
+  companyId: number;
+  isConfigured: boolean;
+  isEnabled: boolean;
+  minScorableCallDurationSeconds: number | null;
+  updatedAt?: string | null;
+};
+
 export type QaQuestionResult = {
   id: string;
   title: string;
@@ -218,8 +230,11 @@ export type QaEvaluation = {
 };
 
 export type QaResult = {
+  status?: string | null;
+  isApplicable?: boolean | null;
   score?: number | null;
   earnedPoints?: number | null;
   possiblePoints?: number | null;
+  notApplicableReason?: string | null;
   evaluation?: QaEvaluation | null;
 };

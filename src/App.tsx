@@ -9,8 +9,10 @@ import {
   fetchCallFilterOptions,
   fetchCalls,
   fetchQaProfile,
+  fetchQaScoringSettings,
   recalculateQaScore,
   saveQaProfile,
+  saveQaScoringSettings,
   uploadCall,
 } from "./api";
 import { QaEvaluationPanel } from "./QaEvaluationPanel";
@@ -25,6 +27,7 @@ import type {
   CallScoreSummary,
   CallSummary,
   QaProfile,
+  QaScoringSettings,
   ScoreMetricSummary,
   SegmentEmotion,
   SpeakerSegment,
@@ -929,6 +932,11 @@ function App() {
   const [qaProfileSaving, setQaProfileSaving] = useState(false);
   const [qaProfileError, setQaProfileError] = useState("");
   const [qaProfileSuccess, setQaProfileSuccess] = useState("");
+  const [qaScoringSettings, setQaScoringSettings] = useState<QaScoringSettings | null>(null);
+  const [qaScoringSettingsLoading, setQaScoringSettingsLoading] = useState(false);
+  const [qaScoringSettingsSaving, setQaScoringSettingsSaving] = useState(false);
+  const [qaScoringSettingsError, setQaScoringSettingsError] = useState("");
+  const [qaScoringSettingsSuccess, setQaScoringSettingsSuccess] = useState("");
   const [qaRecalculating, setQaRecalculating] = useState(false);
   const [qaRecalculateError, setQaRecalculateError] = useState("");
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -1175,33 +1183,59 @@ function App() {
 
     let cancelled = false;
 
-    const loadQaProfile = async () => {
+    const loadQaSettings = async () => {
       setQaProfileLoading(true);
+      setQaScoringSettingsLoading(true);
       setQaProfileError("");
       setQaProfileSuccess("");
+      setQaScoringSettingsError("");
+      setQaScoringSettingsSuccess("");
 
       try {
-        const profile = await fetchQaProfile(settings);
-        if (!cancelled) {
-          setQaProfile(profile);
-        }
-      } catch (error) {
-        if (!cancelled && isUnauthorizedError(error)) {
-          handleUnauthorizedSession();
-          return;
-        }
+        const [profileResult, scoringSettingsResult] = await Promise.allSettled([
+          fetchQaProfile(settings),
+          fetchQaScoringSettings(settings),
+        ]);
 
         if (!cancelled) {
-          setQaProfileError(error instanceof Error ? error.message : "Unable to load QA profile.");
+          const unauthorizedResult = [profileResult, scoringSettingsResult].find(
+            (result) => result.status === "rejected" && isUnauthorizedError(result.reason),
+          );
+
+          if (unauthorizedResult) {
+            handleUnauthorizedSession();
+            return;
+          }
+
+          if (profileResult.status === "fulfilled") {
+            setQaProfile(profileResult.value);
+          } else {
+            setQaProfileError(
+              profileResult.reason instanceof Error
+                ? profileResult.reason.message
+                : "Unable to load QA profile.",
+            );
+          }
+
+          if (scoringSettingsResult.status === "fulfilled") {
+            setQaScoringSettings(scoringSettingsResult.value);
+          } else {
+            setQaScoringSettingsError(
+              scoringSettingsResult.reason instanceof Error
+                ? scoringSettingsResult.reason.message
+                : "Unable to load QA scoring settings.",
+            );
+          }
         }
       } finally {
         if (!cancelled) {
           setQaProfileLoading(false);
+          setQaScoringSettingsLoading(false);
         }
       }
     };
 
-    void loadQaProfile();
+    void loadQaSettings();
 
     return () => {
       cancelled = true;
@@ -1477,6 +1511,32 @@ function App() {
     }
   };
 
+  const handleSaveQaScoringSettings = async (minScorableCallDurationSeconds: number | null) => {
+    setQaScoringSettingsSaving(true);
+    setQaScoringSettingsError("");
+    setQaScoringSettingsSuccess("");
+
+    try {
+      const savedSettings = await saveQaScoringSettings(
+        settings,
+        minScorableCallDurationSeconds,
+      );
+      setQaScoringSettings(savedSettings);
+      setQaScoringSettingsSuccess("QA scoring settings saved successfully.");
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+
+      setQaScoringSettingsError(
+        error instanceof Error ? error.message : "Unable to save QA scoring settings.",
+      );
+    } finally {
+      setQaScoringSettingsSaving(false);
+    }
+  };
+
   const handleRecalculateQa = async () => {
     if (!detail?.conversationId) {
       return;
@@ -1486,21 +1546,34 @@ function App() {
     setQaRecalculateError("");
 
     try {
-      await recalculateQaScore(settings, detail.conversationId);
+      const recalculatedQa = await recalculateQaScore(settings, detail.conversationId);
       const refreshedDetail = await fetchCallDetail(settings, detail.conversationId);
-      setDetail(refreshedDetail);
+      const nextDetail = refreshedDetail.qa
+        ? refreshedDetail
+        : {
+            ...refreshedDetail,
+            qa: recalculatedQa,
+          };
+      const nextQa = nextDetail.qa;
+
+      setDetail(nextDetail);
       setTranscriptCache((current) => ({
         ...current,
-        [detail.conversationId]: refreshedDetail.transcript?.trim() ?? "",
+        [detail.conversationId]: nextDetail.transcript?.trim() ?? "",
       }));
       setCalls((current) =>
         current.map((call) =>
           call.conversationId === detail.conversationId
             ? {
                 ...call,
-                qaScore: refreshedDetail.qa?.score ?? call.qaScore,
-                qaEarnedPoints: refreshedDetail.qa?.earnedPoints ?? call.qaEarnedPoints,
-                qaPossiblePoints: refreshedDetail.qa?.possiblePoints ?? call.qaPossiblePoints,
+                qaScore: nextQa ? nextQa.score ?? null : call.qaScore,
+                qaIsApplicable: nextQa ? nextQa.isApplicable ?? null : call.qaIsApplicable,
+                qaStatus: nextQa ? nextQa.status ?? null : call.qaStatus,
+                qaNotApplicableReason: nextQa
+                  ? nextQa.notApplicableReason ?? null
+                  : call.qaNotApplicableReason,
+                qaEarnedPoints: nextQa ? nextQa.earnedPoints ?? null : call.qaEarnedPoints,
+                qaPossiblePoints: nextQa ? nextQa.possiblePoints ?? null : call.qaPossiblePoints,
               }
             : call,
         ),
@@ -2493,11 +2566,17 @@ function App() {
         {currentRoute === "qa-profile" ? (
           <QaProfilePage
             profile={qaProfile}
+            qaScoringSettings={qaScoringSettings}
             loading={qaProfileLoading}
             saving={qaProfileSaving}
+            qaScoringSettingsLoading={qaScoringSettingsLoading}
+            qaScoringSettingsSaving={qaScoringSettingsSaving}
             errorMessage={qaProfileError}
             successMessage={qaProfileSuccess}
+            qaScoringSettingsErrorMessage={qaScoringSettingsError}
+            qaScoringSettingsSuccessMessage={qaScoringSettingsSuccess}
             onSave={handleSaveQaProfile}
+            onSaveQaScoringSettings={handleSaveQaScoringSettings}
           />
         ) : (
           <section className="panel">
@@ -2624,6 +2703,14 @@ function App() {
                   <span>{metric.label}</span>
                   <strong>{formatSummaryNumber(metric.summary?.average)}</strong>
                   <small>Cumulative {formatSummaryNumber(metric.summary?.cumulative)}</small>
+                  {metric.summary?.missingCount != null ? (
+                    <small>Missing {formatSummaryNumber(metric.summary.missingCount, 0)}</small>
+                  ) : null}
+                  {metric.summary?.notApplicableCount != null ? (
+                    <small>
+                      Not applicable {formatSummaryNumber(metric.summary.notApplicableCount, 0)}
+                    </small>
+                  ) : null}
                 </article>
               ))}
             </div>
@@ -2684,6 +2771,9 @@ function App() {
                             <span>{call.satisfactionScore ?? "-"}</span>
                             <QaScoreBadge
                               score={call.qaScore}
+                              isApplicable={call.qaIsApplicable}
+                              status={call.qaStatus}
+                              notApplicableReason={call.qaNotApplicableReason}
                               earnedPoints={call.qaEarnedPoints}
                               possiblePoints={call.qaPossiblePoints}
                               compact

@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { QaQuestionEditor } from "./QaQuestionEditor";
-import type { QaProfile, QaQuestionDefinition } from "./types";
+import type { QaProfile, QaQuestionDefinition, QaScoringSettings } from "./types";
 
 type QaProfilePageProps = {
   profile: QaProfile | null;
+  qaScoringSettings: QaScoringSettings | null;
   loading: boolean;
   saving: boolean;
+  qaScoringSettingsLoading: boolean;
+  qaScoringSettingsSaving: boolean;
   errorMessage: string;
   successMessage: string;
+  qaScoringSettingsErrorMessage: string;
+  qaScoringSettingsSuccessMessage: string;
   onSave: (profile: QaProfile) => Promise<void>;
+  onSaveQaScoringSettings: (minScorableCallDurationSeconds: number | null) => Promise<void>;
 };
 
 const createQuestionId = () =>
@@ -57,19 +63,33 @@ const qaDefinitionFields: Array<{ key: QaTextareaFieldKey; label: string }> = [
 
 export function QaProfilePage({
   profile,
+  qaScoringSettings,
   loading,
   saving,
+  qaScoringSettingsLoading,
+  qaScoringSettingsSaving,
   errorMessage,
   successMessage,
+  qaScoringSettingsErrorMessage,
+  qaScoringSettingsSuccessMessage,
   onSave,
+  onSaveQaScoringSettings,
 }: QaProfilePageProps) {
   const [draftProfile, setDraftProfile] = useState<QaProfile | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [durationDraft, setDurationDraft] = useState("");
+  const [durationDirty, setDurationDirty] = useState(false);
 
   useEffect(() => {
     setDraftProfile(profile);
     setIsDirty(false);
   }, [profile]);
+
+  useEffect(() => {
+    const duration = qaScoringSettings?.minScorableCallDurationSeconds;
+    setDurationDraft(duration == null ? "" : String(duration));
+    setDurationDirty(false);
+  }, [qaScoringSettings]);
 
   const questionErrors = useMemo(() => {
     return (draftProfile?.definition.questions ?? []).map((question) => ({
@@ -79,6 +99,13 @@ export function QaProfilePage({
   }, [draftProfile]);
 
   const hasValidationErrors = questionErrors.some((item) => item.title || item.weight);
+  const trimmedDurationDraft = durationDraft.trim();
+  const parsedDuration =
+    trimmedDurationDraft === "" ? null : Number(trimmedDurationDraft);
+  const durationValidationError =
+    parsedDuration != null && (!Number.isFinite(parsedDuration) || parsedDuration < 0)
+      ? "Enter a non-negative number of seconds."
+      : "";
 
   const handleSave = async () => {
     if (!draftProfile || hasValidationErrors) {
@@ -87,6 +114,15 @@ export function QaProfilePage({
 
     await onSave(draftProfile);
     setIsDirty(false);
+  };
+
+  const handleSaveQaScoringSettings = async () => {
+    if (durationValidationError) {
+      return;
+    }
+
+    await onSaveQaScoringSettings(parsedDuration);
+    setDurationDirty(false);
   };
 
   if (loading && !draftProfile) {
@@ -116,6 +152,72 @@ export function QaProfilePage({
       <div className="section-heading">
         <h2>Company QA Profile</h2>
         <p>Configure the business rules and weighted questions used to score company conversations.</p>
+      </div>
+
+      <div className="qa-scoring-settings-block">
+        <div className="editor-group-head">
+          <div>
+            <h3>Scoring eligibility</h3>
+          </div>
+        </div>
+
+        <div className="qa-settings-grid qa-scoring-settings-grid">
+          <label className="full-width">
+            <span className="qa-field-label">Minimum call duration for QA scoring</span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={durationDraft}
+              onChange={(event) => {
+                setDurationDraft(event.target.value);
+                setDurationDirty(true);
+              }}
+              placeholder="No minimum"
+              disabled={qaScoringSettingsLoading || qaScoringSettingsSaving}
+            />
+            <small className="qa-field-helper">
+              Calls shorter than this duration will be marked as QA not applicable.
+            </small>
+          </label>
+        </div>
+
+        {qaScoringSettingsLoading ? (
+          <p className="qa-settings-status">Loading QA scoring settings...</p>
+        ) : null}
+        {durationValidationError ? <p className="field-error">{durationValidationError}</p> : null}
+        {qaScoringSettingsErrorMessage ? (
+          <p className="error-text">{qaScoringSettingsErrorMessage}</p>
+        ) : null}
+        {qaScoringSettingsSuccessMessage ? (
+          <p className="qa-success-text">{qaScoringSettingsSuccessMessage}</p>
+        ) : null}
+
+        <div className="modal-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              const duration = qaScoringSettings?.minScorableCallDurationSeconds;
+              setDurationDraft(duration == null ? "" : String(duration));
+              setDurationDirty(false);
+            }}
+            disabled={!durationDirty || qaScoringSettingsSaving}
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSaveQaScoringSettings()}
+            disabled={
+              qaScoringSettingsSaving ||
+              qaScoringSettingsLoading ||
+              Boolean(durationValidationError)
+            }
+          >
+            {qaScoringSettingsSaving ? "Saving..." : "Save QA scoring settings"}
+          </button>
+        </div>
       </div>
 
       <div className="qa-settings-form">

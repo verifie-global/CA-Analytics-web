@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatQaNotApplicableReason, isQaNotApplicable } from "./qaDisplay";
 import { QaScoreBadge } from "./QaScoreBadge";
 import type { QaResult } from "./types";
 
@@ -21,6 +22,8 @@ export function QaEvaluationPanel({
 }: QaEvaluationPanelProps) {
   const evaluation = qa?.evaluation;
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const qaNotApplicable = isQaNotApplicable(qa);
+  const notApplicableReason = formatQaNotApplicableReason(qa?.notApplicableReason);
 
   if (!qa && !isCompleted && !recalculateError) {
     return null;
@@ -87,7 +90,9 @@ export function QaEvaluationPanel({
       {!isCollapsed ? (
         <>
           <p className="qa-panel-copy">
-            Review automatic QA scoring, resolution status, and question-by-question evaluation.
+            {qaNotApplicable
+              ? "This call is not eligible for QA scoring."
+              : "Review automatic QA scoring, resolution status, and question-by-question evaluation."}
           </p>
           <div className="qa-panel-body">
             <div className="qa-overview-grid">
@@ -95,102 +100,115 @@ export function QaEvaluationPanel({
                 <label>QA score</label>
                 <QaScoreBadge
                   score={qa.score}
+                  isApplicable={qa.isApplicable}
+                  status={qa.status}
+                  notApplicableReason={qa.notApplicableReason}
                   earnedPoints={qa.earnedPoints}
                   possiblePoints={qa.possiblePoints}
                 />
               </article>
               <article className="routing-card">
                 <label>Earned points</label>
-                <strong>{qa.earnedPoints ?? "-"}</strong>
+                <strong>{qaNotApplicable ? "N/A" : qa.earnedPoints ?? "-"}</strong>
               </article>
               <article className="routing-card">
                 <label>Possible points</label>
-                <strong>{qa.possiblePoints ?? "-"}</strong>
+                <strong>{qaNotApplicable ? "N/A" : qa.possiblePoints ?? "-"}</strong>
               </article>
               <article className="routing-card">
-                <label>Resolution status</label>
-                <strong>{evaluation?.resolutionStatus ?? "N/A"}</strong>
+                <label>{qaNotApplicable ? "Reason" : "Resolution status"}</label>
+                <strong>{qaNotApplicable ? notApplicableReason || "N/A" : evaluation?.resolutionStatus ?? "N/A"}</strong>
               </article>
             </div>
 
-            {evaluation?.profileName ? (
+            {!qaNotApplicable && evaluation?.profileName ? (
               <p className="qa-profile-label">
                 <strong>Profile:</strong> {evaluation.profileName}
               </p>
             ) : null}
 
-            {evaluation?.overallComment ? (
+            {qaNotApplicable && notApplicableReason ? (
+              <p className="qa-profile-label">
+                <strong>QA not applicable:</strong> {notApplicableReason}
+              </p>
+            ) : null}
+
+            {!qaNotApplicable && evaluation?.overallComment ? (
               <div className="scroll-panel prose-block">
                 {evaluation.overallComment}
               </div>
             ) : null}
 
-            <div className="qa-insights-grid">
-              <div className="qa-insight-card">
-                <h5>Strengths</h5>
-                {evaluation?.strengths?.length ? (
-                  <div className="token-panel">
-                    {evaluation.strengths.map((item, index) => (
-                      <span key={`strength-${index}`} className="token-chip">
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p>No strengths listed.</p>
-                )}
-              </div>
-
-              <div className="qa-insight-card">
-                <h5>Improvements</h5>
-                {evaluation?.improvements?.length ? (
-                  <div className="token-panel">
-                    {evaluation.improvements.map((item, index) => (
-                      <span key={`improvement-${index}`} className="token-chip">
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p>No improvement items listed.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="qa-question-results">
-              <h5>Question results</h5>
-              {evaluation?.questionResults?.length ? (
-                evaluation.questionResults.map((question) => {
-                  const passed = question.score > 0;
-                  return (
-                    <article key={question.id || question.title} className="qa-question-result">
-                      <div className="qa-question-result-head">
-                        <div>
-                          <strong>{question.title}</strong>
-                          <p>{question.description}</p>
-                        </div>
-                        <div className="qa-question-score">
-                          <span className={`bool-badge ${passed ? "bool-true" : "bool-false"}`}>
-                            {passed ? "Pass" : "Fail"}
+            {!qaNotApplicable ? (
+              <>
+                <div className="qa-insights-grid">
+                  <div className="qa-insight-card">
+                    <h5>Strengths</h5>
+                    {evaluation?.strengths?.length ? (
+                      <div className="token-panel">
+                        {evaluation.strengths.map((item, index) => (
+                          <span key={`strength-${index}`} className="token-chip">
+                            {item}
                           </span>
-                          <small>Weight {question.weight}</small>
-                        </div>
+                        ))}
                       </div>
-                      <p>
-                        <strong>Reason:</strong> {question.reason || "No reason provided."}
-                      </p>
-                    </article>
-                  );
-                })
-              ) : (
-                <div className="empty-state compact-empty-state">
-                  <h3>No QA question results yet</h3>
-                  <p>Run QA scoring or wait for the backend to finish evaluating this call.</p>
-                </div>
-              )}
-            </div>
+                    ) : (
+                      <p>No strengths listed.</p>
+                    )}
+                  </div>
 
-            {generatedAtLabel ? (
+                  <div className="qa-insight-card">
+                    <h5>Improvements</h5>
+                    {evaluation?.improvements?.length ? (
+                      <div className="token-panel">
+                        {evaluation.improvements.map((item, index) => (
+                          <span key={`improvement-${index}`} className="token-chip">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p>No improvement items listed.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="qa-question-results">
+                  <h5>Question results</h5>
+                  {evaluation?.questionResults?.length ? (
+                    evaluation.questionResults.map((question) => {
+                      const passed = question.score > 0;
+                      return (
+                        <article key={question.id || question.title} className="qa-question-result">
+                          <div className="qa-question-result-head">
+                            <div>
+                              <strong>{question.title}</strong>
+                              <p>{question.description}</p>
+                            </div>
+                            <div className="qa-question-score">
+                              <span className={`bool-badge ${passed ? "bool-true" : "bool-false"}`}>
+                                {passed ? "Pass" : "Fail"}
+                              </span>
+                              <small>Weight {question.weight}</small>
+                            </div>
+                          </div>
+                          <p>
+                            <strong>Reason:</strong> {question.reason || "No reason provided."}
+                          </p>
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <div className="empty-state compact-empty-state">
+                      <h3>No QA question results yet</h3>
+                      <p>Run QA scoring or wait for the backend to finish evaluating this call.</p>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
+
+            {!qaNotApplicable && generatedAtLabel ? (
               <p className="qa-generated-label">Generated {generatedAtLabel}</p>
             ) : null}
           </div>

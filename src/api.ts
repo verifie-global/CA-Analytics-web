@@ -17,6 +17,7 @@ import type {
   QaQuestionDefinition,
   QaQuestionResult,
   QaResult,
+  QaScoringSettings,
   ScoreMetricSummary,
   SpeakerSegment,
 } from "./types";
@@ -105,6 +106,25 @@ const readStringLike = (record: Record<string, unknown>, ...keys: string[]) => {
 const readNumber = (record: Record<string, unknown>, ...keys: string[]) => {
   for (const key of keys) {
     const value = record[key];
+    if (typeof value === "number") {
+      return value;
+    }
+  }
+
+  return undefined;
+};
+
+const readNullableNumber = (record: Record<string, unknown>, ...keys: string[]) => {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+
+    const value = record[key];
+    if (value === null) {
+      return null;
+    }
+
     if (typeof value === "number") {
       return value;
     }
@@ -205,12 +225,14 @@ const normalizeScoreMetricSummary = (value: unknown): ScoreMetricSummary | null 
   const average = readNumber(record, "average");
   const scoredCount = readNumber(record, "scoredCount");
   const missingCount = readNumber(record, "missingCount");
+  const notApplicableCount = readNumber(record, "notApplicableCount");
 
   if (
     cumulative == null &&
     average == null &&
     scoredCount == null &&
-    missingCount == null
+    missingCount == null &&
+    notApplicableCount == null
   ) {
     return null;
   }
@@ -220,6 +242,7 @@ const normalizeScoreMetricSummary = (value: unknown): ScoreMetricSummary | null 
     average: average ?? null,
     scoredCount: scoredCount ?? null,
     missingCount: missingCount ?? null,
+    notApplicableCount: notApplicableCount ?? null,
   };
 };
 
@@ -323,6 +346,11 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
   const record = asRecord(item);
   const rawAnalysis = asRecord(record.analysis);
   const qa = asRecord(record.qa);
+  const qaStatus = readString(record, "qaStatus") ?? readString(qa, "status") ?? null;
+  const qaIsApplicable =
+    readBoolean(record, "qaIsApplicable") ??
+    readBoolean(qa, "isApplicable") ??
+    (qaStatus?.toLowerCase() === "not_applicable" ? false : null);
 
   return {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
@@ -342,6 +370,12 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
       readNumber(record, "satisfactionScore") ?? readNumber(rawAnalysis, "satisfactionScore"),
     friendlinessScore: readNumber(record, "friendlinessScore"),
     qaScore: readNumber(record, "qaScore") ?? readNumber(qa, "score"),
+    qaIsApplicable,
+    qaStatus,
+    qaNotApplicableReason:
+      readString(record, "qaNotApplicableReason") ??
+      readString(qa, "notApplicableReason") ??
+      null,
     qaEarnedPoints: readNumber(record, "qaEarnedPoints") ?? readNumber(qa, "earnedPoints"),
     qaPossiblePoints: readNumber(record, "qaPossiblePoints") ?? readNumber(qa, "possiblePoints"),
     durationSeconds: readNumber(record, "durationSeconds", "callDurationSeconds"),
@@ -464,11 +498,50 @@ const normalizeQaResult = (value: unknown): QaResult | null => {
   }
 
   return {
+    status: readString(record, "status") ?? null,
+    isApplicable:
+      readBoolean(record, "isApplicable") ??
+      (readString(record, "status")?.toLowerCase() === "not_applicable" ? false : null),
     score: readNumber(record, "score") ?? null,
     earnedPoints: readNumber(record, "earnedPoints") ?? null,
     possiblePoints: readNumber(record, "possiblePoints") ?? null,
+    notApplicableReason: readString(record, "notApplicableReason") ?? null,
     evaluation: normalizeQaEvaluation(record.evaluation),
   };
+};
+
+const normalizeQaScoringSettings = (
+  value: unknown,
+  fallbackCompanyId: string,
+  fallbackDuration: number | null = null,
+): QaScoringSettings => {
+  const record = asRecord(value);
+  const minScorableCallDurationSeconds = readNullableNumber(
+    record,
+    "minScorableCallDurationSeconds",
+  );
+
+  return {
+    companyId: readNumber(record, "companyId") ?? Number(fallbackCompanyId),
+    isConfigured: readBoolean(record, "isConfigured") ?? false,
+    isEnabled: readBoolean(record, "isEnabled") ?? false,
+    minScorableCallDurationSeconds:
+      minScorableCallDurationSeconds === undefined
+        ? fallbackDuration
+        : minScorableCallDurationSeconds,
+    updatedAt: readString(record, "updatedAt", "updatedAtUtc") ?? null,
+  };
+};
+
+const normalizeRecalculatedQaResult = (value: unknown): QaResult | null => {
+  const record = asRecord(value);
+  const qa = normalizeQaResult(record.qa);
+
+  if (qa) {
+    return qa;
+  }
+
+  return normalizeQaResult(value);
 };
 
 const listFromResponse = (payload: unknown) => {
@@ -711,14 +784,68 @@ export async function saveQaProfile(settings: AppSettings, profile: QaProfile) {
   } satisfies QaProfile;
 }
 
-export async function recalculateQaScore(settings: AppSettings, conversationId: string) {
-  await request<void>(
+export async function fetchQaScoringSettings(settings: AppSettings) {
+  const response = await request<unknown>(
     settings,
-    `/api/companies/${settings.companyId}/calls/${conversationId}/qa-score/recalculate`,
+    `/api/companies/${settings.companyId}/qa-scoring-settings`,
+  );
+
+  return normalizeQaScoringSettings(response, settings.companyId);
+}
+
+export async function saveQaScoringSettings(
+  settings: AppSettings,
+  minScorableCallDurationSeconds: number | null,
+) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/qa-scoring-settings`,
     {
-      method: "POST",
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        minScorableCallDurationSeconds,
+      }),
     },
   );
+
+  return normalizeQaScoringSettings(
+    response,
+    settings.companyId,
+    minScorableCallDurationSeconds,
+  );
+}
+
+export async function recalculateQaScore(settings: AppSettings, conversationId: string) {
+  const response = await fetch(
+    buildUrl(
+      settings,
+      `/api/companies/${settings.companyId}/calls/${conversationId}/qa-score/recalculate`,
+    ),
+    {
+      method: "POST",
+      headers: authHeaders(settings),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw createRequestError(
+      text || `QA recalculation failed with status ${response.status}`,
+      response.status,
+    );
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  const text = await response.text();
+  if (!text.trim()) {
+    return null;
+  }
+
+  return normalizeRecalculatedQaResult(JSON.parse(text));
 }
 
 export async function uploadCall(
