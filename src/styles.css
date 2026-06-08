@@ -3,9 +3,28 @@
    Light theme redesign (Figma: satisfai_ui). Light only — no dark mode.
    ======================================================================= */
 
+@font-face {
+  font-family: "Input Mono";
+  src: url("./assets/fonts/InputMono-Regular.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Input Sans";
+  src: url("./assets/fonts/InputSans-Regular.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  font-family: "Roboto Mono", "Input Mono", "JetBrains Mono", "Cascadia Code",
+  --font-mono: "Input Mono", "Roboto Mono", "JetBrains Mono", "Cascadia Code",
     ui-monospace, "SFMono-Regular", "Consolas", monospace;
+  --font-sans: "Input Sans", "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+
+  font-family: var(--font-mono);
 
   /* Surfaces */
   --bg: #ffffff;
@@ -72,6 +91,21 @@ body {
   min-height: 100vh;
   color: var(--ink);
   background: var(--bg-page);
+}
+
+/* Input Sans for long-form, readability-sensitive prose */
+.hero-copy,
+.section-heading p,
+.empty-state p,
+.prose-block,
+.segment-card p,
+.qa-panel-copy,
+.qa-field-helper,
+.coaching-card p,
+.concern-card p,
+.routing-meta,
+.upload-selection p {
+  font-family: var(--font-sans);
 }
 
 button,
