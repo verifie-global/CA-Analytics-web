@@ -572,6 +572,19 @@ const ExternalArrowIcon = () => (
   </svg>
 );
 
+const TrendArrow = ({ className = "" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className={`icon-trend ${className}`}>
+    <path
+      d="M7 17 17 7M9 7h8v8"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const NavIcon = ({ name }: { name: AppNavKey }) => {
   const common = {
     fill: "none",
@@ -2587,13 +2600,14 @@ function App() {
                     : 24 + (metricData.value / metricData.max) * 76;
 
                 return (
-                  <div
-                    key={metric}
-                    className={`hero-bar-group ${headerBarClassByMetric(metric)}`}
-                    style={{ height: `${heightPercent}%` }}
-                  >
-                    <label>{optionLabel}</label>
-                    <strong>{metricData.formatted}</strong>
+                  <div key={metric} className="hero-bar-col">
+                    <label className="hero-bar-label">{optionLabel}</label>
+                    <div
+                      className={`hero-bar-group ${headerBarClassByMetric(metric)}`}
+                      style={{ height: `${heightPercent}%` }}
+                    >
+                      <strong>{metricData.formatted}</strong>
+                    </div>
                   </div>
                 );
               })}
@@ -2611,17 +2625,35 @@ function App() {
                 const metricData = metricValues[metric];
                 const optionLabel =
                   headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+                const outOfTen = metric === "avg_satisfaction" || metric === "avg_friendliness";
+                const arrowTone =
+                  metric === "avg_satisfaction"
+                    ? "trend-blue"
+                    : metric === "avg_friendliness"
+                      ? "trend-purple"
+                      : "trend-muted";
 
                 return (
                   <div key={metric} className="hero-strip-stat">
-                    <span>{optionLabel}</span>
-                    <strong>{metricData.formatted}</strong>
+                    <div className="hero-strip-label">
+                      <span>{optionLabel}</span>
+                      {outOfTen ? <small>overall</small> : null}
+                    </div>
+                    <div className="hero-strip-value">
+                      <strong>{outOfTen ? metricData.formatted.split("/")[0] : metricData.formatted}</strong>
+                      <TrendArrow className={arrowTone} />
+                      {outOfTen ? <small>10</small> : null}
+                    </div>
                   </div>
                 );
               })}
               <div className="hero-strip-stat hero-strip-visible">
-                <span>Visible calls</span>
-                <strong>{calls.length}</strong>
+                <div className="hero-strip-label">
+                  <span>Visible calls</span>
+                </div>
+                <div className="hero-strip-value">
+                  <strong>{calls.length}</strong>
+                </div>
               </div>
             </div>
           </section>
