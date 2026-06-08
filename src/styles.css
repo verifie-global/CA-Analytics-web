@@ -627,6 +627,32 @@ textarea:focus {
   flex-wrap: wrap;
 }
 
+.export-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--surface-alt);
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: none;
+}
+
+.export-button:hover {
+  background: var(--surface);
+}
+
+.icon-extlink {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+  color: var(--blue);
+}
+
 .grid-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -876,7 +902,7 @@ textarea:focus {
 }
 
 .calls-grid {
-  min-width: 1180px;
+  min-width: 1080px;
   display: grid;
   gap: 0.4rem;
 }
@@ -885,16 +911,50 @@ textarea:focus {
 .call-row {
   display: grid;
   grid-template-columns:
-    minmax(160px, 1.1fr)
-    150px
+    minmax(110px, 0.9fr)
+    minmax(140px, 1fr)
     130px
-    130px
+    120px
     110px
     110px
-    90px
-    minmax(170px, 1fr);
+    80px
+    minmax(160px, 1fr);
   gap: 0.8rem;
   align-items: center;
+}
+
+.call-row-agent {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
+}
+
+/* CSAT score pill */
+.csat-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  padding: 0.28rem 0.6rem;
+  border-radius: 8px;
+  font-weight: 500;
+}
+
+.csat-low {
+  background: var(--pink-soft);
+  color: var(--pink-ink);
+}
+
+.csat-medium {
+  background: rgba(197, 139, 0, 0.16);
+  color: var(--warning);
+}
+
+.csat-good {
+  background: var(--green-soft);
+  color: var(--green-ink);
 }
 
 .calls-grid-header {

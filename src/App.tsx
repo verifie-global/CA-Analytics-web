@@ -63,11 +63,6 @@ type KeywordMatch = {
   count: number;
 };
 
-type KeywordBadgeMatch = {
-  label: string;
-  color: string;
-};
-
 type HeaderMetric =
   | "total_calls"
   | "completed_calls"
@@ -300,14 +295,6 @@ const formatTimestamp = (milliseconds?: number | null) => {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
-const formatDurationSeconds = (seconds?: number | null) => {
-  if (seconds == null || Number.isNaN(seconds)) return "-";
-  const totalSeconds = Math.max(0, Math.round(seconds));
-  const minutes = Math.floor(totalSeconds / 60);
-  const remainingSeconds = totalSeconds % 60;
-  return `${minutes}m ${String(remainingSeconds).padStart(2, "0")}s`;
-};
-
 const formatRecordingDuration = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -317,6 +304,12 @@ const formatRecordingDuration = (seconds: number) => {
 const classForSentiment = (value?: string) => {
   if (!value) return "tag";
   return `tag sentiment-${value.toLowerCase()}`;
+};
+
+const csatTone = (score: number) => {
+  if (score >= 8) return "csat-good";
+  if (score >= 7) return "csat-medium";
+  return "csat-low";
 };
 
 const formatEmotionLabel = (label: string) => {
@@ -556,8 +549,20 @@ const RefreshIcon = ({ spinning = false }: { spinning?: boolean }) => (
     aria-hidden="true"
     className={`icon-refresh ${spinning ? "icon-refresh-spin" : ""}`}
   >
+    <defs>
+      <linearGradient id="refresh-ring" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#a78bfa" />
+        <stop offset="1" stopColor="#4090f0" />
+      </linearGradient>
+    </defs>
+    <circle cx="12" cy="12" r="8" fill="none" stroke="url(#refresh-ring)" strokeWidth="2.6" />
+  </svg>
+);
+
+const ExternalArrowIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-extlink">
     <path
-      d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4"
+      d="M8 16 16 8M9 8h7v7"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.8"
@@ -2132,28 +2137,6 @@ function App() {
     }
   };
 
-  const getKeywordBadgeMatches = (transcriptValue?: string | null): KeywordBadgeMatch[] => {
-    if (!transcriptValue?.trim()) {
-      return [];
-    }
-
-    return keywordRules
-      .filter((rule) => rule.enabled && rule.phrase.trim())
-      .flatMap((rule) => {
-        const matches = transcriptValue.match(new RegExp(escapeRegExp(rule.phrase.trim()), "gi"));
-        if (!matches || matches.length === 0) {
-          return [];
-        }
-
-        return [
-          {
-            label: rule.alertLabel.trim() || rule.phrase.trim(),
-            color: rule.color || "#ffc83d",
-          },
-        ];
-      });
-  };
-
   const transcript = detail?.transcript?.trim();
   const redactedTranscript = detail?.redactedTranscript?.trim();
   const summary = detail?.summary?.trim();
@@ -2173,14 +2156,6 @@ function App() {
       })
       .filter((match) => match.count > 0);
   }, [keywordRules, transcript]);
-  const keywordBadgeMatches = useMemo(
-    () =>
-      calls.reduce<Record<string, KeywordBadgeMatch[]>>((result, call) => {
-        result[call.conversationId] = getKeywordBadgeMatches(transcriptCache[call.conversationId]);
-        return result;
-      }, {}),
-    [calls, transcriptCache, keywordRules],
-  );
   const exportableCalls = useMemo(
     () => calls.filter((call) => isCompletedStatus(call.status)),
     [calls],
@@ -2678,19 +2653,21 @@ function App() {
             <div className="explorer-actions">
               <button
                 type="button"
-                className="secondary-button"
+                className="export-button button-with-icon"
                 onClick={() => void handleCallsCsvExport()}
                 disabled={csvExportSubmitting || callsLoading}
               >
-                {csvExportSubmitting ? "Exporting CSV..." : "Export calls CSV"}
+                <span>{csvExportSubmitting ? "Exporting CSV..." : "Export calls CSV"}</span>
+                <ExternalArrowIcon />
               </button>
               <button
                 type="button"
-                className="secondary-button"
+                className="export-button button-with-icon"
                 onClick={openQaExportModal}
                 disabled={exportableCalls.length === 0}
               >
-                Export QA monitoring questionnaire
+                <span>Export QA monitoring questionnaire</span>
+                <ExternalArrowIcon />
               </button>
             </div>
 
@@ -2821,26 +2798,16 @@ function App() {
                   <div className="calls-grid" role="table" aria-label="Conversations">
                     <div className="calls-grid-header" role="row">
                       <span>Conversation</span>
+                      <span>Agent</span>
                       <span>Status</span>
                       <span>Sentiment</span>
-                      <span>Score</span>
+                      <span>CSAT Score</span>
                       <span>QA Score</span>
-                      <span>Duration</span>
                       <span>Language</span>
-                      <span>Keywords</span>
                       <span>Datetime</span>
                     </div>
 
                     {calls.map((call) => {
-                      const keywordMatchesForList = keywordBadgeMatches[call.conversationId] ?? [];
-                      const isKeywordScanPending =
-                        keywordRules.length > 0 && transcriptCache[call.conversationId] == null;
-                      const visibleKeywordLabels = keywordMatchesForList.slice(0, 2);
-                      const hiddenKeywordCount = Math.max(
-                        0,
-                        keywordMatchesForList.length - visibleKeywordLabels.length,
-                      );
-
                       return (
                         <Fragment key={call.conversationId}>
                           <button
@@ -2850,6 +2817,9 @@ function App() {
                             role="row"
                           >
                             <span className="call-row-primary">{call.conversationId}</span>
+                            <span className="call-row-agent">
+                              {getPartySummary(call.agentInfo).primary}
+                            </span>
                             <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
                               {isInProgressStatus(call.status) ? (
                                 <span className="status-inline">
@@ -2863,7 +2833,15 @@ function App() {
                             <span className={classForSentiment(call.sentiment)}>
                               {call.sentiment ?? "unknown"}
                             </span>
-                            <span>{call.satisfactionScore ?? "-"}</span>
+                            <span>
+                              {call.satisfactionScore == null ? (
+                                <span className="muted-cell">-</span>
+                              ) : (
+                                <span className={`csat-pill ${csatTone(call.satisfactionScore)}`}>
+                                  {call.satisfactionScore}
+                                </span>
+                              )}
+                            </span>
                             <QaScoreBadge
                               score={call.qaScore}
                               isApplicable={call.qaIsApplicable}
@@ -2873,36 +2851,7 @@ function App() {
                               possiblePoints={call.qaPossiblePoints}
                               compact
                             />
-                            <span>{formatDurationSeconds(call.durationSeconds)}</span>
                             <span>{call.language ?? "No language"}</span>
-                            <span className="keyword-list-badges">
-                              {keywordRules.length === 0 ? (
-                                <span className="muted-cell">-</span>
-                              ) : isKeywordScanPending ? (
-                                <span className="tag keyword-list-badge">Checking...</span>
-                              ) : keywordMatchesForList.length > 0 ? (
-                                <>
-                                  {visibleKeywordLabels.map((keywordMatch) => (
-                                    <span
-                                      key={`${call.conversationId}-${keywordMatch.label}`}
-                                      className="tag keyword-list-badge"
-                                      style={{
-                                        backgroundColor: `${keywordMatch.color}26`,
-                                        color: keywordMatch.color,
-                                        borderColor: `${keywordMatch.color}4d`,
-                                      }}
-                                    >
-                                      {keywordMatch.label}
-                                    </span>
-                                  ))}
-                                  {hiddenKeywordCount > 0 ? (
-                                    <span className="tag keyword-list-badge">+{hiddenKeywordCount} more</span>
-                                  ) : null}
-                                </>
-                              ) : (
-                                <span className="muted-cell">No keyword</span>
-                              )}
-                            </span>
                             <span>{formatDate(call.createdUtc)}</span>
                             {call.error ? <span className="error-text call-row-error">{call.error}</span> : null}
                           </button>
