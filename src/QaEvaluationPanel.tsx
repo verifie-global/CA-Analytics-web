@@ -10,6 +10,7 @@ type QaEvaluationPanelProps = {
   onRecalculate: () => void;
   recalculateError?: string;
   generatedAtLabel?: string;
+  initiallyExpanded?: boolean;
 };
 
 export function QaEvaluationPanel({
@@ -19,9 +20,10 @@ export function QaEvaluationPanel({
   onRecalculate,
   recalculateError,
   generatedAtLabel,
+  initiallyExpanded = false,
 }: QaEvaluationPanelProps) {
   const evaluation = qa?.evaluation;
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(!initiallyExpanded);
   const qaNotApplicable = isQaNotApplicable(qa);
   const notApplicableReason = formatQaNotApplicableReason(qa?.notApplicableReason);
 

@@ -1,4 +1,4 @@
-import { Fragment, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, FormEvent, MouseEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   authorizeSettings,
@@ -77,6 +77,16 @@ type HeaderMetric =
 type HeaderGraphicConfig = {
   bars: HeaderMetric[];
   summaries: HeaderMetric[];
+};
+
+const SENTIMENT_TOTAL_KEYS = ["positive", "neutral", "negative"] as const;
+type SentimentTotalKey = (typeof SENTIMENT_TOTAL_KEYS)[number];
+type SentimentTotals = Record<SentimentTotalKey, number | null>;
+
+const emptySentimentTotals: SentimentTotals = {
+  positive: null,
+  neutral: null,
+  negative: null,
 };
 
 const emptyCallFilterOptions: CallFilterOptions = {
@@ -347,15 +357,15 @@ const emotionColor = (label: string) => {
   switch (label.trim().toLowerCase()) {
     case "happy":
     case "positive":
-      return "#8ccc6c";
+      return "#4c96f8";
     case "angry":
     case "frustrated":
     case "stress":
-      return "#ff8060";
+      return "#ff4f68";
     case "sad":
-      return "#82b1ff";
+      return "#d59bea";
     default:
-      return "#aab4c8";
+      return "#d59bea";
   }
 };
 
@@ -539,6 +549,347 @@ const BurgerIcon = () => (
   </svg>
 );
 
+const PlayIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-playback">
+    <path d="M8 5v14l11-7z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+  </svg>
+);
+
+const PauseIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-playback">
+    <path
+      d="M8 5v14M16 5v14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const SpeakerIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-playback">
+    <path
+      d="M4 10v4h4l5 4V6l-5 4H4Zm12-1.5a4.5 4.5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const MutedSpeakerIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-playback">
+    <path
+      d="M4 10v4h4l5 4V6l-5 4H4Zm12 0 5 5m0-5-5 5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const MoreIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-playback">
+    <path
+      d="M12 5.5h.01M12 12h.01M12 18.5h.01"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+const playbackBars = Array.from({ length: 98 }, (_, index) => {
+  const primaryWave = Math.sin(index * 0.38) * 17;
+  const secondaryWave = Math.cos(index * 0.17) * 11;
+  const accent = index % 11 === 0 ? 15 : index % 7 === 0 ? 8 : 0;
+  return Math.max(20, Math.min(76, Math.round(43 + primaryWave + secondaryWave + accent)));
+});
+
+const playbackToneFromSignal = (signal: number) => {
+  if (signal > 0.16) {
+    return "positive";
+  }
+
+  if (signal < -0.16) {
+    return "negative";
+  }
+
+  return "neutral";
+};
+
+const playbackToneAtTime = (segments: SpeakerSegment[], milliseconds: number) => {
+  const activeSegment = segments.find((segment) => {
+    const startMs = segment.startMs ?? 0;
+    const endMs = segment.endMs ?? startMs;
+    return milliseconds >= startMs && milliseconds <= endMs && hasDisplayEmotion(segment.emotion);
+  });
+
+  if (activeSegment?.emotion && hasDisplayEmotion(activeSegment.emotion)) {
+    return playbackToneFromSignal(emotionSignal(activeSegment.emotion));
+  }
+
+  const nearestSegment = segments
+    .filter((segment): segment is SpeakerSegment & { emotion: SegmentEmotion & { label: string } } =>
+      hasDisplayEmotion(segment.emotion),
+    )
+    .map((segment) => {
+      const startMs = segment.startMs ?? 0;
+      const endMs = segment.endMs ?? startMs;
+      const midpointMs = (startMs + endMs) / 2;
+      return {
+        segment,
+        distance: Math.abs(midpointMs - milliseconds),
+      };
+    })
+    .sort((left, right) => left.distance - right.distance)[0];
+
+  return nearestSegment
+    ? playbackToneFromSignal(emotionSignal(nearestSegment.segment.emotion))
+    : "neutral";
+};
+
+const ConversationPlayback = ({
+  audioUrl,
+  audioRef,
+  segments,
+  durationSeconds,
+  playbackTimeSeconds,
+  isPreparing,
+  onPlaybackTimeChange,
+}: {
+  audioUrl: string;
+  audioRef: { current: HTMLAudioElement | null };
+  segments: SpeakerSegment[];
+  durationSeconds?: number | null;
+  playbackTimeSeconds: number;
+  isPreparing: boolean;
+  onPlaybackTimeChange: (seconds: number) => void;
+}) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [showNativeControls, setShowNativeControls] = useState(false);
+  const durationMs = Math.max((durationSeconds ?? 0) * 1000, 1000);
+  const progressRatio = Math.max(0, Math.min(1, playbackTimeSeconds / (durationMs / 1000)));
+  const durationLabel = formatTimestamp(durationMs);
+  const currentLabel = formatTimestamp(playbackTimeSeconds * 1000);
+  const audioUnavailable = !audioUrl;
+
+  useEffect(() => {
+    setIsPlaying(false);
+    setIsMuted(false);
+    setIsOptionsOpen(false);
+    setPlaybackRate(1);
+    setShowNativeControls(false);
+  }, [audioUrl]);
+
+  const handleTogglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    if (audio.paused) {
+      void audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    } else {
+      audio.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const handleToggleMute = () => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+
+    audio.muted = !audio.muted;
+    setIsMuted(audio.muted);
+  };
+
+  const handlePlaybackRate = (rate: number) => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = rate;
+    }
+    setPlaybackRate(rate);
+  };
+
+  const handleWaveformSeek = (event: MouseEvent<HTMLDivElement>) => {
+    if (audioUnavailable) {
+      return;
+    }
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const nextRatio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+    const nextSeconds = nextRatio * (durationMs / 1000);
+
+    if (audioRef.current) {
+      audioRef.current.currentTime = nextSeconds;
+    }
+    onPlaybackTimeChange(nextSeconds);
+  };
+
+  return (
+    <section className="conversation-playback">
+      <h4>Conversation Playback</h4>
+      {audioUrl ? (
+        <audio
+          ref={audioRef}
+          src={audioUrl}
+          controls={showNativeControls}
+          muted={isMuted}
+          className={showNativeControls ? "audio-native-inline" : "audio-native-hidden"}
+          onTimeUpdate={(event) => onPlaybackTimeChange(event.currentTarget.currentTime)}
+          onLoadedMetadata={(event) => onPlaybackTimeChange(event.currentTarget.currentTime)}
+          onPlay={(event) => {
+            event.currentTarget.playbackRate = playbackRate;
+            setIsPlaying(true);
+          }}
+          onPause={() => setIsPlaying(false)}
+          onVolumeChange={(event) => setIsMuted(event.currentTarget.muted)}
+          onRateChange={(event) => setPlaybackRate(event.currentTarget.playbackRate)}
+          onEnded={() => {
+            onPlaybackTimeChange(0);
+            setIsPlaying(false);
+          }}
+        />
+      ) : null}
+      <div
+        className={`playback-waveform ${audioUnavailable ? "playback-disabled" : ""}`}
+        role="slider"
+        aria-label="Conversation playback position"
+        aria-valuemin={0}
+        aria-valuemax={Math.round(durationMs / 1000)}
+        aria-valuenow={Math.round(playbackTimeSeconds)}
+        tabIndex={0}
+        aria-disabled={audioUnavailable}
+        onClick={handleWaveformSeek}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+            event.preventDefault();
+            const direction = event.key === "ArrowRight" ? 1 : -1;
+            const nextSeconds = Math.max(
+              0,
+              Math.min(durationMs / 1000, playbackTimeSeconds + direction * 5),
+            );
+            if (audioRef.current) {
+              audioRef.current.currentTime = nextSeconds;
+            }
+            onPlaybackTimeChange(nextSeconds);
+          }
+        }}
+      >
+        {playbackBars.map((height, index) => {
+          const ratio = index / Math.max(1, playbackBars.length - 1);
+          const barTimestampMs = ratio * durationMs;
+          const tone = playbackToneAtTime(segments, barTimestampMs);
+          return (
+            <span
+              key={`playback-bar-${index}`}
+              className={`playback-bar playback-${tone}`}
+              style={{ height: `${height}%` }}
+            />
+          );
+        })}
+        <span className="playback-cursor" style={{ left: `${progressRatio * 100}%` }} />
+      </div>
+      <div className="playback-controls">
+        <span className="playback-time-badge">
+          {currentLabel}-{durationLabel}
+        </span>
+        <button
+          type="button"
+          className="playback-icon-button playback-main-button"
+          onClick={handleTogglePlayback}
+          disabled={audioUnavailable}
+          title={audioUrl ? (isPlaying ? "Pause" : "Play") : isPreparing ? "Preparing audio" : "Audio unavailable"}
+          aria-label={isPlaying ? "Pause conversation" : "Play conversation"}
+        >
+          {isPlaying ? <PauseIcon /> : <PlayIcon />}
+        </button>
+        <div className="playback-control-tail">
+          <button
+            type="button"
+            className="playback-icon-button"
+            aria-label={isMuted ? "Unmute playback" : "Mute playback"}
+            title={isMuted ? "Unmute" : "Mute"}
+            disabled={audioUnavailable}
+            onClick={handleToggleMute}
+          >
+            {isMuted ? <MutedSpeakerIcon /> : <SpeakerIcon />}
+          </button>
+          <button
+            type="button"
+            className="playback-icon-button"
+            aria-label="Playback options"
+            title="Options"
+            aria-expanded={isOptionsOpen}
+            disabled={audioUnavailable}
+            onClick={() => setIsOptionsOpen((current) => !current)}
+          >
+            <MoreIcon />
+          </button>
+          {isOptionsOpen ? (
+            <div className="playback-options-menu" role="menu">
+              <span>Speed</span>
+              <div className="playback-rate-grid">
+                {[0.75, 1, 1.25, 1.5].map((rate) => (
+                  <button
+                    key={rate}
+                    type="button"
+                    className={rate === playbackRate ? "is-active-rate" : ""}
+                    onClick={() => handlePlaybackRate(rate)}
+                  >
+                    {rate}x
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="playback-option-row"
+                onClick={() => setShowNativeControls((current) => !current)}
+              >
+                {showNativeControls ? "Hide native controls" : "Show native controls"}
+              </button>
+              <a className="playback-option-row" href={audioUrl} download>
+                Download audio
+              </a>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+};
+
+const DetailAccordion = ({
+  title,
+  children,
+  className = "",
+}: {
+  title: string;
+  children: ReactNode;
+  className?: string;
+}) => (
+  <details className={`detail-accordion ${className}`}>
+    <summary>
+      <span>{title}</span>
+      <span className="detail-accordion-plus" aria-hidden="true">
+        +
+      </span>
+    </summary>
+    <div className="detail-accordion-body">{children}</div>
+  </details>
+);
+
 const EyeLogo = () => (
   <img src={satisfaiEye} alt="satisfai" className="brand-eye" />
 );
@@ -648,60 +999,30 @@ const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
   );
 };
 
-const EmotionBadge = ({ emotion }: { emotion?: SegmentEmotion | null }) => {
-  if (!hasDisplayEmotion(emotion)) {
-    return null;
-  }
-
-  const scores = Object.entries(emotion.scores ?? {}).sort(([, first], [, second]) => second - first);
-  const confidence =
-    typeof emotion.confidence === "number" ? ` ${formatPercentage(emotion.confidence)}` : "";
-  const badge = `${formatEmotionLabel(emotion.label)}${confidence}`;
-  const badgeClassName = `emotion-badge ${classForEmotion(emotion.label)}`;
-  const hasDetails =
-    scores.length > 0 ||
-    typeof emotion.confidence === "number" ||
-    Boolean(emotion.rawLabel || emotion.model);
-
-  if (!hasDetails) {
-    return <span className={badgeClassName}>{badge}</span>;
-  }
+const SpeakerTrackGlyph = ({ kind, x, y }: { kind: string; x: number; y: number }) => {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
 
   return (
-    <details className="emotion-detail" onClick={(event) => event.stopPropagation()}>
-      <summary className={badgeClassName}>{badge}</summary>
-      <div className="emotion-scores" aria-label={`${formatEmotionLabel(emotion.label)} emotion scores`}>
-        <div className="emotion-score-meta">
-          <span>Emotion</span>
-          <strong>{formatEmotionLabel(emotion.label)}</strong>
-        </div>
-        {emotion.rawLabel ? (
-          <div className="emotion-score-meta">
-            <span>Raw label</span>
-            <strong>{emotion.rawLabel}</strong>
-          </div>
-        ) : null}
-        {typeof emotion.confidence === "number" ? (
-          <div className="emotion-score-meta">
-            <span>Confidence</span>
-            <strong>{formatPercentage(emotion.confidence)}</strong>
-          </div>
-        ) : null}
-        {emotion.model ? (
-          <div className="emotion-score-meta">
-            <span>Model</span>
-            <strong>{emotion.model}</strong>
-          </div>
-        ) : null}
-        {scores.length > 0 ? <span className="emotion-scores-label">Scores</span> : null}
-        {scores.map(([label, score]) => (
-          <div key={label}>
-            <span>{formatEmotionLabel(label)}</span>
-            <strong>{formatPercentage(score)}</strong>
-          </div>
-        ))}
-      </div>
-    </details>
+    <g className="emotion-speaker-glyph" transform={`translate(${x} ${y})`}>
+      {kind === "AGENT" ? (
+        <>
+          <path d="M7 8a5 5 0 0 1 10 0" {...common} />
+          <path d="M5 10v2a2 2 0 0 0 2 2h1v-6H7a2 2 0 0 0-2 2Zm14 0v2a2 2 0 0 1-2 2h-1V8h1a2 2 0 0 1 2 2Z" {...common} />
+          <path d="M14 18h-3a4 4 0 0 1-4-4" {...common} />
+        </>
+      ) : (
+        <>
+          <path d="M12 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" {...common} />
+          <path d="M5 20a7 7 0 0 1 14 0" {...common} />
+        </>
+      )}
+    </g>
   );
 };
 
@@ -726,8 +1047,6 @@ const EmotionalTimeline = ({
 
   const getTrackKey = (segment: SpeakerSegment) =>
     segment.role && segment.role !== "UNKNOWN" ? segment.role : segment.speaker;
-  const getTrackLabel = (key: string) =>
-    key === "AGENT" ? "Agent" : key === "CUSTOMER" ? "Customer" : formatEmotionLabel(key);
   const trackKeys = Array.from(new Set(emotionalSegments.map(getTrackKey))).sort((left, right) => {
     const priority = (key: string) => (key === "AGENT" ? 0 : key === "CUSTOMER" ? 1 : 2);
     return priority(left) - priority(right) || left.localeCompare(right);
@@ -737,15 +1056,16 @@ const EmotionalTimeline = ({
     ...emotionalSegments.map((segment) => segment.endMs ?? segment.startMs ?? 0),
     1000,
   );
-  const labelWidth = 84;
-  const chartWidth = 760;
-  const trackHeight = 78;
-  const chartStart = labelWidth + 10;
-  const plotWidth = chartWidth - chartStart - 12;
-  const svgHeight = trackKeys.length * trackHeight + 32;
+  const chartWidth = 880;
+  const chartStart = 132;
+  const chartEnd = chartWidth - 14;
+  const plotWidth = chartEnd - chartStart;
+  const trackHeight = 112;
+  const trackTop = 32;
+  const svgHeight = trackTop + trackKeys.length * trackHeight + 42;
   const toX = (milliseconds: number) => chartStart + (milliseconds / totalMs) * plotWidth;
   const cursorX = toX(Math.min(totalMs, Math.max(0, playbackTimeSeconds * 1000)));
-  const tickCount = 4;
+  const tickCount = Math.max(1, Math.min(6, Math.ceil(totalMs / 60000)));
 
   return (
     <div className="emotion-timeline">
@@ -760,7 +1080,7 @@ const EmotionalTimeline = ({
         aria-label="Emotional signals timeline separated by speaker"
       >
         {trackKeys.map((key, trackIndex) => {
-          const baseline = 38 + trackIndex * trackHeight;
+          const baseline = trackTop + 46 + trackIndex * trackHeight;
           const speakerSegments = emotionalSegments
             .filter((segment) => getTrackKey(segment) === key)
             .sort((left, right) => (left.startMs ?? 0) - (right.startMs ?? 0));
@@ -769,11 +1089,7 @@ const EmotionalTimeline = ({
             x: toX(((segment.startMs ?? 0) + (segment.endMs ?? segment.startMs ?? 0)) / 2),
             y: baseline - emotionSignal(segment.emotion) * 25,
           }));
-          const curvePoints = [
-            { x: chartStart, y: baseline },
-            ...dataPoints.map(({ x, y }) => ({ x, y })),
-            { x: chartWidth - 12, y: baseline },
-          ];
+          const curvePoints = dataPoints.map(({ x, y }) => ({ x, y }));
           const gradientId = `emotion-flow-${key.replace(/[^a-z0-9_-]/gi, "-")}-${trackIndex}`;
           return (
             <g key={key}>
@@ -792,44 +1108,54 @@ const EmotionalTimeline = ({
                   )}
                 </linearGradient>
               </defs>
-              <text className="emotion-track-label" x={0} y={baseline + 5}>
-                {getTrackLabel(key)}
-              </text>
-              <text className="emotion-track-positive" x={chartStart - 7} y={baseline - 20}>
-                +
-              </text>
-              <text className="emotion-track-negative" x={chartStart - 7} y={baseline + 26}>
-                -
-              </text>
-              <line
-                className="emotion-track-baseline"
-                x1={chartStart}
-                x2={chartWidth - 12}
-                y1={baseline}
-                y2={baseline}
-              />
-              <path
-                className="emotion-flow-shadow"
-                d={buildSmoothPath(curvePoints)}
-              />
-              <path
-                className="emotion-flow-line"
-                d={buildSmoothPath(curvePoints)}
-                stroke={`url(#${gradientId})`}
-              />
+              <SpeakerTrackGlyph kind={key} x={12} y={baseline - 42} />
+              {[
+                ["Positive", baseline - 25],
+                ["Neutral", baseline],
+                ["Negative", baseline + 25],
+              ].map(([label, y]) => (
+                <g key={`${key}-${label}`}>
+                  <text className="emotion-scale-label" x={50} y={Number(y) + 4}>
+                    {label}
+                  </text>
+                  <line
+                    className="emotion-track-baseline"
+                    x1={chartStart}
+                    x2={chartEnd}
+                    y1={Number(y)}
+                    y2={Number(y)}
+                  />
+                </g>
+              ))}
+              {curvePoints.length > 1 ? (
+                <>
+                  <path
+                    className="emotion-flow-shadow"
+                    d={buildSmoothPath(curvePoints)}
+                  />
+                  <path
+                    className="emotion-flow-line"
+                    d={buildSmoothPath(curvePoints)}
+                    stroke={`url(#${gradientId})`}
+                  />
+                </>
+              ) : null}
               {dataPoints.map(({ segment, x, y }, index) => {
                 const confidence =
                   typeof segment.emotion.confidence === "number"
                     ? ` ${formatPercentage(segment.emotion.confidence)}`
                     : "";
-                const description = `${getTrackLabel(key)}: ${formatEmotionLabel(segment.emotion.label)}${confidence} (${formatTimestamp(segment.startMs)} - ${formatTimestamp(segment.endMs)})`;
+                const speakerLabel = key === "AGENT" ? "Agent" : key === "CUSTOMER" ? "Customer" : formatEmotionLabel(key);
+                const description = `${speakerLabel}: ${formatEmotionLabel(segment.emotion.label)}${confidence} (${formatTimestamp(segment.startMs)} - ${formatTimestamp(segment.endMs)})`;
                 return (
-                  <circle
+                  <rect
                     key={`${segment.startMs ?? 0}-${index}`}
                     className="emotion-flow-point"
-                    cx={x}
-                    cy={y}
-                    r={5}
+                    x={x - 5}
+                    y={y - 5}
+                    width={10}
+                    height={10}
+                    rx={1.5}
                     fill={emotionColor(segment.emotion.label)}
                     role="button"
                     tabIndex={0}
@@ -843,14 +1169,14 @@ const EmotionalTimeline = ({
                     }}
                   >
                     <title>{description}</title>
-                  </circle>
+                  </rect>
                 );
               })}
             </g>
           );
         })}
         {Array.from({ length: tickCount + 1 }, (_, index) => {
-          const tickMs = (index / tickCount) * totalMs;
+          const tickMs = Math.min(totalMs, index * 60000);
           const x = toX(tickMs);
           return (
             <g key={`tick-${index}`}>
@@ -858,8 +1184,8 @@ const EmotionalTimeline = ({
                 className="emotion-timeline-grid"
                 x1={x}
                 x2={x}
-                y1={12}
-                y2={trackKeys.length * trackHeight + 4}
+                y1={trackTop - 12}
+                y2={trackTop + trackKeys.length * trackHeight - 14}
               />
               <text className="emotion-timeline-tick" x={x} y={svgHeight - 6}>
                 {formatTimestamp(tickMs)}
@@ -867,17 +1193,16 @@ const EmotionalTimeline = ({
             </g>
           );
         })}
-        {playbackTimeSeconds > 0 ? (
-          <line
-            className="emotion-timeline-cursor"
-            x1={cursorX}
-            x2={cursorX}
-            y1={12}
-            y2={trackKeys.length * trackHeight + 4}
-          />
-        ) : null}
+        <line
+          className="emotion-timeline-cursor"
+          x1={cursorX}
+          x2={cursorX}
+          y1={trackTop - 12}
+          y2={trackTop + trackKeys.length * trackHeight - 14}
+        />
+        <circle className="emotion-timeline-cursor-dot" cx={cursorX} cy={trackTop - 12} r={4} />
+        <circle className="emotion-timeline-cursor-dot" cx={cursorX} cy={trackTop + trackKeys.length * trackHeight - 14} r={4} />
       </svg>
-      <p className="emotion-timeline-note">Position shows positive or strained signals. Hover a point for details; click to seek.</p>
     </div>
   );
 };
@@ -935,6 +1260,7 @@ function App() {
   const [calls, setCalls] = useState<CallSummary[]>([]);
   const [callsTotal, setCallsTotal] = useState<number | null>(null);
   const [callScoreSummary, setCallScoreSummary] = useState<CallScoreSummary | null>(null);
+  const [sentimentTotals, setSentimentTotals] = useState<SentimentTotals>(emptySentimentTotals);
   const [callFilterOptions, setCallFilterOptions] = useState<CallFilterOptions>(
     emptyCallFilterOptions,
   );
@@ -1425,6 +1751,30 @@ function App() {
       setCalls(nextCalls);
       setCallsTotal(result.total);
       setCallScoreSummary(result.scoreSummary ?? null);
+
+      const sentimentTotalEntries = await Promise.allSettled(
+        SENTIMENT_TOTAL_KEYS.map(async (sentiment) => {
+          const sentimentResult = await fetchCalls(activeSettings, {
+            ...activeFilters,
+            page: 1,
+            pageSize: 1,
+            sentiment,
+          });
+          return [sentiment, sentimentResult.total] as const;
+        }),
+      );
+      const nextSentimentTotals = { ...emptySentimentTotals };
+
+      sentimentTotalEntries.forEach((entry) => {
+        if (entry.status === "fulfilled") {
+          const [sentiment, total] = entry.value;
+          nextSentimentTotals[sentiment] = total;
+        } else if (isUnauthorizedError(entry.reason)) {
+          throw entry.reason;
+        }
+      });
+      setSentimentTotals(nextSentimentTotals);
+
       setSelectedConversationIds((current) =>
         current.filter((conversationId) =>
           nextCalls.some(
@@ -1959,6 +2309,7 @@ function App() {
     setCalls([]);
     setCallsTotal(null);
     setCallScoreSummary(null);
+    setSentimentTotals(emptySentimentTotals);
     setCallFilterOptions(emptyCallFilterOptions);
     setSelectedId("");
     setSelectedConversationIds([]);
@@ -2008,6 +2359,7 @@ function App() {
     setCalls([]);
     setCallsTotal(null);
     setCallScoreSummary(null);
+    setSentimentTotals(emptySentimentTotals);
     setCallFilterOptions(emptyCallFilterOptions);
     setSelectedId("");
     setSelectedConversationIds([]);
@@ -2220,6 +2572,9 @@ function App() {
   const positiveCount = calls.filter((call) => call.sentiment?.toLowerCase() === "positive").length;
   const neutralCount = calls.filter((call) => call.sentiment?.toLowerCase() === "neutral").length;
   const negativeCount = calls.filter((call) => call.sentiment?.toLowerCase() === "negative").length;
+  const positiveSentimentCount = sentimentTotals.positive ?? positiveCount;
+  const neutralSentimentCount = sentimentTotals.neutral ?? neutralCount;
+  const negativeSentimentCount = sentimentTotals.negative ?? negativeCount;
   const avgScore = (() => {
     const scoredCalls = calls.filter((call) => typeof call.satisfactionScore === "number");
     if (scoredCalls.length === 0) {
@@ -2238,18 +2593,25 @@ function App() {
     const total = scoredCalls.reduce((sum, call) => sum + (call.friendlinessScore ?? 0), 0);
     return (total / scoredCalls.length).toFixed(1);
   })();
+  const averageSatisfactionScore =
+    callScoreSummary?.customerSatisfactionScore?.average ??
+    (avgScore ? Number(avgScore) : null);
+  const averageFriendlinessScore =
+    callScoreSummary?.agentFriendlinessScore?.average ??
+    (avgFriendliness ? Number(avgFriendliness) : null);
   const completedCount = calls.filter((call) => call.status?.toLowerCase() === "completed").length;
   const failedCount = calls.filter((call) => call.status?.toLowerCase() === "failed").length;
   const inProgressCount = calls.filter((call) => isInProgressStatus(call.status)).length;
+  const totalCallCount = callsTotal ?? callScoreSummary?.callCount ?? calls.length;
   const metricValues: Record<
     HeaderMetric,
     { value: number | null; max: number; formatted: string; description: string }
   > = {
     total_calls: {
-      value: calls.length,
-      max: Math.max(calls.length, 1),
-      formatted: String(calls.length),
-      description: "Total calls currently visible in the dashboard",
+      value: totalCallCount,
+      max: Math.max(totalCallCount, 1),
+      formatted: String(totalCallCount),
+      description: "Total calls matching the current filters",
     },
     completed_calls: {
       value: completedCount,
@@ -2270,34 +2632,40 @@ function App() {
       description: "Calls still queued or processing",
     },
     positive_calls: {
-      value: positiveCount,
-      max: Math.max(calls.length, 1),
-      formatted: String(positiveCount),
-      description: "Calls with positive sentiment",
+      value: positiveSentimentCount,
+      max: Math.max(totalCallCount, positiveSentimentCount, 1),
+      formatted: String(positiveSentimentCount),
+      description: "Calls matching the current filters with positive sentiment",
     },
     neutral_calls: {
-      value: neutralCount,
-      max: Math.max(calls.length, 1),
-      formatted: String(neutralCount),
-      description: "Calls with neutral sentiment",
+      value: neutralSentimentCount,
+      max: Math.max(totalCallCount, neutralSentimentCount, 1),
+      formatted: String(neutralSentimentCount),
+      description: "Calls matching the current filters with neutral sentiment",
     },
     negative_calls: {
-      value: negativeCount,
-      max: Math.max(calls.length, 1),
-      formatted: String(negativeCount),
-      description: "Calls with negative sentiment",
+      value: negativeSentimentCount,
+      max: Math.max(totalCallCount, negativeSentimentCount, 1),
+      formatted: String(negativeSentimentCount),
+      description: "Calls matching the current filters with negative sentiment",
     },
     avg_satisfaction: {
-      value: avgScore ? Number(avgScore) : null,
+      value: averageSatisfactionScore,
       max: 10,
-      formatted: avgScore ? `${avgScore}/10` : "N/A",
-      description: "Average satisfaction score across visible calls",
+      formatted:
+        averageSatisfactionScore == null
+          ? "N/A"
+          : `${formatSummaryNumber(averageSatisfactionScore, 1)}/10`,
+      description: "Average satisfaction score across filtered calls",
     },
     avg_friendliness: {
-      value: avgFriendliness ? Number(avgFriendliness) : null,
+      value: averageFriendlinessScore,
       max: 10,
-      formatted: avgFriendliness ? `${avgFriendliness}/10` : "N/A",
-      description: "Average friendliness score across visible calls",
+      formatted:
+        averageFriendlinessScore == null
+          ? "N/A"
+          : `${formatSummaryNumber(averageFriendlinessScore, 1)}/10`,
+      description: "Average friendliness score across filtered calls",
     },
   };
   const activeSegmentIndex = detail?.segments.findIndex((segment) => {
@@ -2941,145 +3309,18 @@ function App() {
                 </div>
               ) : detail ? (
                 <>
-                  <div className="detail-header">
-                    <div>
-                      <p className="eyebrow">Conversation</p>
-                      <h3>{detail.conversationId}</h3>
-                    </div>
-                    <div className="detail-header-tags">
-                      <span className="tag">
-                        {audioLoading || audioPendingFor === detail.conversationId
-                          ? "Preparing audio playback"
-                          : audioUrl
-                            ? "Playback ready"
-                            : "No audio yet"}
-                      </span>
-                      <span className={`tag ${keywordMatches.length > 0 ? "tag-warning" : ""}`}>
-                        {keywordMatches.length > 0
-                          ? `${keywordMatches.length} keyword alert${keywordMatches.length === 1 ? "" : "s"}`
-                          : "No keyword alerts"}
-                      </span>
-                    </div>
-                  </div>
+                  <ConversationPlayback
+                    audioUrl={audioUrl}
+                    audioRef={audioRef}
+                    segments={detail.segments}
+                    durationSeconds={detail.durationSeconds}
+                    playbackTimeSeconds={playbackTimeSeconds}
+                    isPreparing={audioLoading || audioPendingFor === detail.conversationId}
+                    onPlaybackTimeChange={setPlaybackTimeSeconds}
+                  />
 
-                  <div className="stat-grid">
-                    <article>
-                      <label>Status</label>
-                      <strong className={isInProgressStatus(detail.status) ? "status-animated-text" : ""}>
-                        {detail.status}
-                      </strong>
-                    </article>
-                    <article>
-                      <label>Sentiment</label>
-                      <strong>{detail.sentiment ?? "-"}</strong>
-                    </article>
-                    <article>
-                      <label>Satisfaction</label>
-                      <strong>{detail.satisfactionScore ?? "-"}</strong>
-                    </article>
-                    <article>
-                      <label>Friendliness</label>
-                      <strong><FriendlinessIndicator value={detail.friendlinessScore} /></strong>
-                    </article>
-                  </div>
-
-                  {audioUrl ? (
-                    <audio
-                      ref={audioRef}
-                      controls
-                      src={audioUrl}
-                      className="audio-player"
-                      onTimeUpdate={(event) => setPlaybackTimeSeconds(event.currentTarget.currentTime)}
-                      onLoadedMetadata={(event) => setPlaybackTimeSeconds(event.currentTarget.currentTime)}
-                      onEnded={() => setPlaybackTimeSeconds(0)}
-                    />
-                  ) : (
-                    <div className="audio-placeholder">
-                      {audioLoading || audioPendingFor === detail.conversationId ? (
-                        <span className="status-inline">
-                          <span className="status-pulse" />
-                          Preparing audio file for playback...
-                        </span>
-                      ) : detail.status === "Completed" ? (
-                        "Preparing audio file for playback..."
-                      ) : (
-                        "Audio playback will appear when the call is completed."
-                      )}
-                    </div>
-                  )}
-
-                  <div className="detail-panels">
-                    <QaEvaluationPanel
-                      qa={detail.qa}
-                      isCompleted={isCompletedStatus(detail.status)}
-                      isRecalculating={qaRecalculating}
-                      onRecalculate={() => void handleRecalculateQa()}
-                      recalculateError={qaRecalculateError}
-                      generatedAtLabel={formatDate(detail.qa?.evaluation?.generatedAtUtc)}
-                    />
-
-                    <section>
-                      <h4>Keyword alerts</h4>
-                      <div className="scroll-panel keyword-panel">
-                        {keywordMatches.length > 0 ? (
-                          keywordMatches.map((match) => (
-                            <article
-                              key={match.rule.id}
-                              className="keyword-card"
-                              style={{
-                                borderColor: `${match.rule.color}42`,
-                                backgroundColor: `${match.rule.color}14`,
-                              }}
-                            >
-                              <div className="keyword-card-head">
-                                <strong>{match.rule.alertLabel || match.rule.phrase}</strong>
-                                <span
-                                  className="token-chip"
-                                  style={{
-                                    backgroundColor: `${match.rule.color}22`,
-                                    color: match.rule.color,
-                                    borderColor: `${match.rule.color}4d`,
-                                  }}
-                                >
-                                  {match.count} hit{match.count === 1 ? "" : "s"}
-                                </span>
-                              </div>
-                              <p>
-                                <strong>Keyword:</strong> {match.rule.phrase}
-                              </p>
-                              <p>
-                                <strong>Action:</strong> {match.rule.actionText || "No action set."}
-                              </p>
-                            </article>
-                          ))
-                        ) : keywordRules.length > 0 ? (
-                          <p>No configured keywords were found in this transcript.</p>
-                        ) : (
-                          <p>
-                            No keyword rules yet. Add them from the dashboard to trigger transcript alerts.
-                          </p>
-                        )}
-                      </div>
-                    </section>
-
-                    <section>
-                      <h4>Summarization</h4>
-                      <div className="scroll-panel prose-block copy-panel">
-                        <button
-                          type="button"
-                          className={`icon-button ${copiedSection === "summary" ? "is-copied" : ""}`}
-                          onClick={() => void handleCopy("summary", summary)}
-                          disabled={!summary}
-                          aria-label="Copy summarization"
-                          title={copiedSection === "summary" ? "Copied" : "Copy"}
-                        >
-                          <CopyIcon />
-                        </button>
-                        {summary ? summary : "No summary available yet."}
-                      </div>
-                    </section>
-
-                    <section className="emotion-timeline-section">
+                  <div className="detail-panels figma-detail-panels">
+                    <section className="detail-section emotion-timeline-section">
                       <h4>Emotional Timeline</h4>
                       <div className="scroll-panel emotion-timeline-panel">
                         <EmotionalTimeline
@@ -3091,223 +3332,284 @@ function App() {
                       </div>
                     </section>
 
-                    <section>
-                      <h4>Diarization</h4>
-                      <div ref={diarizationContainerRef} className="scroll-panel chat-panel">
-                        {detail.segments.length === 0 ? (
-                          <p>No speaker segments available.</p>
-                        ) : (
-                          detail.segments.map((segment, index) => (
-                            <article
-                              data-segment-index={index}
-                              key={`${segment.speaker}-${index}`}
-                              className={`segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()} ${activeSegmentIndex === index ? "segment-active" : ""}`}
-                              onClick={() => handleSeekToSegment(segment.startMs)}
-                            >
-                              <div className="segment-meta">
-                                <strong>
-                                  {segment.role === "AGENT"
-                                    ? "Agent"
-                                    : segment.role === "CUSTOMER"
-                                      ? "Customer"
-                                      : segment.speaker}
-                                </strong>
-                                <div className="segment-signals">
-                                  <EmotionBadge emotion={segment.emotion} />
-                                  <span>
-                                    {formatTimestamp(segment.startMs)} - {formatTimestamp(segment.endMs)}
-                                  </span>
-                                </div>
-                              </div>
-                              <p>{segment.text}</p>
-                            </article>
-                          ))
-                        )}
-                      </div>
-                    </section>
+                    <div className="detail-lower-grid">
+                      <section className="detail-section diarization-section">
+                        <h4>Diarization</h4>
+                        <div ref={diarizationContainerRef} className="scroll-panel chat-panel figma-chat-panel">
+                          {detail.segments.length === 0 ? (
+                            <p>No speaker segments available.</p>
+                          ) : (
+                            detail.segments.map((segment, index) => {
+                              const confidence =
+                                typeof segment.emotion?.confidence === "number"
+                                  ? formatPercentage(segment.emotion.confidence)
+                                  : "";
+                              const emotionClass = hasDisplayEmotion(segment.emotion)
+                                ? classForEmotion(segment.emotion.label)
+                                : "emotion-neutral";
+                              const roleLabel =
+                                segment.role === "AGENT"
+                                  ? "Agent"
+                                  : segment.role === "CUSTOMER"
+                                    ? "Customer"
+                                    : segment.speaker;
 
-                    <section>
-                      <h4>Original transcription</h4>
-                      <div className="scroll-panel prose-block copy-panel">
-                        <button
-                          type="button"
-                          className={`icon-button ${copiedSection === "transcript" ? "is-copied" : ""}`}
-                          onClick={() => void handleCopy("transcript", transcript)}
-                          disabled={!transcript}
-                          aria-label="Copy original transcription"
-                          title={copiedSection === "transcript" ? "Copied" : "Copy"}
-                        >
-                          <CopyIcon />
-                        </button>
-                        {transcript ? transcript : "No original transcription available yet."}
-                      </div>
-                    </section>
-
-                    <section>
-                      <h4>Redacted transcription</h4>
-                      <div className="scroll-panel prose-block redacted-panel">
-                        {redactedTranscript
-                          ? renderRedactedTranscript(redactedTranscript)
-                          : "No redacted transcription available yet."}
-                      </div>
-                    </section>
-
-                    <section>
-                      <h4>Topics</h4>
-                      <div className="scroll-panel token-panel">
-                        {mainTopic || secondaryTopics.length > 0 ? (
-                          <>
-                            {mainTopic ? (
-                              <div className="main-topic-badge">
-                                <span className="main-topic-label">Main topic</span>
-                                <strong>{mainTopic}</strong>
-                              </div>
-                            ) : null}
-                            {secondaryTopics.map((topic, index) => (
-                            <span key={`${topic}-${index}`} className="token-chip">
-                              {topic}
-                            </span>
-                            ))}
-                          </>
-                        ) : (
-                          <p>No topics available.</p>
-                        )}
-                      </div>
-                    </section>
-
-                    <section>
-                      <h4>Conversation info</h4>
-                      <div className="scroll-panel routing-panel">
-                        <article className="routing-card">
-                          <label>Direction</label>
-                          <strong>{callDirection}</strong>
-                        </article>
-                        <article className="routing-card">
-                          <label>Company ID</label>
-                          <strong>{detail.companyId ?? "N/A"}</strong>
-                        </article>
-                        <article className="routing-card">
-                          <label>Agent</label>
-                          <strong>{agentSummary.primary}</strong>
-                          {agentSummary.meta.map((item) => (
-                            <span key={item} className="routing-meta">{item}</span>
-                          ))}
-                        </article>
-                        <article className="routing-card">
-                          <label>Customer</label>
-                          <strong>{customerSummary.primary}</strong>
-                          {customerSummary.meta.map((item) => (
-                            <span key={item} className="routing-meta">{item}</span>
-                          ))}
-                        </article>
-                      </div>
-                    </section>
-
-                    <section>
-                      <h4>Routing</h4>
-                      <div className="scroll-panel routing-panel">
-                        <article className="routing-card">
-                          <label>Related department</label>
-                          <strong>{relatedDepartment ?? "N/A"}</strong>
-                        </article>
-                        <article className="routing-card">
-                          <label>Task urgency</label>
-                          <strong className={`urgency-badge ${taskUrgency ? `urgency-${taskUrgency.toLowerCase()}` : ""}`}>
-                            {taskUrgency ?? "N/A"}
-                          </strong>
-                        </article>
-                      </div>
-                    </section>
-
-                    <section>
-                      <h4>Entities</h4>
-                      <div className="scroll-panel entity-panel">
-                        {entityEntries.length > 0 ? (
-                          entityEntries.map(([key, value]) => (
-                            <div key={key} className="entity-group">
-                              <strong>{key}</strong>
-                              <div className="token-panel">
-                                {Array.isArray(value) ? (
-                                  value.map((item, index) => (
-                                    <span key={`${key}-${index}`} className="token-chip">
-                                      {String(item)}
-                                    </span>
-                                  ))
-                                ) : (
-                                  <span className="token-chip">{String(value)}</span>
-                                )}
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <p>No entities available.</p>
-                        )}
-                      </div>
-                    </section>
-
-                    <section>
-                      <h4>Customer concerns</h4>
-                      <div className="scroll-panel concern-panel">
-                        {customerConcerns.length > 0 ? (
-                          customerConcerns.map((concern, index) => {
-                            const resolved = Boolean(concern.resolved);
-                            const actionsTaken = Array.isArray(concern.actionsTaken)
-                              ? (concern.actionsTaken as string[])
-                              : [];
-
-                            return (
-                              <article key={`concern-${index}`} className="concern-card">
-                                <div className="concern-head">
-                                  <strong>{String(concern.concern ?? `Concern ${index + 1}`)}</strong>
-                                  <span className={`bool-badge ${resolved ? "bool-true" : "bool-false"}`}>
-                                    {resolved ? "Resolved" : "Not resolved"}
-                                  </span>
-                                </div>
-                                {concern.customerQuestion ? (
-                                  <p>
-                                    <strong>Question:</strong> {String(concern.customerQuestion)}
-                                  </p>
-                                ) : null}
-                                {actionsTaken.length > 0 ? (
-                                  <div className="token-panel">
-                                    {actionsTaken.map((action, actionIndex) => (
-                                      <span key={`action-${index}-${actionIndex}`} className="token-chip">
-                                        {action}
+                              return (
+                                <article
+                                  data-segment-index={index}
+                                  key={`${segment.speaker}-${index}`}
+                                  className={`segment-card detail-segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()} ${activeSegmentIndex === index ? "segment-active" : ""}`}
+                                  onClick={() => handleSeekToSegment(segment.startMs)}
+                                >
+                                  <div className="detail-segment-head">
+                                    <strong>{roleLabel}</strong>
+                                    {confidence ? (
+                                      <span className={`emotion-confidence ${emotionClass}`}>
+                                        {confidence}
                                       </span>
-                                    ))}
+                                    ) : null}
                                   </div>
-                                ) : null}
-                              </article>
-                            );
-                          })
-                        ) : (
-                          <p>No customer concerns available.</p>
-                        )}
-                      </div>
-                    </section>
+                                  <p>{segment.text}</p>
+                                  <span className="detail-segment-time">
+                                    {formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}
+                                  </span>
+                                </article>
+                              );
+                            })
+                          )}
+                        </div>
+                      </section>
 
-                    <section>
-                      <h4>Coaching assistance</h4>
-                      <div className="scroll-panel coaching-panel">
-                        {coachingAssistance.length > 0 ? (
-                          coachingAssistance.map((item, index) => (
-                            <article key={`coaching-${index}`} className="coaching-card">
-                              <strong>Recommendation {index + 1}</strong>
-                              <p>{item}</p>
+                      <div className="detail-right-stack">
+                        <section className="detail-section keyword-alerts-section">
+                          <h4>Keyword Alerts</h4>
+                          <div className="scroll-panel keyword-panel figma-keyword-panel">
+                            {keywordMatches.length > 0 ? (
+                              keywordMatches.map((match) => (
+                                <article key={match.rule.id} className="keyword-alert-row">
+                                  <div className="keyword-alert-labels" aria-hidden="true">
+                                    <span>Alert label:</span>
+                                    <span>Keyword:</span>
+                                    <span>Action:</span>
+                                  </div>
+                                  <div
+                                    className="keyword-alert-card"
+                                    style={{
+                                      backgroundColor: `${match.rule.color}33`,
+                                    }}
+                                  >
+                                    <strong>{match.rule.alertLabel || match.rule.phrase}</strong>
+                                    <p>{match.rule.phrase}</p>
+                                    <p>{match.rule.actionText || "No action set."}</p>
+                                  </div>
+                                </article>
+                              ))
+                            ) : keywordRules.length > 0 ? (
+                              <p>No configured keywords were found in this transcript.</p>
+                            ) : (
+                              <p>No keyword rules yet. Add them from the dashboard to trigger transcript alerts.</p>
+                            )}
+                          </div>
+                        </section>
+
+                        <section className="detail-section">
+                          <h4>Customer Concerns</h4>
+                          <div className="scroll-panel concern-panel figma-concern-panel">
+                            {customerConcerns.length > 0 ? (
+                              customerConcerns.map((concern, index) => {
+                                const resolved = Boolean(concern.resolved);
+                                const actionsTaken = Array.isArray(concern.actionsTaken)
+                                  ? (concern.actionsTaken as string[])
+                                  : [];
+                                const solution =
+                                  actionsTaken.length > 0
+                                    ? actionsTaken.join(" ")
+                                    : String(concern.solution ?? concern.resolution ?? "No solution recorded.");
+
+                                return (
+                                  <article key={`concern-${index}`} className="concern-card figma-concern-card">
+                                    <span className={`bool-badge ${resolved ? "bool-true" : "bool-false"}`}>
+                                      {resolved ? "Resolved" : "Not resolved"}
+                                    </span>
+                                    <dl>
+                                      <div>
+                                        <dt>Topic:</dt>
+                                        <dd>{String(concern.concern ?? `Concern ${index + 1}`)}</dd>
+                                      </div>
+                                      {concern.customerQuestion ? (
+                                        <div>
+                                          <dt>Question:</dt>
+                                          <dd>{String(concern.customerQuestion)}</dd>
+                                        </div>
+                                      ) : null}
+                                      <div>
+                                        <dt>Solution:</dt>
+                                        <dd>{solution}</dd>
+                                      </div>
+                                    </dl>
+                                  </article>
+                                );
+                              })
+                            ) : (
+                              <p>No customer concerns available.</p>
+                            )}
+                          </div>
+                        </section>
+
+                        <section className="detail-section">
+                          <h4>Coaching Assistance</h4>
+                          <div className="scroll-panel coaching-panel figma-coaching-panel">
+                            {coachingAssistance.length > 0 ? (
+                              coachingAssistance.map((item, index) => (
+                                <article key={`coaching-${index}`} className="coaching-card figma-coaching-card">
+                                  <span>[{index + 1}]</span>
+                                  <p>{item}</p>
+                                </article>
+                              ))
+                            ) : (
+                              <p>No coaching assistance available.</p>
+                            )}
+                          </div>
+                        </section>
+
+                        <DetailAccordion title="Original Transcription">
+                          <div className="scroll-panel prose-block copy-panel detail-transcript-panel">
+                            <button
+                              type="button"
+                              className={`icon-button ${copiedSection === "transcript" ? "is-copied" : ""}`}
+                              onClick={() => void handleCopy("transcript", transcript)}
+                              disabled={!transcript}
+                              aria-label="Copy original transcription"
+                              title={copiedSection === "transcript" ? "Copied" : "Copy"}
+                            >
+                              <CopyIcon />
+                            </button>
+                            {transcript ? transcript : "No original transcription available yet."}
+                          </div>
+                        </DetailAccordion>
+
+                        <DetailAccordion title="Redacted Transcription">
+                          <div className="scroll-panel prose-block redacted-panel detail-transcript-panel">
+                            {redactedTranscript
+                              ? renderRedactedTranscript(redactedTranscript)
+                              : "No redacted transcription available yet."}
+                          </div>
+                        </DetailAccordion>
+
+                        <DetailAccordion title="Raw Analysis">
+                          <div className="raw-analysis-grid">
+                            <article className="routing-card">
+                              <label>Status</label>
+                              <strong className={isInProgressStatus(detail.status) ? "status-animated-text" : ""}>
+                                {detail.status}
+                              </strong>
                             </article>
-                          ))
-                        ) : (
-                          <p>No coaching assistance available.</p>
-                        )}
+                            <article className="routing-card">
+                              <label>Direction</label>
+                              <strong>{callDirection}</strong>
+                            </article>
+                            <article className="routing-card">
+                              <label>Sentiment</label>
+                              <strong>{detail.sentiment ?? "-"}</strong>
+                            </article>
+                            <article className="routing-card">
+                              <label>Satisfaction</label>
+                              <strong>{detail.satisfactionScore ?? "-"}</strong>
+                            </article>
+                            <article className="routing-card">
+                              <label>Friendliness</label>
+                              <strong><FriendlinessIndicator value={detail.friendlinessScore} /></strong>
+                            </article>
+                            <article className="routing-card">
+                              <label>Department</label>
+                              <strong>{relatedDepartment ?? "N/A"}</strong>
+                            </article>
+                            <article className="routing-card">
+                              <label>Task urgency</label>
+                              <strong className={`urgency-badge ${taskUrgency ? `urgency-${taskUrgency.toLowerCase()}` : ""}`}>
+                                {taskUrgency ?? "N/A"}
+                              </strong>
+                            </article>
+                            <article className="routing-card">
+                              <label>Agent</label>
+                              <strong>{agentSummary.primary}</strong>
+                              {agentSummary.meta.map((item) => (
+                                <span key={item} className="routing-meta">{item}</span>
+                              ))}
+                            </article>
+                            <article className="routing-card">
+                              <label>Customer</label>
+                              <strong>{customerSummary.primary}</strong>
+                              {customerSummary.meta.map((item) => (
+                                <span key={item} className="routing-meta">{item}</span>
+                              ))}
+                            </article>
+                            {summary ? (
+                              <article className="routing-card raw-analysis-wide">
+                                <label>Summary</label>
+                                <p>{summary}</p>
+                              </article>
+                            ) : null}
+                            {mainTopic || secondaryTopics.length > 0 ? (
+                              <article className="routing-card raw-analysis-wide">
+                                <label>Topics</label>
+                                <div className="token-panel">
+                                  {mainTopic ? (
+                                    <span className="main-topic-badge">
+                                      <span className="main-topic-label">Main topic</span>
+                                      <strong>{mainTopic}</strong>
+                                    </span>
+                                  ) : null}
+                                  {secondaryTopics.map((topic, index) => (
+                                    <span key={`${topic}-${index}`} className="token-chip">
+                                      {topic}
+                                    </span>
+                                  ))}
+                                </div>
+                              </article>
+                            ) : null}
+                            {entityEntries.length > 0 ? (
+                              <article className="routing-card raw-analysis-wide">
+                                <label>Entities</label>
+                                <div className="entity-panel">
+                                  {entityEntries.map(([key, value]) => (
+                                    <div key={key} className="entity-group">
+                                      <strong>{key}</strong>
+                                      <div className="token-panel">
+                                        {Array.isArray(value) ? (
+                                          value.map((item, index) => (
+                                            <span key={`${key}-${index}`} className="token-chip">
+                                              {String(item)}
+                                            </span>
+                                          ))
+                                        ) : (
+                                          <span className="token-chip">{String(value)}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </article>
+                            ) : null}
+                          </div>
+                          <pre className="scroll-panel code-block raw-analysis-code">
+                            {JSON.stringify(detail.analysis, null, 2)}
+                          </pre>
+                        </DetailAccordion>
                       </div>
-                    </section>
+                    </div>
 
-                    <section>
-                      <h4>Raw analysis</h4>
-                      <pre className="scroll-panel code-block">
-                        {JSON.stringify(detail.analysis, null, 2)}
-                      </pre>
-                    </section>
+                    <DetailAccordion title="QA Evaluation" className="qa-evaluation-accordion">
+                      <QaEvaluationPanel
+                        qa={detail.qa}
+                        isCompleted={isCompletedStatus(detail.status)}
+                        isRecalculating={qaRecalculating}
+                        onRecalculate={() => void handleRecalculateQa()}
+                        recalculateError={qaRecalculateError}
+                        generatedAtLabel={formatDate(detail.qa?.evaluation?.generatedAtUtc)}
+                        initiallyExpanded
+                      />
+                    </DetailAccordion>
                   </div>
 
                   {detail.error ? <p className="error-text">Processing error: {detail.error}</p> : null}
