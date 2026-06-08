@@ -2404,7 +2404,6 @@ function App() {
         <section className="auth-card">
           <div className="auth-brand">
             <EyeLogo />
-            <span className="auth-brand-name">satisfai</span>
           </div>
           <p className="eyebrow">Authorization</p>
           <h1>Call Analytics Dashboard</h1>
@@ -2517,7 +2516,6 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <EyeLogo />
-          <span className="sidebar-brand-name">satisfai</span>
         </div>
         <nav className="sidebar-nav">
           {navItems.map((item) => (

@@ -250,21 +250,13 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.1rem;
   padding: 0.6rem 0.5rem 1rem;
 }
 
 .brand-eye {
-  width: 104px;
+  width: 150px;
   height: auto;
-  color: var(--ink);
   flex: 0 0 auto;
-}
-
-.sidebar-brand-name {
-  font-size: 1.85rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
 }
 
 .sidebar-nav {
@@ -2431,18 +2423,12 @@ details.scroll-toggle > summary {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.1rem;
   margin-bottom: 1.5rem;
 }
 
 .auth-brand .brand-eye {
-  width: 96px;
+  width: 150px;
   height: auto;
-}
-
-.auth-brand-name {
-  font-size: 1.7rem;
-  font-weight: 500;
 }
 
 /* ====================================================== Animations ==== */
