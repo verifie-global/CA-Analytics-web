@@ -1,7 +1,7 @@
 <svg width="172" height="153" viewBox="-12 -2 172 153" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- almond eye outline (Figma node 2:164) -->
+  <!-- almond eye, solid black (Figma node 2:164) -->
   <g transform="translate(0,11)">
-    <path d="M127.453 44C127.453 44 99.4824 88 63.7261 88C27.9707 88 0 44 0 44C0 44 27.9707 0 63.7261 0C99.4824 0 127.453 44 127.453 44Z" fill="white" stroke="#000000" stroke-width="2.4"/>
+    <path d="M127.453 44C127.453 44 99.4824 88 63.7261 88C27.9707 88 0 44 0 44C0 44 27.9707 0 63.7261 0C99.4824 0 127.453 44 127.453 44Z" fill="#000000"/>
   </g>
   <!-- iris gradient disc (Figma node 2:168) -->
   <g transform="translate(29,20)">
