@@ -15,6 +15,7 @@ import {
   saveQaScoringSettings,
   uploadCall,
 } from "./api";
+import satisfaiEye from "./assets/satisfai-eye.svg";
 import { QaEvaluationPanel } from "./QaEvaluationPanel";
 import { QaProfilePage } from "./QaProfilePage";
 import { QaScoreBadge } from "./QaScoreBadge";
@@ -546,37 +547,7 @@ const BurgerIcon = () => (
 );
 
 const EyeLogo = () => (
-  <svg viewBox="0 0 76 60" aria-hidden="true" className="brand-eye">
-    <defs>
-      <linearGradient id="satisfai-iris" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stopColor="#8a6bff" />
-        <stop offset="1" stopColor="#2f6fe0" />
-      </linearGradient>
-    </defs>
-    {/* almond eye outline */}
-    <path
-      d="M6 38C6 38 19 23 38 23s32 15 32 15-13 15-32 15S6 38 6 38Z"
-      fill="none"
-      stroke="#0b1220"
-      strokeWidth="2.4"
-    />
-    {/* gradient halo ring */}
-    <circle cx="38" cy="38" r="14" fill="none" stroke="url(#satisfai-iris)" strokeWidth="2.6" />
-    {/* bold iris ring */}
-    <circle cx="38" cy="38" r="10.5" fill="none" stroke="#0b1220" strokeWidth="6" />
-    {/* CX wordmark */}
-    <text
-      x="74"
-      y="15"
-      textAnchor="end"
-      fontFamily="Georgia, 'Times New Roman', serif"
-      fontStyle="italic"
-      fontSize="15"
-      fill="#0b1220"
-    >
-      CX
-    </text>
-  </svg>
+  <img src={satisfaiEye} alt="satisfai" className="brand-eye" />
 );
 
 const RefreshIcon = ({ spinning = false }: { spinning?: boolean }) => (
