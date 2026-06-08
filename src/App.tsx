@@ -37,10 +37,16 @@ const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
-const THEME_STORAGE_KEY = "ca-analytics-theme";
 
 type AppRoute = "dashboard" | "qa-profile";
-type ThemeMode = "dark" | "light";
+type AppNavKey =
+  | "dashboard"
+  | "upload"
+  | "record"
+  | "keyword"
+  | "grid"
+  | "qa"
+  | "logout";
 
 type KeywordRule = {
   id: string;
@@ -527,15 +533,6 @@ const CopyIcon = () => (
   </svg>
 );
 
-const RecordIcon = () => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-record">
-    <path
-      d="M12 3a3 3 0 0 1 3 3v5a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3Zm6 8a1 1 0 1 1 2 0 8 8 0 0 1-7 7.94V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.06A8 8 0 0 1 4 11a1 1 0 1 1 2 0 6 6 0 1 0 12 0Z"
-      fill="currentColor"
-    />
-  </svg>
-);
-
 const BurgerIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-burger">
     <path
@@ -547,6 +544,67 @@ const BurgerIcon = () => (
     />
   </svg>
 );
+
+const EyeLogo = () => (
+  <svg viewBox="0 0 48 32" aria-hidden="true" className="brand-eye">
+    <path
+      d="M2 16C2 16 10 4 24 4s22 12 22 12-8 12-22 12S2 16 2 16Z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+    />
+    <circle cx="24" cy="16" r="9" fill="#2f6fe0" />
+    <circle cx="24" cy="16" r="4" fill="#0b1220" />
+    <circle cx="27" cy="13" r="1.6" fill="#ffffff" />
+  </svg>
+);
+
+const NavIcon = ({ name }: { name: AppNavKey }) => {
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="nav-icon">
+      {name === "dashboard" && (
+        <path d="M4 20V9M10 20V4M16 20v-7M22 20H2" {...common} />
+      )}
+      {name === "upload" && (
+        <path d="M12 16V4m0 0 4 4m-4-4-4 4M4 18v2h16v-2" {...common} />
+      )}
+      {name === "record" && (
+        <path
+          d="M12 3a3 3 0 0 1 3 3v5a3 3 0 1 1-6 0V6a3 3 0 0 1 3-3ZM6 11a6 6 0 0 0 12 0M12 17v4"
+          {...common}
+        />
+      )}
+      {name === "keyword" && (
+        <path
+          d="M14 4 4 14l6 6 10-10V4zM16.5 7.5h.01"
+          {...common}
+        />
+      )}
+      {name === "grid" && (
+        <path
+          d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"
+          {...common}
+        />
+      )}
+      {name === "qa" && (
+        <path
+          d="M12 3a9 9 0 1 0 9 9M12 7v5l3 2M19 4v4m2-2h-4"
+          {...common}
+        />
+      )}
+      {name === "logout" && (
+        <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12m0 0-4-4m4 4-4 4" {...common} />
+      )}
+    </svg>
+  );
+};
 
 const FriendlinessIndicator = ({ value }: { value?: number | null }) => {
   if (value == null) {
@@ -911,10 +969,6 @@ function App() {
       return [];
     }
   });
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY);
-    return saved === "light" ? "light" : "dark";
-  });
   const [transcriptCache, setTranscriptCache] = useState<Record<string, string>>({});
   const [uploadValidationMessage, setUploadValidationMessage] = useState<string>("");
   const [uploadErrorMessage, setUploadErrorMessage] = useState<string>("");
@@ -965,10 +1019,6 @@ function App() {
     setCurrentRoute(route);
   };
 
-  const toggleThemeMode = () => {
-    setThemeMode((current) => (current === "dark" ? "light" : "dark"));
-  };
-
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setDraftSettings(settings);
@@ -990,9 +1040,8 @@ function App() {
   }, [keywordRules]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = themeMode;
-    localStorage.setItem(THEME_STORAGE_KEY, themeMode);
-  }, [themeMode]);
+    document.documentElement.dataset.theme = "light";
+  }, []);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -2345,10 +2394,9 @@ function App() {
     return (
       <div className="app-shell auth-shell">
         <section className="auth-card">
-          <div className="auth-theme-toggle">
-            <button type="button" className="secondary-button small-button" onClick={toggleThemeMode}>
-              {themeMode === "dark" ? "Light theme" : "Dark theme"}
-            </button>
+          <div className="auth-brand">
+            <EyeLogo />
+            <span className="auth-brand-name">satisfai</span>
           </div>
           <p className="eyebrow">Authorization</p>
           <h1>Call Analytics Dashboard</h1>
@@ -2404,163 +2452,199 @@ function App() {
     );
   }
 
+  const companyInitials = (settings.companyName || "Workspace")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join("");
+
+  const navItems: Array<{
+    key: AppNavKey;
+    label: string;
+    active: boolean;
+    onClick: () => void;
+  }> = [
+    {
+      key: "dashboard",
+      label: "Dashboard",
+      active: currentRoute === "dashboard" && !isHeaderGraphicCollapsed,
+      onClick: () => {
+        navigateTo("dashboard");
+        setIsHeaderGraphicCollapsed(false);
+      },
+    },
+    { key: "upload", label: "Upload call", active: false, onClick: openUploadModal },
+    {
+      key: "record",
+      label: "Record call",
+      active: false,
+      onClick: () => void openRecordingModal(),
+    },
+    {
+      key: "keyword",
+      label: "Keyword rules",
+      active: false,
+      onClick: () => setIsKeywordManagerOpen(true),
+    },
+    {
+      key: "grid",
+      label: "Grid",
+      active: currentRoute === "dashboard" && isHeaderGraphicCollapsed,
+      onClick: () => {
+        navigateTo("dashboard");
+        setIsHeaderGraphicCollapsed(true);
+      },
+    },
+    {
+      key: "qa",
+      label: "QA settings",
+      active: currentRoute === "qa-profile",
+      onClick: () => navigateTo("qa-profile"),
+    },
+  ];
+
   return (
     <div className="app-shell">
-      {isHeaderGraphicCollapsed ? (
-        <div className="hero-collapsed-bar">
-          <div className="hero-collapsed-actions">
+      <aside className="sidebar">
+        <div className="sidebar-brand">
+          <EyeLogo />
+          <span className="sidebar-brand-name">satisfai</span>
+        </div>
+        <nav className="sidebar-nav">
+          {navItems.map((item) => (
             <button
+              key={item.key}
               type="button"
-              className="secondary-button small-button button-with-icon"
-              onClick={() => setIsHeaderGraphicCollapsed(false)}
+              className={`nav-item ${item.active ? "nav-item-active" : ""}`}
+              onClick={item.onClick}
             >
-              <BurgerIcon />
-              <span>Show header</span>
+              <NavIcon name={item.key} />
+              <span>{item.label}</span>
             </button>
-            <button
-              type="button"
-              className={`secondary-button small-button ${currentRoute === "dashboard" ? "is-active-nav" : ""}`}
-              onClick={() => navigateTo("dashboard")}
-            >
-              Grid
-            </button>
-            <button
-              type="button"
-              className={`secondary-button small-button ${currentRoute === "qa-profile" ? "is-active-nav" : ""}`}
-              onClick={() => navigateTo("qa-profile")}
-            >
-              QA settings
-            </button>
-            <button
-              type="button"
-              className="secondary-button small-button button-with-icon"
-              onClick={() => void openRecordingModal()}
-            >
-              <RecordIcon />
-              <span>Record call</span>
-            </button>
-            <button type="button" className="secondary-button small-button" onClick={toggleThemeMode}>
-              {themeMode === "dark" ? "Light theme" : "Dark theme"}
-            </button>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <button type="button" className="nav-item" onClick={handleLogout}>
+            <NavIcon name="logout" />
+            <span>Log out</span>
+          </button>
+        </div>
+      </aside>
+
+      <div className="app-main">
+        <div className="topbar">
+          <div className="topbar-search">
+            <svg viewBox="0 0 24 24" aria-hidden="true" className="topbar-search-icon">
+              <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="1.8" />
+              <path d="m20 20-3.2-3.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            <input
+              type="search"
+              value={filters.search}
+              onChange={(event) => updateCallFilters({ search: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  const nextFilters = { ...filters, search: filters.search, page: 1 };
+                  setFilters(nextFilters);
+                  void refreshCalls(settings, { filtersOverride: nextFilters });
+                }
+              }}
+              placeholder="Search"
+              aria-label="Search calls"
+            />
+          </div>
+          <div className="topbar-user">
+            <div className="topbar-user-text">
+              <strong>{settings.companyName || "Workspace"}</strong>
+              <span>{settings.companyId || settings.baseUrl}</span>
+            </div>
+            <div className="topbar-avatar" aria-hidden="true">
+              {companyInitials || "CA"}
+            </div>
           </div>
         </div>
-      ) : (
-        <header className="hero">
-          <div>
-            <p className="eyebrow">Authorized workspace</p>
-            <h1>Call Analytics Dashboard</h1>
-            <p className="hero-copy">
-              Upload audio, monitor processing, and inspect transcripts, diarization, sentiment,
-              and satisfaction scores from your backend.
-            </p>
-            <button
-              type="button"
-              className="secondary-button small-button hero-edit-button button-with-icon"
-              onClick={() => setIsHeaderGraphicCollapsed(true)}
-            >
-              <BurgerIcon />
-              <span>Hide header</span>
-            </button>
-            <div className="hero-graphic-actions">
+
+        {currentRoute === "dashboard" ? (
+          <header className="dashboard-head">
+            <div className="dashboard-head-title">
+              <span className="dashboard-head-icon">
+                <NavIcon name="dashboard" />
+              </span>
+              <div>
+                <h1>Call Analytics Dashboard</h1>
+                <p className="hero-copy">
+                  Upload audio, monitor processing, and inspect transcripts, diarization,
+                  sentiment, and satisfaction scores from your backend.
+                </p>
+              </div>
+            </div>
+            <div className="dashboard-head-actions">
               <button
                 type="button"
-                className="secondary-button small-button"
+                className="secondary-button small-button button-with-icon"
                 onClick={() => setIsHeaderEditorOpen(true)}
               >
-                Edit graphic
+                <BurgerIcon />
+                <span>Filter</span>
               </button>
             </div>
-            <div className="hero-graphic">
-              <div className="hero-bars" aria-label="Sentiment overview">
-                {headerGraphicConfig.bars.map((metric) => {
-                  const metricData = metricValues[metric];
-                  const optionLabel =
-                    headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
-                  const heightPercent =
-                    metricData.value == null || metricData.max <= 0
-                      ? 0
-                      : (metricData.value / metricData.max) * 100;
+          </header>
+        ) : null}
 
-                  return (
-                    <div key={metric} className="hero-bar-group">
-                      <div className="hero-bar-shell">
-                        <span
-                          className={`hero-bar ${headerBarClassByMetric(metric)}`}
-                          style={{ height: `${heightPercent}%` }}
-                        />
-                      </div>
-                      <label>{optionLabel}</label>
-                      <strong>{metricData.formatted}</strong>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="hero-summary">
-                {headerGraphicConfig.summaries.map((metric) => {
-                  const metricData = metricValues[metric];
-                  const optionLabel =
-                    headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+        {currentRoute === "dashboard" && !isHeaderGraphicCollapsed ? (
+          <section className="hero-graphic" aria-label="Sentiment overview">
+            <div className="hero-bars">
+              {headerGraphicConfig.bars.map((metric) => {
+                const metricData = metricValues[metric];
+                const optionLabel =
+                  headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+                const heightPercent =
+                  metricData.value == null || metricData.max <= 0
+                    ? 24
+                    : 24 + (metricData.value / metricData.max) * 76;
 
-                  return (
-                    <div key={metric}>
-                      <span>{optionLabel}</span>
-                      <strong>{metricData.formatted}</strong>
-                    </div>
-                  );
-                })}
+                return (
+                  <div
+                    key={metric}
+                    className={`hero-bar-group ${headerBarClassByMetric(metric)}`}
+                    style={{ height: `${heightPercent}%` }}
+                  >
+                    <label>{optionLabel}</label>
+                    <strong>{metricData.formatted}</strong>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hero-strip">
+              <button
+                type="button"
+                className="secondary-button small-button button-with-icon hero-collapse"
+                onClick={() => setIsHeaderGraphicCollapsed(true)}
+              >
+                <BurgerIcon />
+                <span>Collapse</span>
+              </button>
+              {headerGraphicConfig.summaries.map((metric) => {
+                const metricData = metricValues[metric];
+                const optionLabel =
+                  headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
+
+                return (
+                  <div key={metric} className="hero-strip-stat">
+                    <span>{optionLabel}</span>
+                    <strong>{metricData.formatted}</strong>
+                  </div>
+                );
+              })}
+              <div className="hero-strip-stat hero-strip-visible">
+                <span>Visible calls</span>
+                <strong>{calls.length}</strong>
               </div>
             </div>
-          </div>
-          <div className="hero-card">
-            <div className="hero-stat">
-              <span>{calls.length}</span>
-              <label>visible calls</label>
-            </div>
-            <div className="hero-stat">
-              <span>{detail?.status ?? "Idle"}</span>
-              <label>selected status</label>
-            </div>
-            <button type="button" onClick={openUploadModal}>
-              Upload call
-            </button>
-            <button
-              type="button"
-              className="secondary-button button-with-icon"
-              onClick={() => void openRecordingModal()}
-            >
-              <RecordIcon />
-              <span>Record call</span>
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => setIsKeywordManagerOpen(true)}
-            >
-              Keyword rules
-            </button>
-            <button
-              type="button"
-              className={`secondary-button ${currentRoute === "dashboard" ? "is-active-nav" : ""}`}
-              onClick={() => navigateTo("dashboard")}
-            >
-              Grid
-            </button>
-            <button
-              type="button"
-              className={`secondary-button ${currentRoute === "qa-profile" ? "is-active-nav" : ""}`}
-              onClick={() => navigateTo("qa-profile")}
-            >
-              QA settings
-            </button>
-            <button type="button" className="secondary-button" onClick={toggleThemeMode}>
-              {themeMode === "dark" ? "Light theme" : "Dark theme"}
-            </button>
-            <button type="button" className="secondary-button" onClick={handleLogout}>
-              Log out
-            </button>
-          </div>
-        </header>
-      )}
+          </section>
+        ) : null}
 
       <main className="layout">
         {currentRoute === "qa-profile" ? (
@@ -2750,7 +2834,7 @@ function App() {
                         <Fragment key={call.conversationId}>
                           <button
                             type="button"
-                            className={`call-row ${selectedId === call.conversationId ? "selected" : ""}`}
+                            className={`call-row ${call.sentiment ? `row-${call.sentiment.toLowerCase()}` : ""} ${selectedId === call.conversationId ? "selected" : ""}`}
                             onClick={() => handleRowClick(call.conversationId)}
                             role="row"
                           >
@@ -3727,6 +3811,7 @@ function App() {
           </section>
         </div>
       ) : null}
+      </div>
     </div>
   );
 }
