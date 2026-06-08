@@ -546,16 +546,53 @@ const BurgerIcon = () => (
 );
 
 const EyeLogo = () => (
-  <svg viewBox="0 0 48 32" aria-hidden="true" className="brand-eye">
+  <svg viewBox="0 0 76 60" aria-hidden="true" className="brand-eye">
+    <defs>
+      <linearGradient id="satisfai-iris" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#8a6bff" />
+        <stop offset="1" stopColor="#2f6fe0" />
+      </linearGradient>
+    </defs>
+    {/* almond eye outline */}
     <path
-      d="M2 16C2 16 10 4 24 4s22 12 22 12-8 12-22 12S2 16 2 16Z"
+      d="M6 38C6 38 19 23 38 23s32 15 32 15-13 15-32 15S6 38 6 38Z"
       fill="none"
-      stroke="currentColor"
+      stroke="#0b1220"
       strokeWidth="2.4"
     />
-    <circle cx="24" cy="16" r="9" fill="#2f6fe0" />
-    <circle cx="24" cy="16" r="4" fill="#0b1220" />
-    <circle cx="27" cy="13" r="1.6" fill="#ffffff" />
+    {/* gradient halo ring */}
+    <circle cx="38" cy="38" r="14" fill="none" stroke="url(#satisfai-iris)" strokeWidth="2.6" />
+    {/* bold iris ring */}
+    <circle cx="38" cy="38" r="10.5" fill="none" stroke="#0b1220" strokeWidth="6" />
+    {/* CX wordmark */}
+    <text
+      x="74"
+      y="15"
+      textAnchor="end"
+      fontFamily="Georgia, 'Times New Roman', serif"
+      fontStyle="italic"
+      fontSize="15"
+      fill="#0b1220"
+    >
+      CX
+    </text>
+  </svg>
+);
+
+const RefreshIcon = ({ spinning = false }: { spinning?: boolean }) => (
+  <svg
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    className={`icon-refresh ${spinning ? "icon-refresh-spin" : ""}`}
+  >
+    <path
+      d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
@@ -2776,8 +2813,13 @@ function App() {
               selectedValues={customerPhoneValues}
               onChange={(values) => updateMultiFilter("customerPhones", "customerPhone", values)}
             />
-            <button type="submit" disabled={!canQueryApi || callsLoading}>
-              {callsLoading ? "Loading..." : "Refresh"}
+            <button
+              type="submit"
+              className="refresh-button button-with-icon"
+              disabled={!canQueryApi || callsLoading}
+            >
+              <span>{callsLoading ? "Loading..." : "Refresh"}</span>
+              <RefreshIcon spinning={callsLoading} />
             </button>
             </form>
 
