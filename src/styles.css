@@ -966,14 +966,14 @@ textarea:focus {
 .call-row {
   display: grid;
   grid-template-columns:
-    minmax(82px, 0.95fr)
-    minmax(104px, 1fr)
-    minmax(92px, 0.78fr)
-    minmax(88px, 0.74fr)
-    minmax(66px, 0.48fr)
-    minmax(84px, 0.66fr)
-    minmax(46px, 0.36fr)
-    minmax(108px, 0.82fr);
+    minmax(82px, 0.9fr)
+    minmax(104px, 0.96fr)
+    minmax(92px, 0.74fr)
+    minmax(88px, 0.7fr)
+    minmax(66px, 0.45fr)
+    minmax(84px, 0.62fr)
+    minmax(78px, 0.46fr)
+    minmax(112px, 0.8fr);
   gap: 0.55rem;
   align-items: center;
 }
@@ -982,6 +982,12 @@ textarea:focus {
 .call-row > * {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.calls-grid-header > span,
+.call-row-language {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .call-row-agent {

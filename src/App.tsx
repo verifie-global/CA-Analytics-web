@@ -259,29 +259,40 @@ const defaultSettings: AppSettings = {
   expiresAtUtc: "",
 };
 
-const defaultFilters: CallFilters = {
-  page: 1,
-  pageSize: 10,
-  search: "",
-  conversationId: "",
-  createdFromUtc: "",
-  createdToUtc: "",
-  status: "",
-  sentiment: "",
-  minQaScore: "",
-  maxQaScore: "",
-  agentName: "",
-  agentNames: [],
-  agentExternalId: "",
-  agentExternalIds: [],
-  agentPhone: "",
-  agentPhones: [],
-  customerName: "",
-  customerNames: [],
-  customerExternalId: "",
-  customerExternalIds: [],
-  customerPhone: "",
-  customerPhones: [],
+const formatDateInputValue = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+
+const getDefaultFilters = (): CallFilters => {
+  const today = new Date();
+  const fromDate = new Date(today);
+  fromDate.setDate(today.getDate() - 30);
+
+  return {
+    page: 1,
+    pageSize: 10,
+    search: "",
+    conversationId: "",
+    createdFromUtc: formatDateInputValue(fromDate),
+    createdToUtc: formatDateInputValue(today),
+    status: "",
+    sentiment: "",
+    minQaScore: "",
+    maxQaScore: "",
+    agentName: "",
+    agentNames: [],
+    agentExternalId: "",
+    agentExternalIds: [],
+    agentPhone: "",
+    agentPhones: [],
+    customerName: "",
+    customerNames: [],
+    customerExternalId: "",
+    customerExternalIds: [],
+    customerPhone: "",
+    customerPhones: [],
+  };
 };
 
 const getRouteFromPath = (pathName: string): AppRoute =>
@@ -1256,7 +1267,7 @@ function App() {
     }
   });
   const [draftSettings, setDraftSettings] = useState<AppSettings>(settings);
-  const [filters, setFilters] = useState<CallFilters>(defaultFilters);
+  const [filters, setFilters] = useState<CallFilters>(() => getDefaultFilters());
   const [calls, setCalls] = useState<CallSummary[]>([]);
   const [callsTotal, setCallsTotal] = useState<number | null>(null);
   const [callScoreSummary, setCallScoreSummary] = useState<CallScoreSummary | null>(null);
@@ -3251,7 +3262,7 @@ function App() {
                               possiblePoints={call.qaPossiblePoints}
                               compact
                             />
-                            <span>{call.language ?? "No language"}</span>
+                            <span className="call-row-language">{call.language ?? "No language"}</span>
                             <span>{formatDate(call.createdUtc)}</span>
                             {call.error ? <span className="error-text call-row-error">{call.error}</span> : null}
                           </button>
