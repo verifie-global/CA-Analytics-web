@@ -3628,23 +3628,26 @@ details.scroll-toggle > summary {
 }
 
 .demo-transcript-card {
-  position: relative;
   width: min(90%, 500px);
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "speaker badge"
+    "text text"
+    "time time";
   gap: 0.45rem;
   border-radius: 8px;
   background: #fff;
-  padding: 0.85rem 1rem 1.45rem;
+  padding: 0.85rem 1rem;
 }
 
 .demo-transcript-card div {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
+  display: contents;
 }
 
 .demo-transcript-card strong {
+  grid-area: speaker;
+  min-width: 0;
   color: #9aa0a8;
   font-size: 0.76rem;
   font-weight: 500;
@@ -3653,6 +3656,9 @@ details.scroll-toggle > summary {
 }
 
 .demo-transcript-card div span {
+  grid-area: badge;
+  justify-self: end;
+  align-self: start;
   border-radius: 4px;
   background: #dbe7fb;
   color: #1f5fd0;
@@ -3662,16 +3668,19 @@ details.scroll-toggle > summary {
 }
 
 .demo-transcript-card p {
+  grid-area: text;
+  min-width: 0;
   margin: 0;
   color: #111;
   font-size: 0.78rem;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .demo-transcript-card time {
-  position: absolute;
-  right: 0.8rem;
-  bottom: 0.55rem;
+  grid-area: time;
+  justify-self: end;
   color: #9aa0a8;
   font-size: 0.62rem;
 }
