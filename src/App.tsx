@@ -325,6 +325,29 @@ const formatDate = (value?: string | null) => {
   }).format(date);
 };
 
+const formatGridDate = (value?: string | null) => {
+  if (!value) {
+    return { date: "-", time: "" };
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { date: value, time: "" };
+  }
+
+  return {
+    date: new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "2-digit",
+    }).format(date),
+    time: new Intl.DateTimeFormat(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(date),
+  };
+};
+
 const formatTimestamp = (milliseconds?: number | null) => {
   if (milliseconds == null) return "--:--";
   const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
@@ -3266,6 +3289,8 @@ function App() {
                     </div>
 
                     {calls.map((call) => {
+                      const gridDate = formatGridDate(call.createdUtc);
+
                       return (
                         <Fragment key={call.conversationId}>
                           <div
@@ -3316,7 +3341,10 @@ function App() {
                               compact
                             />
                             <span className="call-row-language">{call.language ?? "No language"}</span>
-                            <span>{formatDate(call.createdUtc)}</span>
+                            <span className="call-row-date">
+                              <span>{gridDate.date}</span>
+                              {gridDate.time ? <span>{gridDate.time}</span> : null}
+                            </span>
                             {call.error ? <span className="error-text call-row-error">{call.error}</span> : null}
                           </div>
                           {selectedId === call.conversationId ? (

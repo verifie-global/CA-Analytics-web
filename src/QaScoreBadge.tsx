@@ -34,7 +34,7 @@ export function QaScoreBadge({
         className={`qa-badge qa-badge-muted qa-badge-not-applicable ${compact ? "qa-badge-compact" : ""}`}
         title={reason ? `Reason: ${reason}` : "QA not applicable"}
       >
-        <strong>QA not applicable</strong>
+        <strong>{compact ? "Not applicable" : "QA not applicable"}</strong>
         {reason && !compact ? <small>{reason}</small> : null}
       </span>
     );
