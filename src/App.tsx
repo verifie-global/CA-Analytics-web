@@ -1,4 +1,14 @@
-import { Fragment, FormEvent, MouseEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  FormEvent,
+  KeyboardEvent,
+  MouseEvent,
+  ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   authorizeSettings,
@@ -16,6 +26,7 @@ import {
   uploadCall,
 } from "./api";
 import satisfaiEye from "./assets/satisfai-eye.svg";
+import DemoCallPage from "./DemoCallPage";
 import { QaEvaluationPanel } from "./QaEvaluationPanel";
 import { QaProfilePage } from "./QaProfilePage";
 import { QaScoreBadge } from "./QaScoreBadge";
@@ -39,13 +50,14 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-type AppRoute = "dashboard" | "qa-profile";
+type AppRoute = "dashboard" | "qa-profile" | "demo-call";
 type AppNavKey =
   | "dashboard"
   | "upload"
   | "record"
   | "keyword"
   | "grid"
+  | "demo"
   | "qa"
   | "logout";
 
@@ -295,8 +307,13 @@ const getDefaultFilters = (): CallFilters => {
   };
 };
 
-const getRouteFromPath = (pathName: string): AppRoute =>
-  pathName === "/settings/qa-profile" ? "qa-profile" : "dashboard";
+const getRouteFromPath = (pathName: string): AppRoute => {
+  if (pathName === "/democall") {
+    return "demo-call";
+  }
+
+  return pathName === "/settings/qa-profile" ? "qa-profile" : "dashboard";
+};
 
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
@@ -981,6 +998,12 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
           {...common}
         />
       )}
+      {name === "demo" && (
+        <path
+          d="M4 6h16v12H4zM8 21h8M12 18v3M8.5 10.5h.01M15.5 10.5h.01M9 14c1.8 1.4 4.2 1.4 6 0"
+          {...common}
+        />
+      )}
       {name === "qa" && (
         <path
           d="M12 3a9 9 0 1 0 9 9M12 7v5l3 2M19 4v4m2-2h-4"
@@ -1377,7 +1400,8 @@ function App() {
     );
 
   const navigateTo = (route: AppRoute) => {
-    const nextPath = route === "qa-profile" ? "/settings/qa-profile" : "/";
+    const nextPath =
+      route === "qa-profile" ? "/settings/qa-profile" : route === "demo-call" ? "/democall" : "/";
     window.history.pushState({}, "", nextPath);
     setCurrentRoute(route);
   };
@@ -1914,6 +1938,27 @@ function App() {
     }
 
     void handleLoadDetail(conversationId);
+  };
+
+  const handleRowKeyDown = (event: KeyboardEvent<HTMLDivElement>, conversationId: string) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    handleRowClick(conversationId);
+  };
+
+  const handleConversationIdCopy = (
+    event: MouseEvent<HTMLButtonElement>,
+    conversationId: string,
+  ) => {
+    event.stopPropagation();
+    void handleCopy(`conversation-${conversationId}`, conversationId);
   };
 
   const handlePageChange = (nextPage: number) => {
@@ -2765,6 +2810,10 @@ function App() {
     });
   }, [activeSegmentIndex]);
 
+  if (currentRoute === "demo-call") {
+    return <DemoCallPage />;
+  }
+
   if (!isAuthorized) {
     return (
       <div className="app-shell auth-shell">
@@ -2854,6 +2903,12 @@ function App() {
       label: "Record call",
       active: false,
       onClick: () => void openRecordingModal(),
+    },
+    {
+      key: "demo",
+      label: "Demo call",
+      active: false,
+      onClick: () => navigateTo("demo-call"),
     },
     {
       key: "keyword",
@@ -3221,13 +3276,31 @@ function App() {
                     {calls.map((call) => {
                       return (
                         <Fragment key={call.conversationId}>
-                          <button
-                            type="button"
+                          <div
                             className={`call-row ${call.sentiment ? `row-${call.sentiment.toLowerCase()}` : ""} ${selectedId === call.conversationId ? "selected" : ""}`}
                             onClick={() => handleRowClick(call.conversationId)}
+                            onKeyDown={(event) => handleRowKeyDown(event, call.conversationId)}
                             role="row"
+                            tabIndex={0}
                           >
-                            <span className="call-row-primary">{call.conversationId}</span>
+                            <span className="call-row-primary">
+                              <span className="call-row-id">{call.conversationId}</span>
+                              <button
+                                type="button"
+                                className={`icon-button call-row-copy ${copiedSection === `conversation-${call.conversationId}` ? "is-copied" : ""}`}
+                                onClick={(event) =>
+                                  handleConversationIdCopy(event, call.conversationId)
+                                }
+                                aria-label={`Copy conversation ID ${call.conversationId}`}
+                                title={
+                                  copiedSection === `conversation-${call.conversationId}`
+                                    ? "Copied"
+                                    : "Copy conversation ID"
+                                }
+                              >
+                                <CopyIcon />
+                              </button>
+                            </span>
                             <span className="call-row-agent">
                               {getPartySummary(call.agentInfo).primary}
                             </span>
@@ -3265,7 +3338,7 @@ function App() {
                             <span className="call-row-language">{call.language ?? "No language"}</span>
                             <span>{formatDate(call.createdUtc)}</span>
                             {call.error ? <span className="error-text call-row-error">{call.error}</span> : null}
-                          </button>
+                          </div>
                           {selectedId === call.conversationId ? (
                             <div
                               className="inline-detail-target"
