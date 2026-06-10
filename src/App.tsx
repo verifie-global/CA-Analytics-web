@@ -1953,14 +1953,6 @@ function App() {
     handleRowClick(conversationId);
   };
 
-  const handleConversationIdCopy = (
-    event: MouseEvent<HTMLButtonElement>,
-    conversationId: string,
-  ) => {
-    event.stopPropagation();
-    void handleCopy(`conversation-${conversationId}`, conversationId);
-  };
-
   const handlePageChange = (nextPage: number) => {
     const nextFilters = {
       ...filters,
@@ -3283,23 +3275,11 @@ function App() {
                             role="row"
                             tabIndex={0}
                           >
-                            <span className="call-row-primary">
+                            <span
+                              className="call-row-primary"
+                              onClick={(event) => event.stopPropagation()}
+                            >
                               <span className="call-row-id">{call.conversationId}</span>
-                              <button
-                                type="button"
-                                className={`icon-button call-row-copy ${copiedSection === `conversation-${call.conversationId}` ? "is-copied" : ""}`}
-                                onClick={(event) =>
-                                  handleConversationIdCopy(event, call.conversationId)
-                                }
-                                aria-label={`Copy conversation ID ${call.conversationId}`}
-                                title={
-                                  copiedSection === `conversation-${call.conversationId}`
-                                    ? "Copied"
-                                    : "Copy conversation ID"
-                                }
-                              >
-                                <CopyIcon />
-                              </button>
                             </span>
                             <span className="call-row-agent">
                               {getPartySummary(call.agentInfo).primary}

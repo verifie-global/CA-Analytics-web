@@ -1087,32 +1087,15 @@ textarea:focus {
 }
 
 .call-row-primary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.35rem;
   font-weight: 500;
   overflow-wrap: anywhere;
+  cursor: text;
 }
 
 .call-row-id {
   min-width: 0;
   user-select: text;
-}
-
-.call-row .call-row-copy {
-  position: static;
-  width: 1.75rem;
-  height: 1.75rem;
-  min-width: 1.75rem;
-  padding: 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
-  flex: 0 0 auto;
-}
-
-.call-row .call-row-copy:hover {
-  background: #fff;
+  cursor: text;
 }
 
 /* underline agent name like Figma */
