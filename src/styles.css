@@ -2449,7 +2449,7 @@ textarea:focus {
   width: min(86%, 440px);
   max-width: 86%;
   padding: 0.8rem 1rem 1.45rem;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 8px;
   background: #fff;
   box-shadow: none;
@@ -2468,6 +2468,23 @@ textarea:focus {
 .detail-segment-card:hover {
   transform: none;
   background: #fff;
+}
+
+.detail-segment-card.segment-active {
+  border-color: #1d4ed8;
+  background: #f8fbff;
+  box-shadow:
+    0 0 0 2px rgba(29, 78, 216, 0.16),
+    0 10px 24px rgba(16, 20, 29, 0.12);
+}
+
+.detail-segment-card.segment-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  border-radius: 8px 0 0 8px;
+  background: #1d4ed8;
 }
 
 .detail-segment-head {

@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FaceLandmarker,
+  FilesetResolver,
+  type Category,
+  type FaceLandmarkerResult,
+  type NormalizedLandmark,
+} from "@mediapipe/tasks-vision";
 import satisfaiEye from "./assets/satisfai-eye.svg";
 import {
   RealtimeAsrService,
@@ -28,28 +35,9 @@ type FaceAttribute = {
 type FaceEmotionState = {
   mood: string;
   score: number;
-  detectionMode: "native" | "local";
+  detectionMode: "mediapipe" | "local";
   attributes: FaceAttribute[];
 };
-
-type DetectedFace = {
-  boundingBox: FaceBox | DOMRectReadOnly;
-};
-
-type FaceDetectorInstance = {
-  detect: (source: CanvasImageSource) => Promise<DetectedFace[]>;
-};
-
-type FaceDetectorConstructor = new (options?: {
-  fastMode?: boolean;
-  maxDetectedFaces?: number;
-}) => FaceDetectorInstance;
-
-declare global {
-  interface Window {
-    FaceDetector?: FaceDetectorConstructor;
-  }
-}
 
 const defaultSpeakerLabels: Record<string, string> = {
   SPEAKER_0: "Agent",
@@ -85,6 +73,9 @@ const formatTimeRange = (start: number, end: number) =>
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
+const MEDIAPIPE_WASM_PATH = "/mediapipe/wasm";
+const FACE_LANDMARKER_MODEL_PATH = "/mediapipe/models/face_landmarker.task";
+
 const getSegmentKey = (segment: TranscriptSegment) =>
   `${segment.speaker}:${segment.start.toFixed(2)}:${segment.end.toFixed(2)}`;
 
@@ -116,15 +107,99 @@ const mergeTranscriptMessage = (
 
 const getDefaultSpeakerLabel = (speaker: string) => defaultSpeakerLabels[speaker] ?? speaker;
 
-const getLargestFaceBox = (faces: DetectedFace[]) =>
-  faces
-    .map((face) => ({
-      x: face.boundingBox.x,
-      y: face.boundingBox.y,
-      width: face.boundingBox.width,
-      height: face.boundingBox.height,
-    }))
-    .sort((first, second) => second.width * second.height - first.width * first.height)[0];
+const getLandmarkFaceBox = (landmarks: NormalizedLandmark[], video: HTMLVideoElement): FaceBox => {
+  const xs = landmarks.map((landmark) => landmark.x).filter(Number.isFinite);
+  const ys = landmarks.map((landmark) => landmark.y).filter(Number.isFinite);
+
+  if (xs.length === 0 || ys.length === 0) {
+    return getDefaultFaceBox(video);
+  }
+
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const paddingX = (maxX - minX) * 0.08;
+  const paddingY = (maxY - minY) * 0.12;
+
+  return containFaceBox(
+    {
+      x: (minX - paddingX) * video.videoWidth,
+      y: (minY - paddingY) * video.videoHeight,
+      width: (maxX - minX + paddingX * 2) * video.videoWidth,
+      height: (maxY - minY + paddingY * 2) * video.videoHeight,
+    },
+    video,
+  );
+};
+
+const categoriesToScores = (categories: Category[]) => {
+  const scores = new Map<string, number>();
+  categories.forEach((category) => {
+    scores.set(category.categoryName, clamp01(category.score));
+  });
+  return scores;
+};
+
+const averageScore = (scores: Map<string, number>, names: string[]) =>
+  names.reduce((total, name) => total + (scores.get(name) ?? 0), 0) / names.length;
+
+const analyzeMediaPipeBlendshapes = (result: FaceLandmarkerResult): FaceEmotionState | null => {
+  const blendshapeCategories = result.faceBlendshapes[0]?.categories;
+  if (!blendshapeCategories || blendshapeCategories.length === 0) {
+    return null;
+  }
+
+  const scores = categoriesToScores(blendshapeCategories);
+  const smile = averageScore(scores, ["mouthSmileLeft", "mouthSmileRight"]);
+  const frown = averageScore(scores, ["mouthFrownLeft", "mouthFrownRight"]);
+  const browRaise = averageScore(scores, ["browInnerUp", "browOuterUpLeft", "browOuterUpRight"]);
+  const browFurrow = averageScore(scores, ["browDownLeft", "browDownRight"]);
+  const eyeWide = averageScore(scores, ["eyeWideLeft", "eyeWideRight"]);
+  const eyeSquint = averageScore(scores, ["eyeSquintLeft", "eyeSquintRight"]);
+  const jawOpen = scores.get("jawOpen") ?? 0;
+  const lipPress = averageScore(scores, ["mouthPressLeft", "mouthPressRight"]);
+  const cheekRaise = averageScore(scores, ["cheekSquintLeft", "cheekSquintRight"]);
+  const mouthPucker = scores.get("mouthPucker") ?? 0;
+
+  const emotionScores = [
+    {
+      mood: "POSITIVE",
+      value: clamp01(smile * 0.82 + cheekRaise * 0.28 - frown * 0.34 - lipPress * 0.12),
+    },
+    {
+      mood: "SURPRISED",
+      value: clamp01(jawOpen * 0.52 + eyeWide * 0.34 + browRaise * 0.28 - lipPress * 0.16),
+    },
+    {
+      mood: "TENSE",
+      value: clamp01(browFurrow * 0.42 + eyeSquint * 0.28 + lipPress * 0.24 + mouthPucker * 0.18 - smile * 0.18),
+    },
+    {
+      mood: "CONCERNED",
+      value: clamp01(frown * 0.44 + browRaise * 0.22 + browFurrow * 0.2 - smile * 0.22),
+    },
+  ].sort((first, second) => second.value - first.value);
+
+  const winner = emotionScores[0];
+  const mood = winner.value > 0.22 ? winner.mood : "NATURAL";
+  const score = mood === "NATURAL" ? clamp01(0.4 + (1 - Math.max(smile, frown, browFurrow, jawOpen)) * 0.26) : winner.value;
+
+  return {
+    mood,
+    score,
+    detectionMode: "mediapipe",
+    attributes: [
+      { label: "Smile", value: smile },
+      { label: "Brow raise", value: browRaise },
+      { label: "Brow furrow", value: browFurrow },
+      { label: "Eye open", value: eyeWide },
+      { label: "Eye squint", value: eyeSquint },
+      { label: "Jaw open", value: jawOpen },
+      { label: "Frown", value: frown },
+    ],
+  };
+};
 
 const containFaceBox = (box: FaceBox, video: HTMLVideoElement): FaceBox => {
   const x = Math.max(0, Math.min(video.videoWidth - 1, box.x));
@@ -247,6 +322,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previousLumaFrameRef = useRef<Float32Array | null>(null);
+  const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
   const [analysis, setAnalysis] = useState<FaceEmotionState>(emptyFaceEmotion);
   const [cameraError, setCameraError] = useState("");
   const [cameraNotice, setCameraNotice] = useState("");
@@ -355,7 +431,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
     return {
       mood: mood.mood,
       score: mood.score,
-      detectionMode: "face" as const,
+      detectionMode: "local" as const,
       attributes: [
         { label: "Presence", value: presence },
         { label: "Movement", value: motion },
@@ -378,9 +454,6 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
     let stopped = false;
     let stream: MediaStream | null = null;
     let timerId: number | null = null;
-    const detector = window.FaceDetector
-      ? new window.FaceDetector({ fastMode: true, maxDetectedFaces: 1 })
-      : null;
 
     const clearOverlay = () => {
       const canvas = overlayCanvasRef.current;
@@ -412,14 +485,13 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
           return;
         }
 
-        const detectedFaces = detector ? await detector.detect(video) : [];
-        const detectedBox = getLargestFaceBox(detectedFaces);
-        const box = detectedBox ?? detectLocalFaceBox(video, sampleCanvas, sampleContext);
-        const emotion = analyzeAttributes(video, box);
-        const nextAnalysis = {
-          ...emotion,
-          detectionMode: detectedBox ? ("native" as const) : ("local" as const),
-        };
+        const mediaPipeResult = faceLandmarkerRef.current?.detectForVideo(video, performance.now());
+        const mediaPipeEmotion = mediaPipeResult ? analyzeMediaPipeBlendshapes(mediaPipeResult) : null;
+        const box =
+          mediaPipeResult?.faceLandmarks[0]
+            ? getLandmarkFaceBox(mediaPipeResult.faceLandmarks[0], video)
+            : detectLocalFaceBox(video, sampleCanvas, sampleContext);
+        const nextAnalysis = mediaPipeEmotion ?? analyzeAttributes(video, box);
         setAnalysis(nextAnalysis);
         drawOverlay(containFaceBox(box, video), nextAnalysis, video);
       } catch (error) {
@@ -431,10 +503,35 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
       }
     };
 
+    const loadFaceLandmarker = async () => {
+      const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_PATH);
+      return FaceLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: FACE_LANDMARKER_MODEL_PATH,
+          delegate: "CPU",
+        },
+        runningMode: "VIDEO",
+        numFaces: 1,
+        minFaceDetectionConfidence: 0.45,
+        minFacePresenceConfidence: 0.45,
+        minTrackingConfidence: 0.45,
+        outputFaceBlendshapes: true,
+      });
+    };
+
     const startCamera = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error("Camera capture is not supported in this browser.");
+        }
+
+        try {
+          faceLandmarkerRef.current = await loadFaceLandmarker();
+          setCameraNotice("MediaPipe Face Landmarker active. Emotion is based on facial blendshapes.");
+        } catch (error) {
+          console.warn("MediaPipe Face Landmarker failed to load", error);
+          faceLandmarkerRef.current = null;
+          setCameraNotice("MediaPipe unavailable. Using local camera-frame fallback.");
         }
 
         stream = await navigator.mediaDevices.getUserMedia({
@@ -458,11 +555,6 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
         }
 
         setCameraError("");
-        setCameraNotice(
-          detector
-            ? "Native face detector active."
-            : "Native FaceDetector unavailable. Using local camera-frame detection.",
-        );
         scheduleAnalysis();
       } catch (error) {
         setCameraError(error instanceof Error ? error.message : "Unable to start camera.");
@@ -478,6 +570,8 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
         window.clearTimeout(timerId);
       }
       stream?.getTracks().forEach((track) => track.stop());
+      faceLandmarkerRef.current?.close();
+      faceLandmarkerRef.current = null;
       previousLumaFrameRef.current = null;
       clearOverlay();
       if (videoRef.current) {
@@ -521,7 +615,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
       {cameraError ? <p className="demo-inline-error">{cameraError}</p> : null}
       {!cameraError && cameraNotice ? <p className="demo-inline-note">{cameraNotice}</p> : null}
       <span className="demo-detector-mode">
-        {analysis.detectionMode === "native" ? "NATIVE FACE DETECTOR" : "LOCAL FACE ANALYSIS"}
+        {analysis.detectionMode === "mediapipe" ? "MEDIAPIPE BLENDSHAPES" : "LOCAL FACE ANALYSIS"}
       </span>
     </div>
   );

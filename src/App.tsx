@@ -3449,6 +3449,7 @@ function App() {
                               return (
                                 <article
                                   data-segment-index={index}
+                                  aria-current={activeSegmentIndex === index ? "true" : undefined}
                                   key={`${segment.speaker}-${index}`}
                                   className={`segment-card detail-segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()} ${activeSegmentIndex === index ? "segment-active" : ""}`}
                                   onClick={() => handleSeekToSegment(segment.startMs)}
