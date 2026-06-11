@@ -46,7 +46,7 @@ type FaceAttribute = {
 type FaceEmotionState = {
   mood: string;
   score: number;
-  detectionMode: "mediapipe" | "local";
+  detectionMode: "mediapipe" | "local" | "none";
   attributes: FaceAttribute[];
 };
 
@@ -67,13 +67,15 @@ const emptyAgentTips: AgentTipsState = {
 const speakerEditorKeys = ["SPEAKER_0", "SPEAKER_1"] as const;
 
 const emptyFaceEmotion: FaceEmotionState = {
-  mood: "NATURAL",
+  mood: "NO FACE",
   score: 0,
-  detectionMode: "local",
+  detectionMode: "none",
   attributes: [
     { label: "Presence", value: 0 },
     { label: "Movement", value: 0 },
     { label: "Brightness", value: 0 },
+    { label: "Warmth", value: 0 },
+    { label: "Centering", value: 0 },
   ],
 };
 
@@ -350,7 +352,7 @@ const detectLocalFaceBox = (
 
   const matchRatio = matchCount / (sampleWidth * sampleHeight);
   if (matchRatio < 0.012 || maxX <= minX || maxY <= minY) {
-    return getDefaultFaceBox(video);
+    return null;
   }
 
   const scaleX = video.videoWidth / sampleWidth;
@@ -415,6 +417,12 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
   const [cameraError, setCameraError] = useState("");
   const [cameraNotice, setCameraNotice] = useState("");
   const [videoAspectRatio, setVideoAspectRatio] = useState("16 / 9");
+  const analysisModeLabel =
+    analysis.detectionMode === "mediapipe"
+      ? "MEDIAPIPE BLENDSHAPES"
+      : analysis.detectionMode === "local"
+        ? "LOCAL FACE ANALYSIS"
+        : "NO FACE DETECTED";
 
   const drawOverlay = useCallback(
     (box: FaceBox, emotion: FaceEmotionState, video: HTMLVideoElement) => {
@@ -583,11 +591,21 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
         }
 
         const mediaPipeResult = faceLandmarkerRef.current?.detectForVideo(video, performance.now());
-        const mediaPipeEmotion = mediaPipeResult ? analyzeMediaPipeBlendshapes(mediaPipeResult) : null;
-        const box =
-          mediaPipeResult?.faceLandmarks[0]
-            ? getLandmarkFaceBox(mediaPipeResult.faceLandmarks[0], video)
+        const mediaPipeLandmarks = mediaPipeResult?.faceLandmarks[0];
+        const box = mediaPipeLandmarks
+          ? getLandmarkFaceBox(mediaPipeLandmarks, video)
+          : faceLandmarkerRef.current
+            ? null
             : detectLocalFaceBox(video, sampleCanvas, sampleContext);
+
+        if (!box) {
+          previousLumaFrameRef.current = null;
+          setAnalysis(emptyFaceEmotion);
+          clearOverlay();
+          return;
+        }
+
+        const mediaPipeEmotion = mediaPipeResult ? analyzeMediaPipeBlendshapes(mediaPipeResult) : null;
         const nextAnalysis = mediaPipeEmotion ?? analyzeAttributes(video, box);
         setAnalysis(nextAnalysis);
         drawOverlay(containFaceBox(box, video), nextAnalysis, video);
@@ -721,9 +739,15 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
       </div>
 
       {cameraError ? <p className="demo-inline-error">{cameraError}</p> : null}
-      {!cameraError && cameraNotice ? <p className="demo-inline-note">{cameraNotice}</p> : null}
+      {!cameraError && cameraNotice ? (
+        <p className="demo-inline-note">
+          {active && analysis.detectionMode === "none"
+            ? "No face detected. Move into frame to resume facial analysis."
+            : cameraNotice}
+        </p>
+      ) : null}
       <span className="demo-detector-mode">
-        {analysis.detectionMode === "mediapipe" ? "MEDIAPIPE BLENDSHAPES" : "LOCAL FACE ANALYSIS"}
+        {analysisModeLabel}
       </span>
     </div>
   );
