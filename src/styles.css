@@ -1389,6 +1389,142 @@ textarea:focus {
   min-width: 150px;
 }
 
+/* ------------------------------------------------ Conversation summary */
+
+.conversation-summary-card {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1fr);
+  gap: clamp(2rem, 6vw, 5.5rem);
+  align-items: start;
+  margin-bottom: 0.4rem;
+}
+
+.conversation-summary-meta {
+  display: grid;
+  gap: 0.66rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.conversation-summary-meta > div {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: start;
+}
+
+.conversation-summary-meta dt {
+  color: var(--muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.conversation-summary-meta dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.conversation-summary-direction {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  text-transform: uppercase;
+}
+
+.direction-badge {
+  display: inline-flex;
+  width: 18px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.direction-inbound {
+  background: var(--green-soft);
+  color: var(--green-ink);
+}
+
+.direction-outbound {
+  background: var(--blue-soft);
+  color: var(--blue-ink);
+}
+
+.conversation-summary-meta .urgency-badge {
+  border-radius: 5px;
+  padding: 0.14rem 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  text-transform: lowercase;
+}
+
+.summary-topic-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+}
+
+.summary-topic-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+  background: #ededee;
+  color: var(--ink);
+  font-size: 0.68rem;
+  line-height: 1.15;
+}
+
+.summary-topic-empty {
+  color: var(--muted);
+}
+
+.conversation-summary-copy {
+  min-width: 0;
+  padding-top: 0.2rem;
+}
+
+.conversation-summary-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-bottom: 1.35rem;
+}
+
+.conversation-summary-heading h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: clamp(1.1rem, 2.2vw, 1.5rem);
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.icon-conversation-summary {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+}
+
+.conversation-summary-copy p {
+  max-width: 56ch;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 /* ---------------------------------------------------- Stat big cards -- */
 
 .stat-grid {
@@ -3433,29 +3569,34 @@ details.scroll-toggle > summary {
 
 .demo-live-control {
   display: grid;
-  gap: 0.95rem;
-  margin-top: auto;
+  gap: 0.48rem;
+  margin-top: 0.75rem;
 }
 
 .demo-live-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.8rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
+}
+
+.demo-live-head h2 {
+  font-size: clamp(1.05rem, 1.5vw, 1.45rem);
+  line-height: 1;
 }
 
 .demo-status-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 104px;
-  min-height: 30px;
-  padding: 0.35rem 0.55rem;
+  min-width: 86px;
+  min-height: 24px;
+  padding: 0.22rem 0.45rem;
   border-radius: 6px;
   background: #fff;
   color: #8b93a4;
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   text-transform: uppercase;
 }
 
@@ -3480,19 +3621,19 @@ details.scroll-toggle > summary {
 }
 
 .demo-waveform {
-  height: 106px;
+  height: 54px;
   display: flex;
   align-items: center;
-  gap: 0.28rem;
-  padding: 0.35rem 0;
+  gap: 0.22rem;
+  padding: 0.12rem 0;
   overflow: hidden;
 }
 
 .demo-waveform span {
   flex: 1 1 3px;
   width: auto;
-  max-width: 4px;
-  min-height: 7px;
+  max-width: 3px;
+  min-height: 5px;
   border-radius: 999px;
   background: #4c96f8;
   opacity: 0.8;
@@ -3506,19 +3647,19 @@ details.scroll-toggle > summary {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 1rem;
+  gap: 0.65rem;
 }
 
 .demo-time-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
+  min-height: 24px;
   border-radius: 6px;
   background: #050505;
   color: #fff;
-  padding: 0.2rem 0.45rem;
-  font-size: 0.82rem;
+  padding: 0.14rem 0.38rem;
+  font-size: 0.68rem;
   line-height: 1;
   white-space: nowrap;
 }
@@ -3526,16 +3667,16 @@ details.scroll-toggle > summary {
 .demo-record-actions {
   display: flex;
   justify-content: center;
-  gap: 0.55rem;
+  gap: 0.42rem;
 }
 
 .demo-record-actions button,
 .demo-call-footer a {
   border-radius: 6px;
-  padding: 0.58rem 0.85rem;
+  padding: 0.42rem 0.68rem;
   background: #050505;
   color: #fff;
-  font-size: 0.82rem;
+  font-size: 0.68rem;
   line-height: 1;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -3554,8 +3695,8 @@ details.scroll-toggle > summary {
 }
 
 .demo-audio-icon svg {
-  width: 2rem;
-  height: 2rem;
+  width: 1.45rem;
+  height: 1.45rem;
 }
 
 .demo-input-select {
@@ -3850,6 +3991,7 @@ details.scroll-toggle > summary {
 @media (max-width: 1100px) {
   .hero-bars,
   .stat-grid,
+  .conversation-summary-card,
   .detail-panels,
   .detail-lower-grid,
   .raw-analysis-grid,

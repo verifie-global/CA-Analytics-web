@@ -588,6 +588,19 @@ const CopyIcon = () => (
   </svg>
 );
 
+const ConversationSummaryIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-conversation-summary">
+    <path
+      d="M5 6.5h14v9H9l-4 3v-12Z"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 const BurgerIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" className="icon-burger">
     <path
@@ -2772,6 +2785,13 @@ function App() {
     typeof detail?.analysis?.taskUrgency === "string" ? detail.analysis.taskUrgency : null;
   const agentSummary = getPartySummary(detail?.agentInfo);
   const customerSummary = getPartySummary(detail?.customerInfo);
+  const customerOverview =
+    [
+      detail?.customerInfo?.phone?.trim(),
+      detail?.customerInfo?.name?.trim() || detail?.customerInfo?.externalId?.trim(),
+    ]
+      .filter(Boolean)
+      .join(" / ") || customerSummary.primary;
   const callDirection = formatCallDirection(detail?.isInbound);
 
   const addHeaderBar = () => {
@@ -3401,6 +3421,77 @@ function App() {
                 </div>
               ) : detail ? (
                 <>
+                  <section className="conversation-summary-card" aria-label="Conversation summarization">
+                    <dl className="conversation-summary-meta">
+                      <div>
+                        <dt>Main Topic:</dt>
+                        <dd>{mainTopic || "N/A"}</dd>
+                      </div>
+                      <div>
+                        <dt>Direction:</dt>
+                        <dd className="conversation-summary-direction">
+                          <span>{callDirection}</span>
+                          {detail.isInbound == null ? null : (
+                            <span
+                              className={`direction-badge ${detail.isInbound ? "direction-inbound" : "direction-outbound"}`}
+                              aria-hidden="true"
+                            >
+                              {detail.isInbound ? "←" : "→"}
+                            </span>
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Agent:</dt>
+                        <dd>{agentSummary.primary}</dd>
+                      </div>
+                      <div>
+                        <dt>Customer:</dt>
+                        <dd>{customerOverview}</dd>
+                      </div>
+                      <div>
+                        <dt>Related Department:</dt>
+                        <dd>{relatedDepartment ?? "N/A"}</dd>
+                      </div>
+                      <div>
+                        <dt>Task Urgency:</dt>
+                        <dd>
+                          {taskUrgency ? (
+                            <span className={`urgency-badge urgency-${taskUrgency.toLowerCase()}`}>
+                              {taskUrgency}
+                            </span>
+                          ) : (
+                            "N/A"
+                          )}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Topics:</dt>
+                        <dd>
+                          {secondaryTopics.length > 0 ? (
+                            <span className="summary-topic-list">
+                              {secondaryTopics.map((topic, index) => (
+                                <span key={`${topic}-${index}`} className="summary-topic-chip">
+                                  {topic}
+                                </span>
+                              ))}
+                            </span>
+                          ) : (
+                            <span className="summary-topic-empty">N/A</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div className="conversation-summary-copy">
+                      <div className="conversation-summary-heading">
+                        <ConversationSummaryIcon />
+                        <h4>Conversation Summarization</h4>
+                      </div>
+                      <p>{summary || "No conversation summary available yet."}</p>
+                    </div>
+                  </section>
+
                   <ConversationPlayback
                     audioUrl={audioUrl}
                     audioRef={audioRef}
