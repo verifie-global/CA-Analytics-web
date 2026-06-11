@@ -1503,7 +1503,7 @@ textarea:focus {
 .conversation-summary-heading h4 {
   margin: 0;
   color: var(--ink);
-  font-size: clamp(1.1rem, 2.2vw, 1.5rem);
+  font-size: 1.45rem;
   font-weight: 500;
   line-height: 1.05;
   letter-spacing: 0.04em;
