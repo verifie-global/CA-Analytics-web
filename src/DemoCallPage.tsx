@@ -329,6 +329,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
   const [analysis, setAnalysis] = useState<FaceEmotionState>(emptyFaceEmotion);
   const [cameraError, setCameraError] = useState("");
   const [cameraNotice, setCameraNotice] = useState("");
+  const [videoAspectRatio, setVideoAspectRatio] = useState("16 / 9");
 
   const drawOverlay = useCallback(
     (box: FaceBox, emotion: FaceEmotionState, video: HTMLVideoElement) => {
@@ -348,31 +349,32 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
       context.lineWidth = Math.max(4, canvas.width * 0.006);
       context.strokeRect(mirroredX, box.y, box.width, box.height);
 
-      const moodWidth = Math.min(280, canvas.width - safePad * 2);
-      const moodHeight = 28;
+      const moodFontSize = Math.max(22, canvas.width * 0.018);
+      const moodWidth = Math.min(440, canvas.width - safePad * 2);
+      const moodHeight = Math.max(42, moodFontSize * 1.8);
       const moodX = clampNumber(mirroredX, safePad, canvas.width - moodWidth - safePad);
-      const moodY = clampNumber(box.y - moodHeight - 6, safePad, canvas.height - moodHeight - safePad);
+      const moodY = clampNumber(box.y - moodHeight - 10, safePad, canvas.height - moodHeight - safePad);
       context.fillStyle = "#050505";
       context.fillRect(moodX, moodY, moodWidth, moodHeight);
       context.fillStyle = "#ffffff";
-      context.font = "15px 'Input Mono', monospace";
-      context.fillText(`customerMood = "${emotion.mood}"`, moodX + 14, moodY + 19);
+      context.font = `${moodFontSize}px 'Input Mono', monospace`;
+      context.fillText(`customerMood = "${emotion.mood}"`, moodX + 18, moodY + moodHeight * 0.66);
 
-      const scoreWidth = Math.min(224, canvas.width - safePad * 2);
-      const scoreHeight = 64;
+      const scoreWidth = Math.min(340, canvas.width - safePad * 2);
+      const scoreHeight = 104;
       const preferredScoreX = mirroredX + box.width - scoreWidth + 34;
-      const preferredScoreY = box.y + box.height - 48;
+      const preferredScoreY = box.y + box.height - 70;
       const scoreX = clampNumber(preferredScoreX, safePad, canvas.width - scoreWidth - safePad);
       const scoreY = clampNumber(preferredScoreY, safePad, canvas.height - scoreHeight - safePad);
       context.fillStyle = "rgba(255, 255, 255, 0.94)";
       context.fillRect(scoreX, scoreY, scoreWidth, scoreHeight);
       context.fillStyle = "#050505";
-      context.font = "11px 'Input Mono', monospace";
-      context.fillText("FACE", scoreX + 18, scoreY + 20);
-      context.fillText("ANALYSIS", scoreX + 18, scoreY + 34);
-      context.fillText("SCORE", scoreX + 18, scoreY + 48);
-      context.font = "40px 'Input Mono', monospace";
-      context.fillText(`${Math.round(emotion.score * 100)}%`, scoreX + 102, scoreY + 44);
+      context.font = "18px 'Input Mono', monospace";
+      context.fillText("FACE", scoreX + 22, scoreY + 32);
+      context.fillText("ANALYSIS", scoreX + 22, scoreY + 54);
+      context.fillText("SCORE", scoreX + 22, scoreY + 76);
+      context.font = "62px 'Input Mono', monospace";
+      context.fillText(`${Math.round(emotion.score * 100)}%`, scoreX + 158, scoreY + 72);
     },
     [],
   );
@@ -592,8 +594,19 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
 
   return (
     <div className="demo-face-analyzer">
-      <div className="demo-video-frame">
-        <video ref={videoRef} muted playsInline className="demo-video" />
+      <div className="demo-video-frame" style={{ aspectRatio: videoAspectRatio }}>
+        <video
+          ref={videoRef}
+          muted
+          playsInline
+          className="demo-video"
+          onLoadedMetadata={(event) => {
+            const video = event.currentTarget;
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+              setVideoAspectRatio(`${video.videoWidth} / ${video.videoHeight}`);
+            }
+          }}
+        />
         <canvas ref={overlayCanvasRef} className="demo-video-overlay" aria-hidden="true" />
         <canvas ref={sampleCanvasRef} className="demo-sample-canvas" aria-hidden="true" />
         {!active ? (
