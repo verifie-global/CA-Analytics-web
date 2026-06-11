@@ -3639,6 +3639,7 @@ details.scroll-toggle > summary {
     "text text"
     "time time";
   gap: 0.28rem 0.75rem;
+  border: 1px solid transparent;
   border-radius: 8px;
   background: #fff;
   padding: 0.65rem 0.85rem;
@@ -3694,7 +3695,7 @@ details.scroll-toggle > summary {
 }
 
 .demo-transcript-card.is-partial {
-  outline: 1px solid rgba(76, 150, 248, 0.34);
+  border-color: #9fc6ff;
 }
 
 .demo-empty-transcript {
