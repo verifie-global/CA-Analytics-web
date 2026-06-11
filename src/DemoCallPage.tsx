@@ -44,6 +44,8 @@ const defaultSpeakerLabels: Record<string, string> = {
   SPEAKER_1: "Customer",
 };
 
+const speakerEditorKeys = ["SPEAKER_0", "SPEAKER_1"] as const;
+
 const emptyFaceEmotion: FaceEmotionState = {
   mood: "NATURAL",
   score: 0,
@@ -109,6 +111,24 @@ const mergeTranscriptMessage = (
 };
 
 const getDefaultSpeakerLabel = (speaker: string) => defaultSpeakerLabels[speaker] ?? speaker;
+
+const speakerEditorKeyFor = (speaker: string): (typeof speakerEditorKeys)[number] | null => {
+  const normalized = speaker.trim().toUpperCase();
+  if (normalized === "SPEAKER_0" || normalized === "AGENT") {
+    return "SPEAKER_0";
+  }
+
+  if (normalized === "SPEAKER_1" || normalized === "CUSTOMER") {
+    return "SPEAKER_1";
+  }
+
+  return null;
+};
+
+const getSpeakerDisplayLabel = (speaker: string, speakerLabels: Record<string, string>) => {
+  const editorKey = speakerEditorKeyFor(speaker);
+  return editorKey ? speakerLabels[editorKey] : speakerLabels[speaker] ?? speaker;
+};
 
 const getLandmarkFaceBox = (landmarks: NormalizedLandmark[], video: HTMLVideoElement): FaceBox => {
   const xs = landmarks.map((landmark) => landmark.x).filter(Number.isFinite);
@@ -680,7 +700,7 @@ function DemoCallPage() {
       setSpeakerLabels((current) => {
         const nextLabels = { ...current };
         message.segments.forEach((segment) => {
-          if (!nextLabels[segment.speaker]) {
+          if (!speakerEditorKeyFor(segment.speaker) && !nextLabels[segment.speaker]) {
             nextLabels[segment.speaker] = getDefaultSpeakerLabel(segment.speaker);
           }
         });
@@ -745,9 +765,12 @@ function DemoCallPage() {
     await asrService.stopRecording();
   };
 
-  const knownSpeakers = useMemo(
-    () => [...new Set([...Object.keys(speakerLabels), ...segments.map((segment) => segment.speaker)])],
-    [segments, speakerLabels],
+  const customSpeakers = useMemo(
+    () =>
+      [...new Set(segments.map((segment) => segment.speaker))].filter(
+        (speaker) => !speakerEditorKeyFor(speaker),
+      ),
+    [segments],
   );
   const transcriptText = segments.map((segment) => segment.text).join(" ").toLowerCase();
   const lastSegmentEnd = segments.at(-1)?.end ?? elapsedSeconds;
@@ -884,7 +907,7 @@ function DemoCallPage() {
           </div>
 
           <div className="demo-speaker-labels">
-            {knownSpeakers.map((speaker) => (
+            {[...speakerEditorKeys, ...customSpeakers].map((speaker) => (
               <label key={speaker}>
                 <span>{speaker}</span>
                 <input
@@ -907,9 +930,10 @@ function DemoCallPage() {
               </div>
             ) : (
               segments.map((segment) => {
-                const label = speakerLabels[segment.speaker] ?? segment.speaker;
+                const label = getSpeakerDisplayLabel(segment.speaker, speakerLabels);
                 const roleClass =
-                  label.toLowerCase().includes("customer") || segment.speaker === "SPEAKER_1"
+                  label.toLowerCase().includes("customer") ||
+                  speakerEditorKeyFor(segment.speaker) === "SPEAKER_1"
                     ? "customer"
                     : "agent";
 
