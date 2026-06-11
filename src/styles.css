@@ -3623,7 +3623,7 @@ details.scroll-toggle > summary {
   flex: 1 1 auto;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.8rem;
+  gap: 0.55rem;
   padding: 0;
 }
 
@@ -3638,10 +3638,10 @@ details.scroll-toggle > summary {
     "speaker badge"
     "text text"
     "time time";
-  gap: 0.45rem;
+  gap: 0.28rem 0.75rem;
   border-radius: 8px;
   background: #fff;
-  padding: 0.85rem 1rem;
+  padding: 0.65rem 0.85rem;
 }
 
 .demo-transcript-card div {
@@ -3652,7 +3652,7 @@ details.scroll-toggle > summary {
   grid-area: speaker;
   min-width: 0;
   color: #9aa0a8;
-  font-size: 0.76rem;
+  font-size: 0.68rem;
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -3665,8 +3665,8 @@ details.scroll-toggle > summary {
   border-radius: 4px;
   background: #dbe7fb;
   color: #1f5fd0;
-  padding: 0.16rem 0.35rem;
-  font-size: 0.62rem;
+  padding: 0.12rem 0.32rem;
+  font-size: 0.58rem;
   text-transform: uppercase;
 }
 
@@ -3675,8 +3675,8 @@ details.scroll-toggle > summary {
   min-width: 0;
   margin: 0;
   color: #111;
-  font-size: 0.78rem;
-  line-height: 1.45;
+  font-size: 0.76rem;
+  line-height: 1.25;
   overflow-wrap: anywhere;
   word-break: normal;
 }
@@ -3685,7 +3685,8 @@ details.scroll-toggle > summary {
   grid-area: time;
   justify-self: end;
   color: #9aa0a8;
-  font-size: 0.62rem;
+  font-size: 0.58rem;
+  line-height: 1.1;
 }
 
 .demo-role-customer {
