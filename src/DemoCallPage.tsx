@@ -598,14 +598,7 @@ function LocalFaceAnalyzer({
   const onStatsChangeRef = useRef(onStatsChange);
   const [analysis, setAnalysis] = useState<FaceEmotionState>(emptyFaceEmotion);
   const [cameraError, setCameraError] = useState("");
-  const [cameraNotice, setCameraNotice] = useState("");
   const [videoAspectRatio, setVideoAspectRatio] = useState("16 / 9");
-  const analysisModeLabel =
-    analysis.detectionMode === "mediapipe"
-      ? "MEDIAPIPE BLENDSHAPES"
-      : analysis.detectionMode === "local"
-        ? "LOCAL FACE ANALYSIS"
-        : "NO FACE DETECTED";
 
   useEffect(() => {
     onStatsChangeRef.current = onStatsChange;
@@ -762,7 +755,6 @@ function LocalFaceAnalyzer({
       previousLumaFrameRef.current = null;
       setAnalysis(emptyFaceEmotion);
       setCameraError("");
-      setCameraNotice("");
       resetFaceStats();
       return undefined;
     }
@@ -855,11 +847,9 @@ function LocalFaceAnalyzer({
 
         try {
           faceLandmarkerRef.current = await loadFaceLandmarker();
-          setCameraNotice("MediaPipe Face Landmarker active. Emotion is based on facial blendshapes.");
         } catch (error) {
           console.warn("MediaPipe Face Landmarker failed to load", error);
           faceLandmarkerRef.current = null;
-          setCameraNotice("MediaPipe unavailable. Using local camera-frame fallback.");
         }
 
         stream = await navigator.mediaDevices.getUserMedia({
@@ -886,7 +876,6 @@ function LocalFaceAnalyzer({
         scheduleAnalysis();
       } catch (error) {
         setCameraError(error instanceof Error ? error.message : "Unable to start camera.");
-        setCameraNotice("");
       }
     };
 
@@ -953,16 +942,6 @@ function LocalFaceAnalyzer({
       </div>
 
       {cameraError ? <p className="demo-inline-error">{cameraError}</p> : null}
-      {!cameraError && cameraNotice ? (
-        <p className="demo-inline-note">
-          {active && analysis.detectionMode === "none"
-            ? "No face detected. Move into frame to resume facial analysis."
-            : cameraNotice}
-        </p>
-      ) : null}
-      <span className="demo-detector-mode">
-        {analysisModeLabel}
-      </span>
     </div>
   );
 }

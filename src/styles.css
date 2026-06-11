@@ -3540,7 +3540,6 @@ details.scroll-toggle > summary {
 }
 
 .demo-face-footer span,
-.demo-detector-mode,
 .demo-attribute span,
 .demo-input-select span {
   color: #818896;
@@ -3584,11 +3583,6 @@ details.scroll-toggle > summary {
   height: 100%;
   border-radius: inherit;
   background: #4c96f8;
-}
-
-.demo-detector-mode {
-  display: inline-flex;
-  justify-self: start;
 }
 
 .demo-live-control {
