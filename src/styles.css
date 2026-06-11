@@ -3622,12 +3622,16 @@ details.scroll-toggle > summary {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.8rem;
-  padding: 0.15rem 0.55rem 0.15rem 0;
+  padding: 0;
 }
 
 .demo-transcript-card {
-  width: 100%;
+  width: auto;
+  max-width: none;
+  align-self: stretch;
+  margin: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
