@@ -3441,6 +3441,30 @@ details.scroll-toggle > summary {
   white-space: nowrap;
 }
 
+.demo-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.demo-panel-actions button {
+  border-color: transparent;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #8c93a0;
+  padding: 0.22rem 0.42rem;
+  font-size: 0.62rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.demo-panel-actions button.is-active {
+  background: #dbe7fb;
+  color: #1f5fd0;
+}
+
 .demo-face-panel {
   gap: 1.1rem;
 }
@@ -3778,6 +3802,7 @@ details.scroll-toggle > summary {
   grid-template-areas:
     "speaker badge"
     "text text"
+    "debug debug"
     "time time";
   gap: 0.28rem 0.75rem;
   border: 1px solid transparent;
@@ -3831,8 +3856,26 @@ details.scroll-toggle > summary {
   line-height: 1.1;
 }
 
+.demo-transcript-card small {
+  grid-area: debug;
+  color: #687184;
+  font-size: 0.58rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.demo-role-agent {
+  border-color: rgba(159, 198, 255, 0.48);
+}
+
 .demo-role-customer {
-  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 184, 198, 0.55);
+  background: rgba(255, 250, 251, 0.92);
+}
+
+.demo-role-unknown {
+  border-color: rgba(188, 196, 208, 0.55);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .demo-transcript-card.is-partial {
@@ -3850,53 +3893,143 @@ details.scroll-toggle > summary {
   text-transform: uppercase;
 }
 
+.demo-agent-assist {
+  min-height: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.demo-assist-meta {
+  display: grid;
+  grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
+  gap: 0.42rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.75rem;
+}
+
+.demo-assist-meta span {
+  color: #8c93a0;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.demo-assist-meta strong {
+  min-width: 0;
+  color: #050505;
+  font-size: 0.78rem;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
 .demo-tips-list {
   display: grid;
-  gap: 0.75rem;
-  padding-right: 0.55rem;
-}
-
-.demo-tip {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 1rem;
-  border-radius: 8px;
-  padding: 0.95rem 1rem;
-}
-
-.demo-tip-cream {
-  background: #fff7ed;
-}
-
-.demo-tip-purple {
-  background: #f3ddf5;
-}
-
-.demo-tip-pink {
-  background: #ffdce2;
-}
-
-.demo-tip span {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.74);
-  color: #b7bdc7;
-  font-size: 1.1rem;
-  line-height: 1;
-}
-
-.demo-tip span.is-done {
-  color: #8b93a4;
-}
-
-.demo-tip p {
+  gap: 0.62rem;
   margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-tips-list li {
+  position: relative;
+  border-radius: 8px;
+  background: #fff7ed;
   color: #111;
-  font-size: 0.82rem;
+  padding: 0.72rem 0.78rem 0.72rem 2.15rem;
+  font-size: 0.78rem;
+  line-height: 1.32;
+}
+
+.demo-tips-list li::before {
+  content: counter(list-item);
+  position: absolute;
+  left: 0.72rem;
+  top: 0.72rem;
+  width: 1rem;
+  color: #8c93a0;
+  font-size: 0.68rem;
+  line-height: 1.32;
+}
+
+.demo-tips-history {
+  margin-top: auto;
+  border-top: 1px solid rgba(159, 198, 255, 0.36);
+  padding-top: 0.65rem;
+}
+
+.demo-tips-history summary {
+  cursor: pointer;
+  color: #8c93a0;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.demo-tips-history div {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+.demo-tips-history article {
+  display: grid;
+  gap: 0.28rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  padding: 0.65rem;
+}
+
+.demo-tips-history article > strong {
+  color: #050505;
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.demo-tips-history article > span {
+  color: #8c93a0;
+  font-size: 0.62rem;
+}
+
+.demo-tips-history ol {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.demo-tips-history li {
+  color: #111;
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.demo-empty-assist {
+  flex: 1 1 auto;
+  display: grid;
+  place-content: center;
+  gap: 0.45rem;
+  min-height: 260px;
+  border: 1px dashed rgba(76, 150, 248, 0.35);
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.demo-empty-assist strong {
+  color: #8c93a0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.demo-empty-assist p {
+  max-width: 26ch;
+  margin: 0 auto;
+  color: #687184;
+  font-size: 0.72rem;
   line-height: 1.35;
 }
 

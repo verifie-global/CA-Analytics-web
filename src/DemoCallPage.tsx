@@ -10,6 +10,8 @@ import satisfaiEye from "./assets/satisfai-eye.svg";
 import {
   RealtimeAsrService,
   RealtimeAsrStatus,
+  RoleMapping,
+  TipsMessage,
   TranscriptMessage,
   TranscriptSegment,
 } from "./realtimeAsrService";
@@ -17,6 +19,16 @@ import {
 type DemoTranscriptSegment = TranscriptSegment & {
   id: string;
   partial: boolean;
+  updatedAt: number;
+};
+
+type DemoTipsBlock = {
+  id: string;
+  offset?: number;
+  topic?: string;
+  customerIntent?: string;
+  tips: string[];
+  roleConfidence?: number;
   updatedAt: number;
 };
 
@@ -81,27 +93,62 @@ const FACE_LANDMARKER_MODEL_PATH = "/mediapipe/models/face_landmarker.task";
 const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 
+const getSegmentRawSpeaker = (segment: TranscriptSegment) =>
+  segment.raw_speaker ?? (segment.speaker?.startsWith("SPEAKER_") ? segment.speaker : undefined);
+
+const getSegmentIdentitySpeaker = (segment: TranscriptSegment) =>
+  getSegmentRawSpeaker(segment) ?? segment.speaker ?? segment.role ?? "UNKNOWN";
+
 const getSegmentKey = (segment: TranscriptSegment) =>
-  `${segment.speaker}:${segment.start.toFixed(2)}:${segment.end.toFixed(2)}`;
+  `${getSegmentIdentitySpeaker(segment)}:${segment.start.toFixed(2)}:${segment.end.toFixed(2)}`;
+
+const mergeRoleMappings = (current: RoleMapping, incoming?: RoleMapping) =>
+  incoming ? { ...current, ...incoming } : current;
+
+const applyRoleMappingToSegment = (
+  segment: DemoTranscriptSegment,
+  roleMapping: RoleMapping,
+): DemoTranscriptSegment => {
+  const rawSpeaker = getSegmentRawSpeaker(segment);
+  const mappedRole = rawSpeaker ? roleMapping[rawSpeaker] : undefined;
+
+  if (!mappedRole) {
+    return segment;
+  }
+
+  return {
+    ...segment,
+    role: mappedRole,
+    speaker: segment.speaker?.startsWith("SPEAKER_") ? mappedRole : segment.speaker,
+  };
+};
+
+const applyRoleMappingToSegments = (
+  segments: DemoTranscriptSegment[],
+  roleMapping: RoleMapping,
+) => segments.map((segment) => applyRoleMappingToSegment(segment, roleMapping));
 
 const mergeTranscriptMessage = (
   currentSegments: DemoTranscriptSegment[],
   message: TranscriptMessage,
+  roleMapping: RoleMapping,
 ) => {
   const nextSegmentsById = new Map(currentSegments.map((segment) => [segment.id, segment]));
 
   message.segments.forEach((segment) => {
     const id = getSegmentKey(segment);
-    nextSegmentsById.set(id, {
+    const mergedSegment = {
       ...nextSegmentsById.get(id),
       ...segment,
       id,
       partial: message.type === "partial",
       updatedAt: Date.now(),
-    });
+    };
+
+    nextSegmentsById.set(id, applyRoleMappingToSegment(mergedSegment, roleMapping));
   });
 
-  return [...nextSegmentsById.values()].sort((first, second) => {
+  return applyRoleMappingToSegments([...nextSegmentsById.values()], roleMapping).sort((first, second) => {
     if (first.start !== second.start) {
       return first.start - second.start;
     }
@@ -109,8 +156,6 @@ const mergeTranscriptMessage = (
     return first.end - second.end;
   });
 };
-
-const getDefaultSpeakerLabel = (speaker: string) => defaultSpeakerLabels[speaker] ?? speaker;
 
 const speakerEditorKeyFor = (speaker: string): (typeof speakerEditorKeys)[number] | null => {
   const normalized = speaker.trim().toUpperCase();
@@ -125,10 +170,23 @@ const speakerEditorKeyFor = (speaker: string): (typeof speakerEditorKeys)[number
   return null;
 };
 
-const getSpeakerDisplayLabel = (speaker: string, speakerLabels: Record<string, string>) => {
-  const editorKey = speakerEditorKeyFor(speaker);
-  return editorKey ? speakerLabels[editorKey] : speakerLabels[speaker] ?? speaker;
-};
+const getSegmentDisplayLabel = (segment: TranscriptSegment) =>
+  segment.role ?? segment.speaker ?? segment.raw_speaker ?? "Unknown";
+
+const formatPercent = (value?: number) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? `${Math.round(clamp01(value) * 100)}%`
+    : "";
+
+const createTipsBlock = (message: TipsMessage): DemoTipsBlock => ({
+  id: `${message.offset ?? Date.now()}:${message.tips.join("|")}`,
+  offset: message.offset,
+  topic: message.topic,
+  customerIntent: message.customer_intent,
+  tips: message.tips,
+  roleConfidence: message.role_confidence,
+  updatedAt: Date.now(),
+});
 
 const getLandmarkFaceBox = (landmarks: NormalizedLandmark[], video: HTMLVideoElement): FaceBox => {
   const xs = landmarks.map((landmark) => landmark.x).filter(Number.isFinite);
@@ -669,12 +727,15 @@ function DemoCallPage() {
   const [status, setStatus] = useState<RealtimeAsrStatus>("Disconnected");
   const [segments, setSegments] = useState<DemoTranscriptSegment[]>([]);
   const [speakerLabels, setSpeakerLabels] = useState<Record<string, string>>(defaultSpeakerLabels);
+  const [tipsBlocks, setTipsBlocks] = useState<DemoTipsBlock[]>([]);
+  const [showDebug, setShowDebug] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedInputDeviceId, setSelectedInputDeviceId] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const sessionStartedAtRef = useRef<number | null>(null);
   const transcriptPanelRef = useRef<HTMLDivElement | null>(null);
+  const roleMappingRef = useRef<RoleMapping>(defaultSpeakerLabels);
 
   const refreshInputDevices = useCallback(async () => {
     try {
@@ -686,6 +747,17 @@ function DemoCallPage() {
   }, []);
 
   useEffect(() => {
+    const updateRoleMapping = (incoming?: RoleMapping) => {
+      const nextRoleMapping = mergeRoleMappings(roleMappingRef.current, incoming);
+
+      if (incoming) {
+        roleMappingRef.current = nextRoleMapping;
+        setSpeakerLabels(nextRoleMapping);
+      }
+
+      return nextRoleMapping;
+    };
+
     const unsubscribeStatus = asrService.onStatusChange((nextStatus) => {
       setStatus(nextStatus);
       if (nextStatus === "Recording" && sessionStartedAtRef.current == null) {
@@ -696,16 +768,17 @@ function DemoCallPage() {
       }
     });
     const unsubscribeTranscript = asrService.onTranscript((message) => {
-      setSegments((current) => mergeTranscriptMessage(current, message));
-      setSpeakerLabels((current) => {
-        const nextLabels = { ...current };
-        message.segments.forEach((segment) => {
-          if (!speakerEditorKeyFor(segment.speaker) && !nextLabels[segment.speaker]) {
-            nextLabels[segment.speaker] = getDefaultSpeakerLabel(segment.speaker);
-          }
-        });
-        return nextLabels;
-      });
+      const nextRoleMapping = updateRoleMapping(message.role_mapping);
+      setSegments((current) => mergeTranscriptMessage(current, message, nextRoleMapping));
+    });
+    const unsubscribeTips = asrService.onTips((message) => {
+      const nextRoleMapping = updateRoleMapping(message.role_mapping);
+
+      if (message.role_mapping) {
+        setSegments((current) => applyRoleMappingToSegments(current, nextRoleMapping));
+      }
+
+      setTipsBlocks((current) => [createTipsBlock(message), ...current].slice(0, 4));
     });
     const unsubscribeError = asrService.onError((error) => {
       setErrorMessage(error.message);
@@ -714,6 +787,7 @@ function DemoCallPage() {
     return () => {
       unsubscribeStatus();
       unsubscribeTranscript();
+      unsubscribeTips();
       unsubscribeError();
       void asrService.stopRecording();
     };
@@ -751,6 +825,7 @@ function DemoCallPage() {
 
   const startRecording = async () => {
     setSegments([]);
+    setTipsBlocks([]);
     setErrorMessage("");
     setElapsedSeconds(0);
     sessionStartedAtRef.current = null;
@@ -767,55 +842,43 @@ function DemoCallPage() {
 
   const customSpeakers = useMemo(
     () =>
-      [...new Set(segments.map((segment) => segment.speaker))].filter(
+      [...new Set(segments.map(getSegmentRawSpeaker).filter((speaker): speaker is string => Boolean(speaker)))].filter(
         (speaker) => !speakerEditorKeyFor(speaker),
       ),
     [segments],
   );
-  const transcriptText = segments.map((segment) => segment.text).join(" ").toLowerCase();
+  const speakerEditorItems = useMemo(
+    () => [...new Set([...speakerEditorKeys, ...Object.keys(speakerLabels), ...customSpeakers])],
+    [customSpeakers, speakerLabels],
+  );
+  const currentTipsBlock = tipsBlocks[0];
+  const tipsHistory = tipsBlocks.slice(1, 4);
   const lastSegmentEnd = segments.at(-1)?.end ?? elapsedSeconds;
   const canStart = status !== "Connecting" && status !== "Recording";
   const canStop = status === "Connecting" || status === "Connected" || status === "Recording";
   const faceAnalysisActive =
     status === "Connecting" || status === "Connected" || status === "Recording";
   const statusClass = status.toLowerCase();
-  const tips = [
-    {
-      label: "Acknowledge the customer's frustration.",
-      done: /frustrat|angry|incompetent|upset|delay/.test(transcriptText),
-      tone: "cream",
-    },
-    {
-      label: "Apologize for the delay and inconvenience.",
-      done: /sorry|apolog|inconvenience/.test(transcriptText),
-      tone: "purple",
-    },
-    {
-      label: "Confirm the current status of the request.",
-      done: /status|request|application|case/.test(transcriptText),
-      tone: "pink",
-    },
-    {
-      label: "Explain the reason for the delivery delay and provide a realistic timeline.",
-      done: /tomorrow|timeline|delivery|post office|sent/.test(transcriptText),
-      tone: "cream",
-    },
-    {
-      label: "Check previous correspondence before requesting information again.",
-      done: /email|correspondence|already/.test(transcriptText),
-      tone: "purple",
-    },
-    {
-      label: "Confirm whether the response was sent successfully.",
-      done: /sent|success|received/.test(transcriptText),
-      tone: "pink",
-    },
-    {
-      label: "Ask if the customer prefers another communication channel.",
-      done: /call|phone|email|message/.test(transcriptText),
-      tone: "cream",
-    },
-  ];
+  const assistStatus =
+    status === "Recording"
+      ? currentTipsBlock
+        ? "Updated"
+        : segments.length > 0
+          ? "Generating tips"
+          : "Listening"
+      : currentTipsBlock
+        ? "Updated"
+        : "Listening";
+
+  const handleSpeakerLabelChange = (speaker: string, value: string) => {
+    const nextRoleMapping = {
+      ...roleMappingRef.current,
+      [speaker]: value.trim() || speaker,
+    };
+    roleMappingRef.current = nextRoleMapping;
+    setSpeakerLabels(nextRoleMapping);
+    setSegments((current) => applyRoleMappingToSegments(current, nextRoleMapping));
+  };
 
   return (
     <div className="demo-call-shell">
@@ -903,21 +966,25 @@ function DemoCallPage() {
         <section className="demo-panel demo-diarization-panel">
           <div className="demo-panel-head">
             <h2>Diarization</h2>
-            <span>{segments.length} segments</span>
+            <div className="demo-panel-actions">
+              <button
+                type="button"
+                className={showDebug ? "is-active" : ""}
+                onClick={() => setShowDebug((current) => !current)}
+              >
+                Debug
+              </button>
+              <span>{segments.length} segments</span>
+            </div>
           </div>
 
           <div className="demo-speaker-labels">
-            {[...speakerEditorKeys, ...customSpeakers].map((speaker) => (
+            {speakerEditorItems.map((speaker) => (
               <label key={speaker}>
                 <span>{speaker}</span>
                 <input
                   value={speakerLabels[speaker] ?? speaker}
-                  onChange={(event) =>
-                    setSpeakerLabels((current) => ({
-                      ...current,
-                      [speaker]: event.target.value,
-                    }))
-                  }
+                  onChange={(event) => handleSpeakerLabelChange(speaker, event.target.value)}
                 />
               </label>
             ))}
@@ -930,11 +997,13 @@ function DemoCallPage() {
               </div>
             ) : (
               segments.map((segment) => {
-                const label = getSpeakerDisplayLabel(segment.speaker, speakerLabels);
-                const roleClass =
-                  label.toLowerCase().includes("customer") ||
-                  speakerEditorKeyFor(segment.speaker) === "SPEAKER_1"
-                    ? "customer"
+                const label = getSegmentDisplayLabel(segment);
+                const confidence = formatPercent(segment.role_confidence);
+                const rawSpeaker = getSegmentRawSpeaker(segment);
+                const roleClass = label.toLowerCase().includes("customer")
+                  ? "customer"
+                  : label.toLowerCase().includes("unknown")
+                    ? "unknown"
                     : "agent";
 
                 return (
@@ -945,10 +1014,19 @@ function DemoCallPage() {
                     }`}
                   >
                     <div>
-                      <strong>{label}</strong>
+                      <strong>
+                        {label}
+                        {showDebug && confidence ? ` ${confidence}` : ""}
+                      </strong>
                       {segment.partial ? <span>live</span> : null}
                     </div>
                     <p>{segment.text}</p>
+                    {showDebug ? (
+                      <small>
+                        {rawSpeaker ? `raw: ${rawSpeaker}` : "raw: unknown"}
+                        {segment.role_reason ? ` / reason: ${segment.role_reason}` : ""}
+                      </small>
+                    ) : null}
                     <time>{formatTimeRange(segment.start, segment.end)}</time>
                   </article>
                 );
@@ -959,18 +1037,58 @@ function DemoCallPage() {
 
         <section className="demo-panel demo-tips-panel">
           <div className="demo-panel-head">
-            <h2>CX Assistant Tips</h2>
-            <span>{tips.filter((tip) => tip.done).length}/{tips.length}</span>
+            <h2>Agent Assist</h2>
+            <span>{assistStatus}</span>
           </div>
 
-          <div className="demo-tips-list">
-            {tips.map((tip) => (
-              <article key={tip.label} className={`demo-tip demo-tip-${tip.tone}`}>
-                <span className={tip.done ? "is-done" : ""}>{tip.done ? "OK" : ""}</span>
-                <p>{tip.label}</p>
-              </article>
-            ))}
-          </div>
+          {currentTipsBlock ? (
+            <div className="demo-agent-assist">
+              <div className="demo-assist-meta">
+                <span>Topic</span>
+                <strong>{currentTipsBlock.topic ?? "Unknown"}</strong>
+                <span>Customer intent</span>
+                <strong>{currentTipsBlock.customerIntent ?? "Unknown"}</strong>
+                {formatPercent(currentTipsBlock.roleConfidence) ? (
+                  <>
+                    <span>Role confidence</span>
+                    <strong>{formatPercent(currentTipsBlock.roleConfidence)}</strong>
+                  </>
+                ) : null}
+              </div>
+
+              <ol className="demo-tips-list">
+                {currentTipsBlock.tips.length > 0 ? (
+                  currentTipsBlock.tips.map((tip) => <li key={tip}>{tip}</li>)
+                ) : (
+                  <li>No tips returned yet.</li>
+                )}
+              </ol>
+
+              {tipsHistory.length > 0 ? (
+                <details className="demo-tips-history">
+                  <summary>Last {tipsHistory.length} updates</summary>
+                  <div>
+                    {tipsHistory.map((block) => (
+                      <article key={block.id}>
+                        <strong>{block.topic ?? "Unknown topic"}</strong>
+                        <span>{formatSeconds(block.offset ?? 0)}</span>
+                        <ol>
+                          {block.tips.map((tip) => (
+                            <li key={tip}>{tip}</li>
+                          ))}
+                        </ol>
+                      </article>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          ) : (
+            <div className="demo-empty-assist">
+              <strong>{status === "Recording" ? "Listening" : "No tips yet"}</strong>
+              <p>Agent Assist will update when the service sends the next tips message.</p>
+            </div>
+          )}
         </section>
       </main>
 

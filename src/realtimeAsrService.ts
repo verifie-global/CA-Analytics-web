@@ -5,17 +5,36 @@ export type RealtimeAsrStatus =
   | "Disconnected"
   | "Error";
 
+export type Role = "Agent" | "Customer" | "Unknown" | string;
+
+export type RoleMapping = Record<string, Role>;
+
 export type TranscriptSegment = {
   start: number;
   end: number;
-  speaker: string;
+  raw_speaker?: string;
+  role?: Role;
+  speaker?: Role;
+  role_confidence?: number;
+  role_reason?: string;
   text: string;
 };
 
 export type TranscriptMessage = {
-  type: string;
+  type: "partial";
   offset?: number;
   segments: TranscriptSegment[];
+  role_mapping?: RoleMapping;
+};
+
+export type TipsMessage = {
+  type: "tips";
+  offset?: number;
+  topic?: string;
+  customer_intent?: string;
+  tips: string[];
+  role_mapping?: RoleMapping;
+  role_confidence?: number;
 };
 
 type RealtimeAsrOptions = {
@@ -78,18 +97,49 @@ const appendFloat32 = (first: Float32Array, second: Float32Array) => {
   return merged;
 };
 
+const normalizeOptionalString = (value: unknown) =>
+  typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+const normalizeOptionalNumber = (value: unknown) => {
+  const normalized = Number(value);
+  return Number.isFinite(normalized) ? normalized : undefined;
+};
+
+const normalizeRoleMapping = (value: unknown): RoleMapping | undefined => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const mapping = Object.entries(value).reduce<RoleMapping>((result, [rawSpeaker, role]) => {
+    const normalizedRawSpeaker = normalizeOptionalString(rawSpeaker);
+    const normalizedRole = normalizeOptionalString(role);
+
+    if (normalizedRawSpeaker && normalizedRole) {
+      result[normalizedRawSpeaker] = normalizedRole;
+    }
+
+    return result;
+  }, {});
+
+  return Object.keys(mapping).length > 0 ? mapping : undefined;
+};
+
 const normalizeTranscriptMessage = (value: unknown): TranscriptMessage | null => {
   if (!value || typeof value !== "object") {
     return null;
   }
 
   const candidate = value as Partial<TranscriptMessage>;
+  if (candidate.type !== "partial") {
+    return null;
+  }
+
   if (!Array.isArray(candidate.segments)) {
     return null;
   }
 
   const segments = candidate.segments
-    .map((segment) => {
+    .map((segment): TranscriptSegment | null => {
       if (!segment || typeof segment !== "object") {
         return null;
       }
@@ -97,21 +147,59 @@ const normalizeTranscriptMessage = (value: unknown): TranscriptMessage | null =>
       const raw = segment as Partial<TranscriptSegment>;
       const start = Number(raw.start);
       const end = Number(raw.end);
-      const speaker = String(raw.speaker ?? "").trim();
-      const text = String(raw.text ?? "").trim();
+      const speaker = normalizeOptionalString(raw.speaker);
+      const rawSpeaker = normalizeOptionalString(raw.raw_speaker);
+      const role = normalizeOptionalString(raw.role);
+      const roleReason = normalizeOptionalString(raw.role_reason);
+      const text = normalizeOptionalString(raw.text);
 
-      if (!Number.isFinite(start) || !Number.isFinite(end) || !speaker || !text) {
+      if (!Number.isFinite(start) || !Number.isFinite(end) || !text) {
         return null;
       }
 
-      return { start, end, speaker, text };
+      return {
+        start,
+        end,
+        raw_speaker: rawSpeaker ?? (speaker?.startsWith("SPEAKER_") ? speaker : undefined),
+        role,
+        speaker,
+        role_confidence: normalizeOptionalNumber(raw.role_confidence),
+        role_reason: roleReason,
+        text,
+      };
     })
     .filter((segment): segment is TranscriptSegment => Boolean(segment));
 
   return {
-    type: typeof candidate.type === "string" ? candidate.type : "partial",
-    offset: typeof candidate.offset === "number" ? candidate.offset : undefined,
+    type: "partial",
+    offset: normalizeOptionalNumber(candidate.offset),
     segments,
+    role_mapping: normalizeRoleMapping(candidate.role_mapping),
+  };
+};
+
+const normalizeTipsMessage = (value: unknown): TipsMessage | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Partial<TipsMessage>;
+  if (candidate.type !== "tips" || !Array.isArray(candidate.tips)) {
+    return null;
+  }
+
+  const tips = candidate.tips
+    .map((tip) => normalizeOptionalString(tip))
+    .filter((tip): tip is string => Boolean(tip));
+
+  return {
+    type: "tips",
+    offset: normalizeOptionalNumber(candidate.offset),
+    topic: normalizeOptionalString(candidate.topic),
+    customer_intent: normalizeOptionalString(candidate.customer_intent),
+    tips,
+    role_mapping: normalizeRoleMapping(candidate.role_mapping),
+    role_confidence: normalizeOptionalNumber(candidate.role_confidence),
   };
 };
 
@@ -128,6 +216,7 @@ export class RealtimeAsrService {
   private stopRequested = false;
   private statusCallbacks = new Set<(status: RealtimeAsrStatus) => void>();
   private transcriptCallbacks = new Set<(message: TranscriptMessage) => void>();
+  private tipsCallbacks = new Set<(message: TipsMessage) => void>();
   private errorCallbacks = new Set<(error: Error) => void>();
   private currentStatus: RealtimeAsrStatus = "Disconnected";
 
@@ -144,6 +233,11 @@ export class RealtimeAsrService {
   onTranscript(callback: (message: TranscriptMessage) => void) {
     this.transcriptCallbacks.add(callback);
     return () => this.transcriptCallbacks.delete(callback);
+  }
+
+  onTips(callback: (message: TipsMessage) => void) {
+    this.tipsCallbacks.add(callback);
+    return () => this.tipsCallbacks.delete(callback);
   }
 
   onError(callback: (error: Error) => void) {
@@ -322,9 +416,28 @@ export class RealtimeAsrService {
         }
 
         try {
-          const message = normalizeTranscriptMessage(JSON.parse(event.data));
-          if (message) {
-            this.transcriptCallbacks.forEach((callback) => callback(message));
+          const parsedMessage = JSON.parse(event.data) as { type?: unknown; message?: unknown };
+
+          if (parsedMessage.type === "partial") {
+            const message = normalizeTranscriptMessage(parsedMessage);
+            if (message) {
+              this.transcriptCallbacks.forEach((callback) => callback(message));
+            }
+            return;
+          }
+
+          if (parsedMessage.type === "tips") {
+            const message = normalizeTipsMessage(parsedMessage);
+            if (message) {
+              this.tipsCallbacks.forEach((callback) => callback(message));
+            }
+            return;
+          }
+
+          if (parsedMessage.type === "error") {
+            this.emitError(
+              new Error(normalizeOptionalString(parsedMessage.message) ?? "ASR service error."),
+            );
           }
         } catch (error) {
           console.warn("Invalid ASR message", error, event.data);
