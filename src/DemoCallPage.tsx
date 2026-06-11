@@ -50,10 +50,67 @@ type FaceEmotionState = {
   attributes: FaceAttribute[];
 };
 
+type FaceStatsSummary = {
+  framesAnalyzed: number;
+  faceDetectedFrames: number;
+  facePresenceRatio: number;
+  averageFaceScore: number;
+  dominantEmotion: string;
+  emotionDistribution: Record<string, number>;
+  averageAttributes: Record<string, number>;
+  quality: {
+    averageBrightness: number;
+    averageMovement: number;
+    averageCentering: number;
+  };
+  latest: FaceEmotionState;
+};
+
+type FaceStatsAccumulator = {
+  framesAnalyzed: number;
+  faceDetectedFrames: number;
+  scoreTotal: number;
+  emotionCounts: Record<string, number>;
+  attributeTotals: Record<string, number>;
+  latest: FaceEmotionState;
+};
+
+type StoredDemoSettings = {
+  baseUrl?: string;
+  accessToken?: string;
+  tokenType?: string | null;
+  companyId?: string;
+};
+
+type FinalizeDemoCallPayload = {
+  sessionId: string;
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  roleMapping: RoleMapping;
+  diarizationDialogue: Array<{
+    start: number;
+    end: number;
+    rawSpeaker?: string;
+    role: string;
+    speaker?: string;
+    roleConfidence?: number;
+    roleReason?: string;
+    text: string;
+  }>;
+  transcriptText: string;
+  videoStats: FaceStatsSummary;
+  agentTips: AgentTipsState | null;
+  agentTipsHistory: AgentTipsState[];
+};
+
 const defaultSpeakerLabels: Record<string, string> = {
   SPEAKER_0: "Agent",
   SPEAKER_1: "Customer",
 };
+
+const SETTINGS_STORAGE_KEY = "ca-analytics-settings";
+const DEFAULT_API_BASE_URL = "https://ca.satisfai.cx";
 
 const emptyAgentTips: AgentTipsState = {
   topic: "",
@@ -79,6 +136,37 @@ const emptyFaceEmotion: FaceEmotionState = {
   ],
 };
 
+const createEmptyFaceStats = (): FaceStatsSummary => ({
+  framesAnalyzed: 0,
+  faceDetectedFrames: 0,
+  facePresenceRatio: 0,
+  averageFaceScore: 0,
+  dominantEmotion: "NO FACE",
+  emotionDistribution: {},
+  averageAttributes: {
+    presence: 0,
+    movement: 0,
+    brightness: 0,
+    warmth: 0,
+    centering: 0,
+  },
+  quality: {
+    averageBrightness: 0,
+    averageMovement: 0,
+    averageCentering: 0,
+  },
+  latest: emptyFaceEmotion,
+});
+
+const createFaceStatsAccumulator = (): FaceStatsAccumulator => ({
+  framesAnalyzed: 0,
+  faceDetectedFrames: 0,
+  scoreTotal: 0,
+  emotionCounts: {},
+  attributeTotals: {},
+  latest: emptyFaceEmotion,
+});
+
 const waveformBars = [
   12, 16, 20, 24, 18, 34, 38, 22, 18, 15, 14, 16, 18, 26, 36, 32, 28, 18, 22, 34,
   48, 42, 54, 38, 62, 74, 88, 58, 44, 22, 18, 18, 20, 22, 26, 34, 46, 30, 20, 18,
@@ -102,6 +190,93 @@ const FACE_LANDMARKER_MODEL_PATH = "/mediapipe/models/face_landmarker.task";
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
+
+const trimSlash = (value: string) => value.replace(/\/+$/, "");
+
+const generateDemoSessionId = () =>
+  `demo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeMetricKey = (label: string) => {
+  const words = label
+    .trim()
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+
+  return words
+    .map((word, index) => (index === 0 ? word : `${word[0].toUpperCase()}${word.slice(1)}`))
+    .join("");
+};
+
+const summarizeFaceStats = (stats: FaceStatsAccumulator): FaceStatsSummary => {
+  const detectedFrames = Math.max(0, stats.faceDetectedFrames);
+  const emotionDistribution = Object.fromEntries(
+    Object.entries(stats.emotionCounts).map(([emotion, count]) => [
+      emotion,
+      detectedFrames > 0 ? count / detectedFrames : 0,
+    ]),
+  );
+  const dominantEmotion =
+    Object.entries(stats.emotionCounts).sort((first, second) => second[1] - first[1])[0]?.[0] ??
+    "NO FACE";
+  const averageAttributes = Object.fromEntries(
+    Object.entries(stats.attributeTotals).map(([attribute, total]) => [
+      attribute,
+      detectedFrames > 0 ? total / detectedFrames : 0,
+    ]),
+  );
+
+  return {
+    framesAnalyzed: stats.framesAnalyzed,
+    faceDetectedFrames: detectedFrames,
+    facePresenceRatio: stats.framesAnalyzed > 0 ? detectedFrames / stats.framesAnalyzed : 0,
+    averageFaceScore: detectedFrames > 0 ? stats.scoreTotal / detectedFrames : 0,
+    dominantEmotion,
+    emotionDistribution,
+    averageAttributes,
+    quality: {
+      averageBrightness: averageAttributes.brightness ?? 0,
+      averageMovement: averageAttributes.movement ?? 0,
+      averageCentering: averageAttributes.centering ?? 0,
+    },
+    latest: stats.latest,
+  };
+};
+
+const readStoredDemoSettings = (): StoredDemoSettings => {
+  try {
+    const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    return saved ? (JSON.parse(saved) as StoredDemoSettings) : {};
+  } catch {
+    return {};
+  }
+};
+
+const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
+  const settings = readStoredDemoSettings();
+  const baseUrl = trimSlash(settings.baseUrl || DEFAULT_API_BASE_URL);
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+
+  if (settings.accessToken) {
+    headers.Authorization = `${settings.tokenType || "Bearer"} ${settings.accessToken}`;
+  }
+
+  const response = await fetch(
+    `${baseUrl}/api/demo-call/sessions/${encodeURIComponent(payload.sessionId)}/finalize`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Demo call finalize failed with status ${response.status}`);
+  }
+};
 
 const getSegmentRawSpeaker = (segment: TranscriptSegment) =>
   segment.raw_speaker ?? (segment.speaker?.startsWith("SPEAKER_") ? segment.speaker : undefined);
@@ -407,12 +582,20 @@ const inferMood = ({
   return { mood: "NATURAL", score };
 };
 
-function LocalFaceAnalyzer({ active }: { active: boolean }) {
+function LocalFaceAnalyzer({
+  active,
+  onStatsChange,
+}: {
+  active: boolean;
+  onStatsChange?: (stats: FaceStatsSummary) => void;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const sampleCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const previousLumaFrameRef = useRef<Float32Array | null>(null);
   const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
+  const faceStatsRef = useRef<FaceStatsAccumulator>(createFaceStatsAccumulator());
+  const onStatsChangeRef = useRef(onStatsChange);
   const [analysis, setAnalysis] = useState<FaceEmotionState>(emptyFaceEmotion);
   const [cameraError, setCameraError] = useState("");
   const [cameraNotice, setCameraNotice] = useState("");
@@ -423,6 +606,33 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
       : analysis.detectionMode === "local"
         ? "LOCAL FACE ANALYSIS"
         : "NO FACE DETECTED";
+
+  useEffect(() => {
+    onStatsChangeRef.current = onStatsChange;
+  }, [onStatsChange]);
+
+  const resetFaceStats = useCallback(() => {
+    faceStatsRef.current = createFaceStatsAccumulator();
+    onStatsChangeRef.current?.(createEmptyFaceStats());
+  }, []);
+
+  const recordFaceStats = useCallback((emotion: FaceEmotionState, hasFace: boolean) => {
+    const stats = faceStatsRef.current;
+    stats.framesAnalyzed += 1;
+    stats.latest = emotion;
+
+    if (hasFace) {
+      stats.faceDetectedFrames += 1;
+      stats.scoreTotal += emotion.score;
+      stats.emotionCounts[emotion.mood] = (stats.emotionCounts[emotion.mood] ?? 0) + 1;
+      emotion.attributes.forEach((attribute) => {
+        const key = normalizeMetricKey(attribute.label);
+        stats.attributeTotals[key] = (stats.attributeTotals[key] ?? 0) + attribute.value;
+      });
+    }
+
+    onStatsChangeRef.current?.(summarizeFaceStats(stats));
+  }, []);
 
   const drawOverlay = useCallback(
     (box: FaceBox, emotion: FaceEmotionState, video: HTMLVideoElement) => {
@@ -553,6 +763,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
       setAnalysis(emptyFaceEmotion);
       setCameraError("");
       setCameraNotice("");
+      resetFaceStats();
       return undefined;
     }
 
@@ -601,6 +812,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
         if (!box) {
           previousLumaFrameRef.current = null;
           setAnalysis(emptyFaceEmotion);
+          recordFaceStats(emptyFaceEmotion, false);
           clearOverlay();
           return;
         }
@@ -608,6 +820,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
         const mediaPipeEmotion = mediaPipeResult ? analyzeMediaPipeBlendshapes(mediaPipeResult) : null;
         const nextAnalysis = mediaPipeEmotion ?? analyzeAttributes(video, box);
         setAnalysis(nextAnalysis);
+        recordFaceStats(nextAnalysis, true);
         drawOverlay(containFaceBox(box, video), nextAnalysis, video);
       } catch (error) {
         setCameraError(error instanceof Error ? error.message : "Local face analysis failed.");
@@ -678,6 +891,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
     };
 
     void startCamera();
+    resetFaceStats();
 
     return () => {
       stopped = true;
@@ -693,7 +907,7 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
         videoRef.current.srcObject = null;
       }
     };
-  }, [active, analyzeAttributes, drawOverlay]);
+  }, [active, analyzeAttributes, drawOverlay, recordFaceStats, resetFaceStats]);
 
   return (
     <div className="demo-face-analyzer">
@@ -762,13 +976,18 @@ function DemoCallPage() {
   const [agentTipsHistory, setAgentTipsHistory] = useState<AgentTipsState[]>([]);
   const [showDebug, setShowDebug] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [completeMessage, setCompleteMessage] = useState("");
+  const [completeSubmitting, setCompleteSubmitting] = useState(false);
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedInputDeviceId, setSelectedInputDeviceId] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const sessionStartedAtRef = useRef<number | null>(null);
+  const recordingStartedAtMsRef = useRef<number | null>(null);
   const transcriptPanelRef = useRef<HTMLDivElement | null>(null);
   const roleMappingRef = useRef<RoleMapping>(defaultSpeakerLabels);
   const agentTipsRef = useRef<AgentTipsState>(emptyAgentTips);
+  const videoStatsRef = useRef<FaceStatsSummary>(createEmptyFaceStats());
+  const sessionIdRef = useRef(generateDemoSessionId());
+  const sessionStartedAtIsoRef = useRef<string | null>(null);
 
   const refreshInputDevices = useCallback(async () => {
     try {
@@ -777,6 +996,10 @@ function DemoCallPage() {
     } catch {
       setInputDevices([]);
     }
+  }, []);
+
+  const handleFaceStatsChange = useCallback((nextStats: FaceStatsSummary) => {
+    videoStatsRef.current = nextStats;
   }, []);
 
   useEffect(() => {
@@ -793,11 +1016,11 @@ function DemoCallPage() {
 
     const unsubscribeStatus = asrService.onStatusChange((nextStatus) => {
       setStatus(nextStatus);
-      if (nextStatus === "Recording" && sessionStartedAtRef.current == null) {
-        sessionStartedAtRef.current = Date.now();
+      if (nextStatus === "Recording" && recordingStartedAtMsRef.current == null) {
+        recordingStartedAtMsRef.current = Date.now();
       }
       if (nextStatus === "Disconnected" || nextStatus === "Error") {
-        sessionStartedAtRef.current = null;
+        recordingStartedAtMsRef.current = null;
       }
     });
     const unsubscribeTranscript = asrService.onTranscript((message) => {
@@ -848,8 +1071,8 @@ function DemoCallPage() {
     }
 
     const timerId = window.setInterval(() => {
-      if (sessionStartedAtRef.current != null) {
-        setElapsedSeconds(Math.floor((Date.now() - sessionStartedAtRef.current) / 1000));
+      if (recordingStartedAtMsRef.current != null) {
+        setElapsedSeconds(Math.floor((Date.now() - recordingStartedAtMsRef.current) / 1000));
       }
     }, 250);
 
@@ -869,8 +1092,12 @@ function DemoCallPage() {
     setAgentTips(emptyAgentTips);
     setAgentTipsHistory([]);
     setErrorMessage("");
+    setCompleteMessage("");
     setElapsedSeconds(0);
-    sessionStartedAtRef.current = null;
+    recordingStartedAtMsRef.current = null;
+    sessionStartedAtIsoRef.current = new Date().toISOString();
+    sessionIdRef.current = generateDemoSessionId();
+    videoStatsRef.current = createEmptyFaceStats();
     await asrService.startRecording({
       deviceId: selectedInputDeviceId || undefined,
       chunkMs: 250,
@@ -880,6 +1107,79 @@ function DemoCallPage() {
 
   const stopRecording = async () => {
     await asrService.stopRecording();
+  };
+
+  const buildFinalizePayload = useCallback(
+    (endedAt: Date): FinalizeDemoCallPayload => {
+      const startedAt = sessionStartedAtIsoRef.current ?? endedAt.toISOString();
+      const startedAtMs = new Date(startedAt).getTime();
+      const endedAtMs = endedAt.getTime();
+      const durationMs =
+        Number.isFinite(startedAtMs) && endedAtMs >= startedAtMs
+          ? endedAtMs - startedAtMs
+          : Math.max(0, Math.round(Math.max(elapsedSeconds, segments.at(-1)?.end ?? 0) * 1000));
+      const agentTipsHistoryPayload = [
+        ...(agentTips.updatedAt ? [agentTips] : []),
+        ...agentTipsHistory,
+      ];
+
+      return {
+        sessionId: sessionIdRef.current,
+        startedAt,
+        endedAt: endedAt.toISOString(),
+        durationMs,
+        roleMapping: roleMappingRef.current,
+        diarizationDialogue: segments.map((segment) => {
+          const rawSpeaker = getSegmentRawSpeaker(segment);
+          const role = getSegmentDisplayLabel(segment);
+
+          return {
+            start: segment.start,
+            end: segment.end,
+            rawSpeaker,
+            role,
+            speaker: segment.speaker,
+            roleConfidence: segment.role_confidence,
+            roleReason: segment.role_reason,
+            text: segment.text,
+          };
+        }),
+        transcriptText: segments.map((segment) => segment.text).join(" "),
+        videoStats: videoStatsRef.current,
+        agentTips: agentTips.updatedAt ? agentTips : null,
+        agentTipsHistory: agentTipsHistoryPayload,
+      };
+    },
+    [agentTips, agentTipsHistory, elapsedSeconds, segments],
+  );
+
+  const completeDemoCall = async () => {
+    if (completeSubmitting) {
+      return;
+    }
+
+    setCompleteSubmitting(true);
+    setCompleteMessage("Sending session for analysis...");
+    setErrorMessage("");
+
+    try {
+      const payload = buildFinalizePayload(new Date());
+
+      if (canStop) {
+        await asrService.stopRecording();
+      }
+
+      await finalizeDemoCallSession(payload);
+      setCompleteMessage("Session sent for analysis.");
+      window.location.href = "/";
+    } catch (error) {
+      setCompleteMessage("");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to send demo call for analysis.",
+      );
+    } finally {
+      setCompleteSubmitting(false);
+    }
   };
 
   const customSpeakers = useMemo(
@@ -937,7 +1237,7 @@ function DemoCallPage() {
 
       <main className="demo-call-grid">
         <section className="demo-panel demo-face-panel">
-          <LocalFaceAnalyzer active={faceAnalysisActive} />
+          <LocalFaceAnalyzer active={faceAnalysisActive} onStatsChange={handleFaceStatsChange} />
 
           <div className="demo-live-control">
             <div className="demo-live-head">
@@ -1143,7 +1443,10 @@ function DemoCallPage() {
       </main>
 
       <footer className="demo-call-footer">
-        <a href="/">Complete</a>
+        {completeMessage ? <span className="demo-complete-status">{completeMessage}</span> : null}
+        <button type="button" onClick={() => void completeDemoCall()} disabled={completeSubmitting}>
+          {completeSubmitting ? "Sending..." : "Complete"}
+        </button>
       </footer>
     </div>
   );

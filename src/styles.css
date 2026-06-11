@@ -3695,7 +3695,8 @@ details.scroll-toggle > summary {
 }
 
 .demo-record-actions button,
-.demo-call-footer a {
+.demo-call-footer a,
+.demo-call-footer button {
   border-radius: 6px;
   padding: 0.42rem 0.68rem;
   background: #050505;
@@ -4041,7 +4042,16 @@ details.scroll-toggle > summary {
 
 .demo-call-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.demo-complete-status {
+  color: #687184;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: right;
 }
 
 @keyframes demo-wave {
