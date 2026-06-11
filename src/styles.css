@@ -3321,9 +3321,7 @@ details.scroll-toggle > summary {
   min-height: clamp(420px, 46vh, 620px);
   overflow: hidden;
   border-radius: 0;
-  background:
-    linear-gradient(135deg, rgba(76, 150, 248, 0.22), rgba(246, 210, 230, 0.42)),
-    #dbe7fb;
+  background: #dfe9f8;
 }
 
 .demo-video,
@@ -3336,11 +3334,12 @@ details.scroll-toggle > summary {
 }
 
 .demo-video {
-  object-fit: cover;
+  object-fit: contain;
   transform: scaleX(-1);
 }
 
 .demo-video-overlay {
+  object-fit: contain;
   pointer-events: none;
 }
 
