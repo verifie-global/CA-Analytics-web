@@ -3271,7 +3271,7 @@ details.scroll-toggle > summary {
 
 .demo-call-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.08fr) minmax(320px, 0.95fr);
+  grid-template-columns: minmax(480px, 1.28fr) minmax(360px, 1fr) minmax(300px, 0.82fr);
   gap: 1rem;
   align-items: stretch;
 }
@@ -3317,7 +3317,8 @@ details.scroll-toggle > summary {
 .demo-video-frame {
   position: relative;
   width: 100%;
-  aspect-ratio: 1.25;
+  aspect-ratio: 4 / 3;
+  min-height: clamp(420px, 46vh, 620px);
   overflow: hidden;
   border-radius: 0;
   background:

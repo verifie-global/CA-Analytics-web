@@ -76,6 +76,9 @@ const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const MEDIAPIPE_WASM_PATH = "/mediapipe/wasm";
 const FACE_LANDMARKER_MODEL_PATH = "/mediapipe/models/face_landmarker.task";
 
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, value));
+
 const getSegmentKey = (segment: TranscriptSegment) =>
   `${segment.speaker}:${segment.start.toFixed(2)}:${segment.end.toFixed(2)}`;
 
@@ -340,20 +343,27 @@ function LocalFaceAnalyzer({ active }: { active: boolean }) {
       context.clearRect(0, 0, canvas.width, canvas.height);
 
       const mirroredX = canvas.width - box.x - box.width;
+      const safePad = Math.max(10, canvas.width * 0.012);
       context.strokeStyle = "#4c96f8";
       context.lineWidth = Math.max(4, canvas.width * 0.006);
       context.strokeRect(mirroredX, box.y, box.width, box.height);
 
+      const moodWidth = Math.min(280, canvas.width - safePad * 2);
+      const moodHeight = 28;
+      const moodX = clampNumber(mirroredX, safePad, canvas.width - moodWidth - safePad);
+      const moodY = clampNumber(box.y - moodHeight - 6, safePad, canvas.height - moodHeight - safePad);
       context.fillStyle = "#050505";
-      context.fillRect(mirroredX, Math.max(0, box.y - 34), 232, 28);
+      context.fillRect(moodX, moodY, moodWidth, moodHeight);
       context.fillStyle = "#ffffff";
       context.font = "15px 'Input Mono', monospace";
-      context.fillText(`customerMood = "${emotion.mood}"`, mirroredX + 14, Math.max(20, box.y - 13));
+      context.fillText(`customerMood = "${emotion.mood}"`, moodX + 14, moodY + 19);
 
-      const scoreWidth = 224;
+      const scoreWidth = Math.min(224, canvas.width - safePad * 2);
       const scoreHeight = 64;
-      const scoreX = Math.max(10, mirroredX + box.width - scoreWidth + 34);
-      const scoreY = Math.min(canvas.height - scoreHeight - 10, box.y + box.height - 48);
+      const preferredScoreX = mirroredX + box.width - scoreWidth + 34;
+      const preferredScoreY = box.y + box.height - 48;
+      const scoreX = clampNumber(preferredScoreX, safePad, canvas.width - scoreWidth - safePad);
+      const scoreY = clampNumber(preferredScoreY, safePad, canvas.height - scoreHeight - safePad);
       context.fillStyle = "rgba(255, 255, 255, 0.94)";
       context.fillRect(scoreX, scoreY, scoreWidth, scoreHeight);
       context.fillStyle = "#050505";
