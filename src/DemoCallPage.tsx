@@ -22,14 +22,13 @@ type DemoTranscriptSegment = TranscriptSegment & {
   updatedAt: number;
 };
 
-type DemoTipsBlock = {
-  id: string;
-  offset?: number;
-  topic?: string;
-  customerIntent?: string;
+type AgentTipsState = {
+  topic: string;
+  customerIntent: string;
   tips: string[];
-  roleConfidence?: number;
-  updatedAt: number;
+  roleMapping: Record<string, string>;
+  roleConfidence: number | null;
+  updatedAt: string | null;
 };
 
 type FaceBox = {
@@ -54,6 +53,15 @@ type FaceEmotionState = {
 const defaultSpeakerLabels: Record<string, string> = {
   SPEAKER_0: "Agent",
   SPEAKER_1: "Customer",
+};
+
+const emptyAgentTips: AgentTipsState = {
+  topic: "",
+  customerIntent: "",
+  tips: [],
+  roleMapping: {},
+  roleConfidence: null,
+  updatedAt: null,
 };
 
 const speakerEditorKeys = ["SPEAKER_0", "SPEAKER_1"] as const;
@@ -178,14 +186,13 @@ const formatPercent = (value?: number) =>
     ? `${Math.round(clamp01(value) * 100)}%`
     : "";
 
-const createTipsBlock = (message: TipsMessage): DemoTipsBlock => ({
-  id: `${message.offset ?? Date.now()}:${message.tips.join("|")}`,
-  offset: message.offset,
-  topic: message.topic,
-  customerIntent: message.customer_intent,
-  tips: message.tips,
-  roleConfidence: message.role_confidence,
-  updatedAt: Date.now(),
+const createAgentTips = (message: TipsMessage): AgentTipsState => ({
+  topic: message.topic || "general",
+  customerIntent: message.customer_intent || "unknown",
+  tips: Array.isArray(message.tips) ? message.tips : [],
+  roleMapping: message.role_mapping || {},
+  roleConfidence: message.role_confidence ?? null,
+  updatedAt: new Date().toISOString(),
 });
 
 const getLandmarkFaceBox = (landmarks: NormalizedLandmark[], video: HTMLVideoElement): FaceBox => {
@@ -727,7 +734,8 @@ function DemoCallPage() {
   const [status, setStatus] = useState<RealtimeAsrStatus>("Disconnected");
   const [segments, setSegments] = useState<DemoTranscriptSegment[]>([]);
   const [speakerLabels, setSpeakerLabels] = useState<Record<string, string>>(defaultSpeakerLabels);
-  const [tipsBlocks, setTipsBlocks] = useState<DemoTipsBlock[]>([]);
+  const [agentTips, setAgentTips] = useState<AgentTipsState>(emptyAgentTips);
+  const [agentTipsHistory, setAgentTipsHistory] = useState<AgentTipsState[]>([]);
   const [showDebug, setShowDebug] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
@@ -736,6 +744,7 @@ function DemoCallPage() {
   const sessionStartedAtRef = useRef<number | null>(null);
   const transcriptPanelRef = useRef<HTMLDivElement | null>(null);
   const roleMappingRef = useRef<RoleMapping>(defaultSpeakerLabels);
+  const agentTipsRef = useRef<AgentTipsState>(emptyAgentTips);
 
   const refreshInputDevices = useCallback(async () => {
     try {
@@ -778,7 +787,14 @@ function DemoCallPage() {
         setSegments((current) => applyRoleMappingToSegments(current, nextRoleMapping));
       }
 
-      setTipsBlocks((current) => [createTipsBlock(message), ...current].slice(0, 4));
+      const previousAgentTips = agentTipsRef.current;
+      const nextAgentTips = createAgentTips(message);
+      agentTipsRef.current = nextAgentTips;
+      setAgentTips(nextAgentTips);
+
+      if (previousAgentTips.updatedAt) {
+        setAgentTipsHistory((current) => [previousAgentTips, ...current].slice(0, 3));
+      }
     });
     const unsubscribeError = asrService.onError((error) => {
       setErrorMessage(error.message);
@@ -825,7 +841,9 @@ function DemoCallPage() {
 
   const startRecording = async () => {
     setSegments([]);
-    setTipsBlocks([]);
+    agentTipsRef.current = emptyAgentTips;
+    setAgentTips(emptyAgentTips);
+    setAgentTipsHistory([]);
     setErrorMessage("");
     setElapsedSeconds(0);
     sessionStartedAtRef.current = null;
@@ -851,8 +869,6 @@ function DemoCallPage() {
     () => [...new Set([...speakerEditorKeys, ...Object.keys(speakerLabels), ...customSpeakers])],
     [customSpeakers, speakerLabels],
   );
-  const currentTipsBlock = tipsBlocks[0];
-  const tipsHistory = tipsBlocks.slice(1, 4);
   const lastSegmentEnd = segments.at(-1)?.end ?? elapsedSeconds;
   const canStart = status !== "Connecting" && status !== "Recording";
   const canStop = status === "Connecting" || status === "Connected" || status === "Recording";
@@ -861,12 +877,12 @@ function DemoCallPage() {
   const statusClass = status.toLowerCase();
   const assistStatus =
     status === "Recording"
-      ? currentTipsBlock
+      ? agentTips.updatedAt
         ? "Updated"
         : segments.length > 0
           ? "Generating tips"
           : "Listening"
-      : currentTipsBlock
+      : agentTips.updatedAt
         ? "Updated"
         : "Listening";
 
@@ -1041,40 +1057,50 @@ function DemoCallPage() {
             <span>{assistStatus}</span>
           </div>
 
-          {currentTipsBlock ? (
+          {agentTips.updatedAt ? (
             <div className="demo-agent-assist">
               <div className="demo-assist-meta">
                 <span>Topic</span>
-                <strong>{currentTipsBlock.topic ?? "Unknown"}</strong>
+                <strong>{agentTips.topic}</strong>
                 <span>Customer intent</span>
-                <strong>{currentTipsBlock.customerIntent ?? "Unknown"}</strong>
-                {formatPercent(currentTipsBlock.roleConfidence) ? (
+                <strong>{agentTips.customerIntent}</strong>
+                {formatPercent(agentTips.roleConfidence ?? undefined) ? (
                   <>
                     <span>Role confidence</span>
-                    <strong>{formatPercent(currentTipsBlock.roleConfidence)}</strong>
+                    <strong>{formatPercent(agentTips.roleConfidence ?? undefined)}</strong>
                   </>
                 ) : null}
               </div>
 
               <ol className="demo-tips-list">
-                {currentTipsBlock.tips.length > 0 ? (
-                  currentTipsBlock.tips.map((tip) => <li key={tip}>{tip}</li>)
+                {agentTips.tips.length > 0 ? (
+                  agentTips.tips.map((tip, index) => (
+                    <li key={`${agentTips.updatedAt}-${index}`}>{tip}</li>
+                  ))
                 ) : (
                   <li>No tips returned yet.</li>
                 )}
               </ol>
 
-              {tipsHistory.length > 0 ? (
+              <small className="demo-assist-updated">
+                Updated: {new Date(agentTips.updatedAt).toLocaleTimeString()}
+              </small>
+
+              {agentTipsHistory.length > 0 ? (
                 <details className="demo-tips-history">
-                  <summary>Last {tipsHistory.length} updates</summary>
+                  <summary>Last {agentTipsHistory.length} updates</summary>
                   <div>
-                    {tipsHistory.map((block) => (
-                      <article key={block.id}>
-                        <strong>{block.topic ?? "Unknown topic"}</strong>
-                        <span>{formatSeconds(block.offset ?? 0)}</span>
+                    {agentTipsHistory.map((block) => (
+                      <article key={block.updatedAt ?? block.topic}>
+                        <strong>{block.topic || "Unknown topic"}</strong>
+                        <span>
+                          {block.updatedAt
+                            ? new Date(block.updatedAt).toLocaleTimeString()
+                            : "Unknown time"}
+                        </span>
                         <ol>
-                          {block.tips.map((tip) => (
-                            <li key={tip}>{tip}</li>
+                          {block.tips.map((tip, index) => (
+                            <li key={`${block.updatedAt}-${index}`}>{tip}</li>
                           ))}
                         </ol>
                       </article>
@@ -1086,7 +1112,7 @@ function DemoCallPage() {
           ) : (
             <div className="demo-empty-assist">
               <strong>{status === "Recording" ? "Listening" : "No tips yet"}</strong>
-              <p>Agent Assist will update when the service sends the next tips message.</p>
+              <p>Waiting for tips...</p>
             </div>
           )}
         </section>

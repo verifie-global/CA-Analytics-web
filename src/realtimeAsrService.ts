@@ -417,6 +417,7 @@ export class RealtimeAsrService {
 
         try {
           const parsedMessage = JSON.parse(event.data) as { type?: unknown; message?: unknown };
+          console.log("WS message:", parsedMessage);
 
           if (parsedMessage.type === "partial") {
             const message = normalizeTranscriptMessage(parsedMessage);

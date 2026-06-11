@@ -3954,6 +3954,12 @@ details.scroll-toggle > summary {
   line-height: 1.32;
 }
 
+.demo-assist-updated {
+  color: #8c93a0;
+  font-size: 0.62rem;
+  line-height: 1.2;
+}
+
 .demo-tips-history {
   margin-top: auto;
   border-top: 1px solid rgba(159, 198, 255, 0.36);
