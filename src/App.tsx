@@ -280,12 +280,14 @@ const getDefaultFilters = (): CallFilters => {
   const today = new Date();
   const fromDate = new Date(today);
   fromDate.setDate(today.getDate() - 30);
+  const conversationId =
+    new URLSearchParams(window.location.search).get("conversationId")?.trim() ?? "";
 
   return {
     page: 1,
     pageSize: 10,
     search: "",
-    conversationId: "",
+    conversationId,
     createdFromUtc: formatDateInputValue(fromDate),
     createdToUtc: formatDateInputValue(today),
     status: "",
@@ -1421,6 +1423,7 @@ function App() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordingStartedAtRef = useRef<number | null>(null);
   const discardRecordingRef = useRef(false);
+  const loadedUrlConversationIdRef = useRef("");
   const [uploadState, setUploadState] = useState({
     conversationId: generateConversationId(),
     url: "",
@@ -1952,6 +1955,32 @@ function App() {
       }
     }
   };
+
+  useEffect(() => {
+    if (!isAuthorized || currentRoute !== "dashboard") {
+      return;
+    }
+
+    const conversationId =
+      new URLSearchParams(window.location.search).get("conversationId")?.trim() ?? "";
+
+    if (!conversationId || loadedUrlConversationIdRef.current === conversationId) {
+      return;
+    }
+
+    loadedUrlConversationIdRef.current = conversationId;
+    const nextFilters = {
+      ...filters,
+      conversationId,
+      page: 1,
+    };
+
+    setFilters(nextFilters);
+    void (async () => {
+      await refreshCalls(settings, { filtersOverride: nextFilters });
+      await handleLoadDetail(conversationId);
+    })();
+  }, [currentRoute, filters, isAuthorized, settings]);
 
   const handleCloseDetail = () => {
     if (audioUrl) {

@@ -78,7 +78,6 @@ type FaceStatsAccumulator = {
 type StoredDemoSettings = {
   baseUrl?: string;
   accessToken?: string;
-  tokenType?: string | null;
   companyId?: string;
 };
 
@@ -100,8 +99,14 @@ type FinalizeDemoCallPayload = {
   }>;
   transcriptText: string;
   videoStats: FaceStatsSummary;
-  agentTips: AgentTipsState | null;
   agentTipsHistory: AgentTipsState[];
+};
+
+type FinalizeDemoCallResponse = {
+  ok?: boolean;
+  conversationId?: string;
+  sessionId?: string;
+  dialogueSegmentsStored?: number;
 };
 
 const defaultSpeakerLabels: Record<string, string> = {
@@ -255,16 +260,25 @@ const readStoredDemoSettings = (): StoredDemoSettings => {
 const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
   const settings = readStoredDemoSettings();
   const baseUrl = trimSlash(settings.baseUrl || DEFAULT_API_BASE_URL);
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-  };
+  const conversationId = payload.sessionId;
 
-  if (settings.accessToken) {
-    headers.Authorization = `${settings.tokenType || "Bearer"} ${settings.accessToken}`;
+  if (!settings.companyId) {
+    throw new Error("Company ID is required before sending demo call analysis.");
   }
 
+  if (!settings.accessToken) {
+    throw new Error("Authorization token is required before sending demo call analysis.");
+  }
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${settings.accessToken}`,
+  };
+
   const response = await fetch(
-    `${baseUrl}/api/demo-call/sessions/${encodeURIComponent(payload.sessionId)}/finalize`,
+    `${baseUrl}/api/companies/${encodeURIComponent(settings.companyId)}/calls/${encodeURIComponent(
+      conversationId,
+    )}/finalize-transcript`,
     {
       method: "POST",
       headers,
@@ -276,6 +290,24 @@ const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
     const text = await response.text();
     throw new Error(text || `Demo call finalize failed with status ${response.status}`);
   }
+
+  const finalizeResult = (await response.json()) as FinalizeDemoCallResponse;
+  const detailResponse = await fetch(
+    `${baseUrl}/api/companies/${encodeURIComponent(settings.companyId)}/calls/${encodeURIComponent(
+      conversationId,
+    )}`,
+    { headers },
+  );
+
+  if (!detailResponse.ok) {
+    const text = await detailResponse.text();
+    throw new Error(text || `Unable to load finalized call with status ${detailResponse.status}`);
+  }
+
+  return {
+    ...finalizeResult,
+    conversationId: finalizeResult.conversationId || conversationId,
+  };
 };
 
 const getSegmentRawSpeaker = (segment: TranscriptSegment) =>
@@ -1084,10 +1116,6 @@ function DemoCallPage() {
     void refreshInputDevices();
   };
 
-  const stopRecording = async () => {
-    await asrService.stopRecording();
-  };
-
   const buildFinalizePayload = useCallback(
     (endedAt: Date): FinalizeDemoCallPayload => {
       const startedAt = sessionStartedAtIsoRef.current ?? endedAt.toISOString();
@@ -1125,7 +1153,6 @@ function DemoCallPage() {
         }),
         transcriptText: segments.map((segment) => segment.text).join(" "),
         videoStats: videoStatsRef.current,
-        agentTips: agentTips.updatedAt ? agentTips : null,
         agentTipsHistory: agentTipsHistoryPayload,
       };
     },
@@ -1148,9 +1175,10 @@ function DemoCallPage() {
         await asrService.stopRecording();
       }
 
-      await finalizeDemoCallSession(payload);
+      const result = await finalizeDemoCallSession(payload);
+      const conversationId = result.conversationId || payload.sessionId;
       setCompleteMessage("Session sent for analysis.");
-      window.location.href = "/";
+      window.location.href = `/?conversationId=${encodeURIComponent(conversationId)}`;
     } catch (error) {
       setCompleteMessage("");
       setErrorMessage(
@@ -1244,7 +1272,11 @@ function DemoCallPage() {
                 <button type="button" onClick={() => void startRecording()} disabled={!canStart}>
                   Start
                 </button>
-                <button type="button" onClick={() => void stopRecording()} disabled={!canStop}>
+                <button
+                  type="button"
+                  onClick={() => void completeDemoCall()}
+                  disabled={!canStop || completeSubmitting}
+                >
                   Stop
                 </button>
               </div>
