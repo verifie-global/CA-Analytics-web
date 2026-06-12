@@ -1116,6 +1116,17 @@ function DemoCallPage() {
     void refreshInputDevices();
   };
 
+  const stopRecording = async () => {
+    setErrorMessage("");
+
+    try {
+      await asrService.stopRecording();
+      void refreshInputDevices();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to stop recording.");
+    }
+  };
+
   const buildFinalizePayload = useCallback(
     (endedAt: Date): FinalizeDemoCallPayload => {
       const startedAt = sessionStartedAtIsoRef.current ?? endedAt.toISOString();
@@ -1274,7 +1285,7 @@ function DemoCallPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void completeDemoCall()}
+                  onClick={() => void stopRecording()}
                   disabled={!canStop || completeSubmitting}
                 >
                   Stop
