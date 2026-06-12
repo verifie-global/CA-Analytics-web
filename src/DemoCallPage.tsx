@@ -128,6 +128,23 @@ const emptyAgentTips: AgentTipsState = {
 
 const speakerEditorKeys = ["SPEAKER_0", "SPEAKER_1"] as const;
 
+const isBrowserDefaultInputDevice = (device: MediaDeviceInfo) => {
+  const deviceId = device.deviceId.trim().toLowerCase();
+  const label = device.label.trim().toLowerCase();
+
+  return (
+    deviceId === "default" ||
+    deviceId === "communications" ||
+    label.startsWith("default -") ||
+    label.startsWith("communications -")
+  );
+};
+
+const preferredInputDeviceId = (devices: MediaDeviceInfo[]) =>
+  devices.find((device) => device.deviceId && !isBrowserDefaultInputDevice(device))?.deviceId ??
+  devices.find((device) => device.deviceId)?.deviceId ??
+  "";
+
 const emptyFaceEmotion: FaceEmotionState = {
   mood: "NO FACE",
   score: 0,
@@ -1003,7 +1020,18 @@ function DemoCallPage() {
   const refreshInputDevices = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices?.enumerateDevices();
-      setInputDevices((devices ?? []).filter((device) => device.kind === "audioinput"));
+      const audioInputDevices = (devices ?? []).filter((device) => device.kind === "audioinput");
+      setInputDevices(audioInputDevices);
+      setSelectedInputDeviceId((currentDeviceId) => {
+        if (
+          currentDeviceId &&
+          audioInputDevices.some((device) => device.deviceId === currentDeviceId)
+        ) {
+          return currentDeviceId;
+        }
+
+        return preferredInputDeviceId(audioInputDevices);
+      });
     } catch {
       setInputDevices([]);
     }
