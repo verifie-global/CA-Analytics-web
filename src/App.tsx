@@ -2103,8 +2103,9 @@ function App() {
       return;
     }
 
-    const conversationId =
-      new URLSearchParams(window.location.search).get("conversationId")?.trim() ?? "";
+    const searchParams = new URLSearchParams(window.location.search);
+    const conversationId = searchParams.get("conversationId")?.trim() ?? "";
+    const shouldOpenDetail = searchParams.get("view") !== "grid";
 
     if (!conversationId || loadedUrlConversationIdRef.current === conversationId) {
       return;
@@ -2120,7 +2121,9 @@ function App() {
     setFilters(nextFilters);
     void (async () => {
       await refreshCalls(settings, { filtersOverride: nextFilters });
-      await handleLoadDetail(conversationId);
+      if (shouldOpenDetail) {
+        await handleLoadDetail(conversationId);
+      }
     })();
   }, [currentRoute, filters, isAuthorized, settings]);
 

@@ -1178,7 +1178,7 @@ function DemoCallPage() {
       const result = await finalizeDemoCallSession(payload);
       const conversationId = result.conversationId || payload.sessionId;
       setCompleteMessage("Session sent for analysis.");
-      window.location.href = `/?conversationId=${encodeURIComponent(conversationId)}`;
+      window.location.href = `/?view=grid&conversationId=${encodeURIComponent(conversationId)}`;
     } catch (error) {
       setCompleteMessage("");
       setErrorMessage(
