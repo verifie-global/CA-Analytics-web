@@ -75,6 +75,11 @@ async function request<T>(
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 
+const asOptionalRecord = (value: unknown): Record<string, unknown> | null => {
+  const record = asRecord(value);
+  return Object.keys(record).length > 0 ? record : null;
+};
+
 const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 const readString = (record: Record<string, unknown>, ...keys: string[]) => {
@@ -391,6 +396,7 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
 const normalizeCallDetail = (item: unknown): CallDetail => {
   const record = asRecord(item);
   const rawAnalysis = asRecord(record.analysis ?? record.rawAnalysis);
+  const demoCall = asOptionalRecord(record.demoCall ?? rawAnalysis.demoCall);
   const entities = asRecord(record.entities ?? rawAnalysis.entities);
   const qa = normalizeQaResult(record.qa);
   const segments = toSegments(
@@ -428,6 +434,16 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
     segments,
     entities,
     analysis: rawAnalysis,
+    demoCall,
+    videoStats: asOptionalRecord(record.videoStats ?? rawAnalysis.videoStats),
+    videoAnalysis: asOptionalRecord(record.videoAnalysis ?? rawAnalysis.videoAnalysis),
+    roleMapping: asOptionalRecord(record.roleMapping ?? rawAnalysis.roleMapping),
+    agentTipsHistory:
+      Array.isArray(record.agentTipsHistory)
+        ? record.agentTipsHistory
+        : Array.isArray(rawAnalysis.agentTipsHistory)
+          ? rawAnalysis.agentTipsHistory
+          : null,
     raw: record,
   };
 };

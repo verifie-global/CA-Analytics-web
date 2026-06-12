@@ -1876,6 +1876,168 @@ textarea:focus {
   min-width: 0;
 }
 
+.video-analysis-section {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 8px;
+  background: #edf4ff;
+}
+
+.video-analysis-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.video-analysis-latest {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0.28rem 0.65rem;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--blue-ink);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.video-analysis-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 0.65rem;
+}
+
+.video-analysis-card strong {
+  display: block;
+  color: var(--ink);
+  font-size: clamp(1.15rem, 2vw, 1.65rem);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.video-analysis-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.video-analysis-block,
+.video-analysis-meta {
+  min-width: 0;
+  padding: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.video-analysis-block h5 {
+  margin: 0 0 0.7rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.video-metric-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.video-metric-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding-bottom: 0.42rem;
+  border-bottom: 1px solid rgba(33, 43, 70, 0.08);
+}
+
+.video-metric-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.video-metric-row span,
+.video-analysis-meta-row > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.video-metric-row strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+  line-height: 1.2;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.video-analysis-meta {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.video-analysis-meta-row {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.video-tips-history {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.video-tips-block {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.video-tips-block summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+}
+
+.video-tips-block summary strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.video-tips-block summary span,
+.video-tips-block small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.video-tips-block ol,
+.video-tips-block p {
+  margin: 0;
+  padding: 0 0.9rem 0.75rem 1.7rem;
+  color: var(--ink);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.video-tips-block p {
+  padding-left: 0.9rem;
+}
+
+.video-tips-block small {
+  display: block;
+  padding: 0 0.9rem 0.75rem;
+}
+
 .detail-lower-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr);
@@ -4138,6 +4300,8 @@ details.scroll-toggle > summary {
   .detail-panels,
   .detail-lower-grid,
   .raw-analysis-grid,
+  .video-analysis-grid,
+  .video-analysis-columns,
   .qa-overview-grid,
   .qa-insights-grid,
   .qa-settings-grid,

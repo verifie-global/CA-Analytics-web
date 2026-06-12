@@ -165,6 +165,11 @@ export type CallDetail = {
   segments: SpeakerSegment[];
   entities: Record<string, unknown>;
   analysis: Record<string, unknown>;
+  demoCall?: Record<string, unknown> | null;
+  videoStats?: Record<string, unknown> | null;
+  videoAnalysis?: Record<string, unknown> | null;
+  roleMapping?: Record<string, unknown> | null;
+  agentTipsHistory?: unknown[] | null;
   raw: Record<string, unknown>;
 };
 

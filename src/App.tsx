@@ -385,6 +385,148 @@ const formatEmotionLabel = (label: string) => {
 const formatPercentage = (score: number) =>
   `${Math.round(Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0)) * 100)}%`;
 
+const asDetailRecord = (value: unknown): Record<string, unknown> | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  return Object.keys(record).length > 0 ? record : null;
+};
+
+const numberFromUnknown = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const trimmed = value.trim();
+    const parsed = Number(trimmed.endsWith("%") ? trimmed.slice(0, -1) : trimmed);
+    if (Number.isFinite(parsed)) {
+      return trimmed.endsWith("%") ? parsed / 100 : parsed;
+    }
+  }
+
+  return null;
+};
+
+const readDetailNumber = (record: Record<string, unknown> | null, ...keys: string[]) => {
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const numberValue = numberFromUnknown(record[key]);
+    if (numberValue != null) {
+      return numberValue;
+    }
+  }
+
+  return null;
+};
+
+const readDetailString = (record: Record<string, unknown> | null, ...keys: string[]) => {
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return null;
+};
+
+const getDetailDemoCall = (detail?: CallDetail | null) =>
+  asDetailRecord(detail?.analysis?.demoCall) ?? asDetailRecord(detail?.demoCall);
+
+const getDetailVideoStats = (detail?: CallDetail | null) => {
+  const demoCall = getDetailDemoCall(detail);
+
+  return (
+    asDetailRecord(detail?.videoStats) ??
+    asDetailRecord(detail?.videoAnalysis) ??
+    asDetailRecord(demoCall?.videoStats)
+  );
+};
+
+const getDetailRoleMapping = (detail?: CallDetail | null) => {
+  const demoCall = getDetailDemoCall(detail);
+  const roleMapping = asDetailRecord(detail?.roleMapping) ?? asDetailRecord(demoCall?.roleMapping);
+
+  if (!roleMapping) {
+    return null;
+  }
+
+  const normalized = Object.entries(roleMapping).reduce<Record<string, string>>(
+    (result, [speaker, role]) => {
+      const label = typeof role === "string" ? role.trim() : String(role ?? "").trim();
+      if (speaker.trim() && label) {
+        result[speaker] = label;
+      }
+      return result;
+    },
+    {},
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+};
+
+const getDetailAgentTipsHistory = (detail?: CallDetail | null) => {
+  const demoCall = getDetailDemoCall(detail);
+  const directHistory = Array.isArray(detail?.agentTipsHistory) ? detail.agentTipsHistory : [];
+  const demoHistory = Array.isArray(demoCall?.agentTipsHistory) ? demoCall.agentTipsHistory : [];
+
+  return directHistory.length > 0 ? directHistory : demoHistory;
+};
+
+const formatVideoPercent = (value: unknown) => {
+  const numberValue = numberFromUnknown(value);
+  if (numberValue == null) {
+    return "-";
+  }
+
+  return formatPercentage(numberValue > 1 ? numberValue / 100 : numberValue);
+};
+
+const formatVideoMetricValue = (value: unknown) => {
+  const numberValue = numberFromUnknown(value);
+  if (numberValue != null) {
+    return numberValue >= 0 && numberValue <= 1
+      ? formatVideoPercent(numberValue)
+      : formatSummaryNumber(numberValue, Number.isInteger(numberValue) ? 0 : 2);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return formatEmotionLabel(value);
+  }
+
+  return "-";
+};
+
+const formatVideoMetricLabel = (key: string) =>
+  formatEmotionLabel(key.replace(/([a-z0-9])([A-Z])/g, "$1 $2"));
+
+const getVideoRecordEntries = (record: Record<string, unknown> | null) =>
+  Object.entries(record ?? {}).filter(([, value]) => {
+    if (value == null || value === "") {
+      return false;
+    }
+
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      return false;
+    }
+
+    return true;
+  });
+
 const hasDisplayEmotion = (
   emotion?: SegmentEmotion | null,
 ): emotion is SegmentEmotion & { label: string } =>
@@ -2808,6 +2950,62 @@ function App() {
   const coachingAssistance = Array.isArray(detail?.analysis?.coachingAssistance)
     ? (detail?.analysis?.coachingAssistance as string[])
     : [];
+  const videoStats = getDetailVideoStats(detail);
+  const videoQuality = asDetailRecord(videoStats?.quality);
+  const videoEmotionDistribution = asDetailRecord(videoStats?.emotionDistribution);
+  const videoAverageAttributes = asDetailRecord(videoStats?.averageAttributes);
+  const latestVideoStats =
+    asDetailRecord(videoStats?.latest) ??
+    asDetailRecord(videoStats?.latestMood) ??
+    asDetailRecord(videoStats?.latestEmotion);
+  const latestVideoMood =
+    readDetailString(latestVideoStats, "mood", "emotion", "label", "dominantEmotion") ??
+    readDetailString(videoStats, "latestMood", "latestEmotion");
+  const latestVideoScore =
+    readDetailNumber(latestVideoStats, "score", "faceScore", "confidence") ??
+    readDetailNumber(videoStats, "latestScore", "latestFaceScore");
+  const latestVideoLabel = latestVideoMood ? formatEmotionLabel(latestVideoMood) : "";
+  const latestVideoScoreLabel = latestVideoScore != null ? formatVideoPercent(latestVideoScore) : "";
+  const videoDominantEmotion =
+    readDetailString(videoStats, "dominantEmotion", "dominantMood", "emotion") ?? "";
+  const videoOverviewCards = videoStats
+    ? [
+        {
+          label: "Dominant emotion",
+          value: videoDominantEmotion ? formatEmotionLabel(videoDominantEmotion) : "-",
+        },
+        {
+          label: "Frames analyzed",
+          value: formatSummaryNumber(readDetailNumber(videoStats, "framesAnalyzed", "frameCount"), 0),
+        },
+        {
+          label: "Face frames",
+          value: formatSummaryNumber(
+            readDetailNumber(videoStats, "faceDetectedFrames", "detectedFrames"),
+            0,
+          ),
+        },
+        {
+          label: "Face presence",
+          value: formatVideoPercent(readDetailNumber(videoStats, "facePresenceRatio", "presenceRatio")),
+        },
+        {
+          label: "Average score",
+          value: formatVideoPercent(readDetailNumber(videoStats, "averageFaceScore", "faceScore")),
+        },
+      ]
+    : [];
+  const videoQualityEntries = getVideoRecordEntries(videoQuality);
+  const videoEmotionEntries = getVideoRecordEntries(videoEmotionDistribution);
+  const videoAverageAttributeEntries = getVideoRecordEntries(videoAverageAttributes);
+  const roleMapping = getDetailRoleMapping(detail);
+  const roleMappingEntries = Object.entries(roleMapping ?? {});
+  const agentTipsHistory = getDetailAgentTipsHistory(detail);
+  const recentAgentTipsHistory = agentTipsHistory
+    .slice(-3)
+    .reverse()
+    .map((block) => asDetailRecord(block))
+    .filter((block): block is Record<string, unknown> => Boolean(block));
   const relatedDepartment =
     typeof detail?.analysis?.department === "string" ? detail.analysis.department : null;
   const taskUrgency =
@@ -3530,6 +3728,130 @@ function App() {
                     isPreparing={audioLoading || audioPendingFor === detail.conversationId}
                     onPlaybackTimeChange={setPlaybackTimeSeconds}
                   />
+
+                  {videoStats ? (
+                    <section className="detail-section video-analysis-section">
+                      <div className="video-analysis-heading">
+                        <h4>Video Analysis</h4>
+                        {latestVideoLabel || latestVideoScoreLabel ? (
+                          <span className="video-analysis-latest">
+                            Latest: {[latestVideoLabel, latestVideoScoreLabel].filter(Boolean).join(" / ")}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="video-analysis-grid">
+                        {videoOverviewCards.map((card) => (
+                          <article key={card.label} className="routing-card video-analysis-card">
+                            <label>{card.label}</label>
+                            <strong>{card.value}</strong>
+                          </article>
+                        ))}
+                      </div>
+
+                      <div className="video-analysis-columns">
+                        {videoEmotionEntries.length > 0 ? (
+                          <article className="video-analysis-block">
+                            <h5>Emotion distribution</h5>
+                            <div className="video-metric-list">
+                              {videoEmotionEntries.map(([key, value]) => (
+                                <div key={key} className="video-metric-row">
+                                  <span>{formatVideoMetricLabel(key)}</span>
+                                  <strong>{formatVideoMetricValue(value)}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </article>
+                        ) : null}
+
+                        {videoAverageAttributeEntries.length > 0 ? (
+                          <article className="video-analysis-block">
+                            <h5>Average attributes</h5>
+                            <div className="video-metric-list">
+                              {videoAverageAttributeEntries.map(([key, value]) => (
+                                <div key={key} className="video-metric-row">
+                                  <span>{formatVideoMetricLabel(key)}</span>
+                                  <strong>{formatVideoMetricValue(value)}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </article>
+                        ) : null}
+
+                        {videoQualityEntries.length > 0 ? (
+                          <article className="video-analysis-block">
+                            <h5>Quality</h5>
+                            <div className="video-metric-list">
+                              {videoQualityEntries.map(([key, value]) => (
+                                <div key={key} className="video-metric-row">
+                                  <span>{formatVideoMetricLabel(key)}</span>
+                                  <strong>{formatVideoMetricValue(value)}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </article>
+                        ) : null}
+                      </div>
+
+                      {roleMappingEntries.length > 0 || recentAgentTipsHistory.length > 0 ? (
+                        <div className="video-analysis-meta">
+                          {roleMappingEntries.length > 0 ? (
+                            <div className="video-analysis-meta-row">
+                              <span>Role mapping</span>
+                              <div className="token-panel">
+                                {roleMappingEntries.map(([speaker, role]) => (
+                                  <span key={speaker} className="token-chip">
+                                    {speaker}: {role}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {recentAgentTipsHistory.length > 0 ? (
+                            <div className="video-analysis-meta-row">
+                              <span>Agent Assist history</span>
+                              <div className="video-tips-history">
+                                {recentAgentTipsHistory.map((block, blockIndex) => {
+                                  const tips = Array.isArray(block.tips)
+                                    ? block.tips.map((tip) => String(tip)).filter(Boolean)
+                                    : [];
+                                  const topic = readDetailString(block, "topic") ?? "general";
+                                  const customerIntent =
+                                    readDetailString(block, "customerIntent", "customer_intent") ?? "";
+                                  const updatedAt = readDetailString(block, "updatedAt");
+
+                                  return (
+                                    <details
+                                      key={`${topic}-${updatedAt ?? blockIndex}`}
+                                      className="video-tips-block"
+                                    >
+                                      <summary>
+                                        <strong>{formatVideoMetricLabel(topic)}</strong>
+                                        {customerIntent ? (
+                                          <span>{formatVideoMetricLabel(customerIntent)}</span>
+                                        ) : null}
+                                      </summary>
+                                      {tips.length > 0 ? (
+                                        <ol>
+                                          {tips.map((tip, tipIndex) => (
+                                            <li key={`${topic}-${tipIndex}`}>{tip}</li>
+                                          ))}
+                                        </ol>
+                                      ) : (
+                                        <p>No tips recorded for this update.</p>
+                                      )}
+                                      {updatedAt ? <small>Updated {formatDate(updatedAt)}</small> : null}
+                                    </details>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
 
                   <div className="detail-panels figma-detail-panels">
                     <section className="detail-section emotion-timeline-section">
