@@ -293,6 +293,10 @@ textarea:focus {
   flex: 0 0 auto;
 }
 
+.sidebar-brand .brand-eye {
+  width: 118px;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;

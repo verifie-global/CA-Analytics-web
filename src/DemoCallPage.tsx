@@ -109,6 +109,12 @@ type FinalizeDemoCallResponse = {
   dialogueSegmentsStored?: number;
 };
 
+type DemoFinalizeSettings = {
+  baseUrl: string;
+  companyId: string;
+  accessToken: string;
+};
+
 const defaultSpeakerLabels: Record<string, string> = {
   SPEAKER_0: "Agent",
   SPEAKER_1: "Customer",
@@ -274,10 +280,9 @@ const readStoredDemoSettings = (): StoredDemoSettings => {
   }
 };
 
-const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
+const getDemoFinalizeSettings = (): DemoFinalizeSettings => {
   const settings = readStoredDemoSettings();
   const baseUrl = trimSlash(settings.baseUrl || DEFAULT_API_BASE_URL);
-  const conversationId = payload.sessionId;
 
   if (!settings.companyId) {
     throw new Error("Company ID is required before sending demo call analysis.");
@@ -287,18 +292,29 @@ const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
     throw new Error("Authorization token is required before sending demo call analysis.");
   }
 
+  return {
+    baseUrl,
+    companyId: settings.companyId,
+    accessToken: settings.accessToken,
+  };
+};
+
+const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
+  const settings = getDemoFinalizeSettings();
+  const conversationId = payload.sessionId;
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${settings.accessToken}`,
   };
 
   const response = await fetch(
-    `${baseUrl}/api/companies/${encodeURIComponent(settings.companyId)}/calls/${encodeURIComponent(
+    `${settings.baseUrl}/api/companies/${encodeURIComponent(settings.companyId)}/calls/${encodeURIComponent(
       conversationId,
     )}/finalize-transcript`,
     {
       method: "POST",
       headers,
+      keepalive: true,
       body: JSON.stringify(payload),
     },
   );
@@ -309,18 +325,6 @@ const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
   }
 
   const finalizeResult = (await response.json()) as FinalizeDemoCallResponse;
-  const detailResponse = await fetch(
-    `${baseUrl}/api/companies/${encodeURIComponent(settings.companyId)}/calls/${encodeURIComponent(
-      conversationId,
-    )}`,
-    { headers },
-  );
-
-  if (!detailResponse.ok) {
-    const text = await detailResponse.text();
-    throw new Error(text || `Unable to load finalized call with status ${detailResponse.status}`);
-  }
-
   return {
     ...finalizeResult,
     conversationId: finalizeResult.conversationId || conversationId,
@@ -1198,32 +1202,30 @@ function DemoCallPage() {
     [agentTips, agentTipsHistory, elapsedSeconds, segments],
   );
 
-  const completeDemoCall = async () => {
+  const completeDemoCall = () => {
     if (completeSubmitting) {
       return;
     }
 
     setCompleteSubmitting(true);
-    setCompleteMessage("Sending session for analysis...");
+    setCompleteMessage("Submitting session...");
     setErrorMessage("");
 
     try {
       const payload = buildFinalizePayload(new Date());
+      const conversationId = payload.sessionId;
 
-      if (canStop) {
-        await asrService.stopRecording();
-      }
+      void asrService.stopRecording();
+      void finalizeDemoCallSession(payload).catch((error) => {
+        console.error("Demo call finalize failed:", error);
+      });
 
-      const result = await finalizeDemoCallSession(payload);
-      const conversationId = result.conversationId || payload.sessionId;
-      setCompleteMessage("Session sent for analysis.");
       window.location.href = `/?view=grid&conversationId=${encodeURIComponent(conversationId)}`;
     } catch (error) {
       setCompleteMessage("");
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to send demo call for analysis.",
       );
-    } finally {
       setCompleteSubmitting(false);
     }
   };
