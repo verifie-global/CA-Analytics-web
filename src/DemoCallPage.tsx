@@ -140,10 +140,22 @@ const isBrowserDefaultInputDevice = (device: MediaDeviceInfo) => {
   );
 };
 
-const preferredInputDeviceId = (devices: MediaDeviceInfo[]) =>
-  devices.find((device) => device.deviceId && !isBrowserDefaultInputDevice(device))?.deviceId ??
-  devices.find((device) => device.deviceId)?.deviceId ??
-  "";
+const preferredInputDevicePair = (devices: MediaDeviceInfo[]) => {
+  const realDevices = devices.filter(
+    (device) => device.deviceId && !isBrowserDefaultInputDevice(device),
+  );
+  const fallbackDevices = devices.filter((device) => device.deviceId);
+  const agentDeviceId = realDevices[0]?.deviceId ?? fallbackDevices[0]?.deviceId ?? "";
+  const customerDeviceId =
+    realDevices.find((device) => device.deviceId !== agentDeviceId)?.deviceId ??
+    fallbackDevices.find((device) => device.deviceId !== agentDeviceId)?.deviceId ??
+    agentDeviceId;
+
+  return {
+    agentDeviceId,
+    customerDeviceId,
+  };
+};
 
 const emptyFaceEmotion: FaceEmotionState = {
   mood: "NO FACE",
@@ -328,7 +340,9 @@ const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
 };
 
 const getSegmentRawSpeaker = (segment: TranscriptSegment) =>
-  segment.raw_speaker ?? (segment.speaker?.startsWith("SPEAKER_") ? segment.speaker : undefined);
+  segment.raw_speaker ??
+  segment.source ??
+  (segment.speaker?.startsWith("SPEAKER_") ? segment.speaker : undefined);
 
 const getSegmentIdentitySpeaker = (segment: TranscriptSegment) =>
   getSegmentRawSpeaker(segment) ?? segment.speaker ?? segment.role ?? "UNKNOWN";
@@ -1007,7 +1021,8 @@ function DemoCallPage() {
   const [completeMessage, setCompleteMessage] = useState("");
   const [completeSubmitting, setCompleteSubmitting] = useState(false);
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedInputDeviceId, setSelectedInputDeviceId] = useState("");
+  const [selectedAgentInputDeviceId, setSelectedAgentInputDeviceId] = useState("");
+  const [selectedCustomerInputDeviceId, setSelectedCustomerInputDeviceId] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const recordingStartedAtMsRef = useRef<number | null>(null);
   const transcriptPanelRef = useRef<HTMLDivElement | null>(null);
@@ -1022,7 +1037,7 @@ function DemoCallPage() {
       const devices = await navigator.mediaDevices?.enumerateDevices();
       const audioInputDevices = (devices ?? []).filter((device) => device.kind === "audioinput");
       setInputDevices(audioInputDevices);
-      setSelectedInputDeviceId((currentDeviceId) => {
+      setSelectedAgentInputDeviceId((currentDeviceId) => {
         if (
           currentDeviceId &&
           audioInputDevices.some((device) => device.deviceId === currentDeviceId)
@@ -1030,7 +1045,17 @@ function DemoCallPage() {
           return currentDeviceId;
         }
 
-        return preferredInputDeviceId(audioInputDevices);
+        return preferredInputDevicePair(audioInputDevices).agentDeviceId;
+      });
+      setSelectedCustomerInputDeviceId((currentDeviceId) => {
+        if (
+          currentDeviceId &&
+          audioInputDevices.some((device) => device.deviceId === currentDeviceId)
+        ) {
+          return currentDeviceId;
+        }
+
+        return preferredInputDevicePair(audioInputDevices).customerDeviceId;
       });
     } catch {
       setInputDevices([]);
@@ -1138,7 +1163,8 @@ function DemoCallPage() {
     sessionIdRef.current = generateDemoSessionId();
     videoStatsRef.current = createEmptyFaceStats();
     await asrService.startRecording({
-      deviceId: selectedInputDeviceId || undefined,
+      agentDeviceId: selectedAgentInputDeviceId || undefined,
+      customerDeviceId: selectedCustomerInputDeviceId || undefined,
       chunkMs: 250,
     });
     void refreshInputDevices();
@@ -1333,21 +1359,39 @@ function DemoCallPage() {
               </span>
             </div>
 
-            <label className="demo-input-select">
-              <span>Microphone</span>
-              <select
-                value={selectedInputDeviceId}
-                onChange={(event) => setSelectedInputDeviceId(event.target.value)}
-                disabled={status === "Recording" || status === "Connecting"}
-              >
-                <option value="">Default input</option>
-                {inputDevices.map((device, index) => (
-                  <option key={device.deviceId || `input-${index}`} value={device.deviceId}>
-                    {device.label || `Microphone ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="demo-input-grid">
+              <label className="demo-input-select">
+                <span>Agent microphone</span>
+                <select
+                  value={selectedAgentInputDeviceId}
+                  onChange={(event) => setSelectedAgentInputDeviceId(event.target.value)}
+                  disabled={status === "Recording" || status === "Connecting"}
+                >
+                  <option value="">Default Agent input</option>
+                  {inputDevices.map((device, index) => (
+                    <option key={device.deviceId || `agent-input-${index}`} value={device.deviceId}>
+                      {device.label || `Microphone ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="demo-input-select">
+                <span>Customer microphone</span>
+                <select
+                  value={selectedCustomerInputDeviceId}
+                  onChange={(event) => setSelectedCustomerInputDeviceId(event.target.value)}
+                  disabled={status === "Recording" || status === "Connecting"}
+                >
+                  <option value="">Default Customer input</option>
+                  {inputDevices.map((device, index) => (
+                    <option key={device.deviceId || `customer-input-${index}`} value={device.deviceId}>
+                      {device.label || `Microphone ${index + 1}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
             {errorMessage ? <p className="demo-inline-error">{errorMessage}</p> : null}
           </div>

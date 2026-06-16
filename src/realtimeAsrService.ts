@@ -13,6 +13,7 @@ export type TranscriptSegment = {
   start: number;
   end: number;
   raw_speaker?: string;
+  source?: string;
   role?: Role;
   speaker?: Role;
   role_confidence?: number;
@@ -21,7 +22,7 @@ export type TranscriptSegment = {
 };
 
 export type TranscriptMessage = {
-  type: "partial";
+  type: "partial" | "transcript.final";
   offset?: number;
   segments: TranscriptSegment[];
   role_mapping?: RoleMapping;
@@ -38,7 +39,8 @@ export type TipsMessage = {
 };
 
 type RealtimeAsrOptions = {
-  deviceId?: string;
+  agentDeviceId?: string;
+  customerDeviceId?: string;
   chunkMs?: number;
   url?: string;
 };
@@ -64,6 +66,32 @@ export function floatTo16BitPCM(float32Array: Float32Array) {
   for (let index = 0; index < float32Array.length; index += 1) {
     const sample = Math.max(-1, Math.min(1, float32Array[index]));
     view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+
+  return buffer;
+}
+
+export function stereoFloatToInterleaved16BitPCM(
+  agentSamples: Float32Array,
+  customerSamples: Float32Array,
+) {
+  const sampleCount = Math.max(agentSamples.length, customerSamples.length);
+  const buffer = new ArrayBuffer(sampleCount * 2 * 2);
+  const view = new DataView(buffer);
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const agentSample = Math.max(-1, Math.min(1, agentSamples[index] ?? 0));
+    const customerSample = Math.max(-1, Math.min(1, customerSamples[index] ?? 0));
+    view.setInt16(
+      index * 4,
+      agentSample < 0 ? agentSample * 0x8000 : agentSample * 0x7fff,
+      true,
+    );
+    view.setInt16(
+      index * 4 + 2,
+      customerSample < 0 ? customerSample * 0x8000 : customerSample * 0x7fff,
+      true,
+    );
   }
 
   return buffer;
@@ -149,6 +177,7 @@ const normalizeTranscriptMessage = (value: unknown): TranscriptMessage | null =>
       const end = Number(raw.end);
       const speaker = normalizeOptionalString(raw.speaker);
       const rawSpeaker = normalizeOptionalString(raw.raw_speaker);
+      const source = normalizeOptionalString(raw.source);
       const role = normalizeOptionalString(raw.role);
       const roleReason = normalizeOptionalString(raw.role_reason);
       const text = normalizeOptionalString(raw.text);
@@ -160,7 +189,9 @@ const normalizeTranscriptMessage = (value: unknown): TranscriptMessage | null =>
       return {
         start,
         end,
-        raw_speaker: rawSpeaker ?? (speaker?.startsWith("SPEAKER_") ? speaker : undefined),
+        raw_speaker:
+          rawSpeaker ?? source ?? (speaker?.startsWith("SPEAKER_") ? speaker : undefined),
+        source,
         role,
         speaker,
         role_confidence: normalizeOptionalNumber(raw.role_confidence),
@@ -175,6 +206,53 @@ const normalizeTranscriptMessage = (value: unknown): TranscriptMessage | null =>
     offset: normalizeOptionalNumber(candidate.offset),
     segments,
     role_mapping: normalizeRoleMapping(candidate.role_mapping),
+  };
+};
+
+const normalizeTranscriptFinalMessage = (value: unknown): TranscriptMessage | null => {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as {
+    type?: unknown;
+    role?: unknown;
+    source?: unknown;
+    speaker?: unknown;
+    text?: unknown;
+    timestamp_ms?: unknown;
+    is_final?: unknown;
+  };
+
+  if (candidate.type !== "transcript.final") {
+    return null;
+  }
+
+  const text = normalizeOptionalString(candidate.text);
+  const role = normalizeOptionalString(candidate.role);
+  const source = normalizeOptionalString(candidate.source);
+  const timestampMs = normalizeOptionalNumber(candidate.timestamp_ms) ?? 0;
+
+  if (!text) {
+    return null;
+  }
+
+  const timestampSeconds = Math.max(0, timestampMs / 1000);
+
+  return {
+    type: "transcript.final",
+    offset: timestampSeconds,
+    segments: [
+      {
+        start: timestampSeconds,
+        end: timestampSeconds,
+        raw_speaker: source,
+        source,
+        role: role ?? "Unknown",
+        speaker: role ?? normalizeOptionalString(candidate.speaker) ?? source ?? "Unknown",
+        text,
+      },
+    ],
   };
 };
 
@@ -205,12 +283,16 @@ const normalizeTipsMessage = (value: unknown): TipsMessage | null => {
 
 export class RealtimeAsrService {
   private audioContext: AudioContext | null = null;
-  private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private agentSourceNode: MediaStreamAudioSourceNode | null = null;
+  private customerSourceNode: MediaStreamAudioSourceNode | null = null;
+  private channelMergerNode: ChannelMergerNode | null = null;
   private processorNode: ScriptProcessorNode | null = null;
   private silentGainNode: GainNode | null = null;
-  private mediaStream: MediaStream | null = null;
+  private agentMediaStream: MediaStream | null = null;
+  private customerMediaStream: MediaStream | null = null;
   private webSocket: WebSocket | null = null;
-  private pendingSourceSamples = new Float32Array(0);
+  private pendingAgentSourceSamples = new Float32Array(0);
+  private pendingCustomerSourceSamples = new Float32Array(0);
   private audioChunksSent = 0;
   private audioBytesSent = 0;
   private stopRequested = false;
@@ -251,7 +333,8 @@ export class RealtimeAsrService {
     }
 
     this.stopRequested = false;
-    this.pendingSourceSamples = new Float32Array(0);
+    this.pendingAgentSourceSamples = new Float32Array(0);
+    this.pendingCustomerSourceSamples = new Float32Array(0);
     this.audioChunksSent = 0;
     this.audioBytesSent = 0;
     this.emitStatus("Connecting");
@@ -262,13 +345,23 @@ export class RealtimeAsrService {
         throw new Error("Microphone capture is not supported in this browser.");
       }
 
-      this.mediaStream = await mediaDevices.getUserMedia({
+      this.agentMediaStream = await mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          deviceId: options.deviceId ? { exact: options.deviceId } : undefined,
+          deviceId: options.agentDeviceId ? { exact: options.agentDeviceId } : undefined,
+        },
+      });
+
+      this.customerMediaStream = await mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          deviceId: options.customerDeviceId ? { exact: options.customerDeviceId } : undefined,
         },
       });
 
@@ -286,17 +379,24 @@ export class RealtimeAsrService {
 
   async stopRecording(finalStatus: RealtimeAsrStatus = "Disconnected") {
     this.stopRequested = true;
-    this.pendingSourceSamples = new Float32Array(0);
+    this.pendingAgentSourceSamples = new Float32Array(0);
+    this.pendingCustomerSourceSamples = new Float32Array(0);
 
     this.processorNode?.disconnect();
-    this.sourceNode?.disconnect();
+    this.agentSourceNode?.disconnect();
+    this.customerSourceNode?.disconnect();
+    this.channelMergerNode?.disconnect();
     this.silentGainNode?.disconnect();
     this.processorNode = null;
-    this.sourceNode = null;
+    this.agentSourceNode = null;
+    this.customerSourceNode = null;
+    this.channelMergerNode = null;
     this.silentGainNode = null;
 
-    this.mediaStream?.getTracks().forEach((track) => track.stop());
-    this.mediaStream = null;
+    this.agentMediaStream?.getTracks().forEach((track) => track.stop());
+    this.customerMediaStream?.getTracks().forEach((track) => track.stop());
+    this.agentMediaStream = null;
+    this.customerMediaStream = null;
 
     if (this.audioContext && this.audioContext.state !== "closed") {
       try {
@@ -320,8 +420,8 @@ export class RealtimeAsrService {
   }
 
   private async startAudioPipeline(chunkMs: number) {
-    if (!this.mediaStream) {
-      throw new Error("Microphone stream is not available.");
+    if (!this.agentMediaStream || !this.customerMediaStream) {
+      throw new Error("Both Agent and Customer microphone streams are required.");
     }
 
     const AudioContextCtor = window.AudioContext ?? window.webkitAudioContext;
@@ -338,14 +438,19 @@ export class RealtimeAsrService {
       Math.round(sourceSampleRate * (Math.max(250, Math.min(1000, chunkMs)) / 1000)),
     );
 
-    this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
+    this.agentSourceNode = this.audioContext.createMediaStreamSource(this.agentMediaStream);
+    this.customerSourceNode = this.audioContext.createMediaStreamSource(this.customerMediaStream);
+    this.channelMergerNode = this.audioContext.createChannelMerger(2);
     this.processorNode = this.audioContext.createScriptProcessor(
       SCRIPT_PROCESSOR_BUFFER_SIZE,
-      1,
+      2,
       1,
     );
     this.silentGainNode = this.audioContext.createGain();
     this.silentGainNode.gain.value = 0;
+
+    this.agentSourceNode.connect(this.channelMergerNode, 0, 0);
+    this.customerSourceNode.connect(this.channelMergerNode, 0, 1);
 
     this.processorNode.onaudioprocess = (event) => {
       if (this.stopRequested || this.webSocket?.readyState !== WebSocket.OPEN) {
@@ -354,22 +459,35 @@ export class RealtimeAsrService {
 
       const inputBuffer = event.inputBuffer;
       const frameCount = inputBuffer.length;
-      const channelCount = inputBuffer.numberOfChannels;
-      const monoSamples = new Float32Array(frameCount);
+      const agentSamples = new Float32Array(inputBuffer.getChannelData(0));
+      const customerSamples =
+        inputBuffer.numberOfChannels > 1
+          ? new Float32Array(inputBuffer.getChannelData(1))
+          : new Float32Array(frameCount);
 
-      for (let channel = 0; channel < channelCount; channel += 1) {
-        const channelData = inputBuffer.getChannelData(channel);
-        for (let index = 0; index < frameCount; index += 1) {
-          monoSamples[index] += channelData[index] / channelCount;
-        }
-      }
+      this.pendingAgentSourceSamples = appendFloat32(
+        this.pendingAgentSourceSamples,
+        agentSamples,
+      );
+      this.pendingCustomerSourceSamples = appendFloat32(
+        this.pendingCustomerSourceSamples,
+        customerSamples,
+      );
 
-      this.pendingSourceSamples = appendFloat32(this.pendingSourceSamples, monoSamples);
-
-      while (this.pendingSourceSamples.length >= chunkSourceSampleCount) {
-        const sourceChunk = this.pendingSourceSamples.slice(0, chunkSourceSampleCount);
-        this.pendingSourceSamples = this.pendingSourceSamples.slice(chunkSourceSampleCount);
-        const pcmBuffer = floatTo16BitPCM(resampleTo16Khz(sourceChunk, sourceSampleRate));
+      while (
+        this.pendingAgentSourceSamples.length >= chunkSourceSampleCount &&
+        this.pendingCustomerSourceSamples.length >= chunkSourceSampleCount
+      ) {
+        const agentSourceChunk = this.pendingAgentSourceSamples.slice(0, chunkSourceSampleCount);
+        const customerSourceChunk = this.pendingCustomerSourceSamples.slice(0, chunkSourceSampleCount);
+        this.pendingAgentSourceSamples =
+          this.pendingAgentSourceSamples.slice(chunkSourceSampleCount);
+        this.pendingCustomerSourceSamples =
+          this.pendingCustomerSourceSamples.slice(chunkSourceSampleCount);
+        const pcmBuffer = stereoFloatToInterleaved16BitPCM(
+          resampleTo16Khz(agentSourceChunk, sourceSampleRate),
+          resampleTo16Khz(customerSourceChunk, sourceSampleRate),
+        );
 
         if (!this.webSocket || this.webSocket.readyState !== WebSocket.OPEN) {
           return;
@@ -393,7 +511,7 @@ export class RealtimeAsrService {
       }
     };
 
-    this.sourceNode.connect(this.processorNode);
+    this.channelMergerNode.connect(this.processorNode);
     this.processorNode.connect(this.silentGainNode);
     this.silentGainNode.connect(this.audioContext.destination);
   }
@@ -421,6 +539,14 @@ export class RealtimeAsrService {
 
           if (parsedMessage.type === "partial") {
             const message = normalizeTranscriptMessage(parsedMessage);
+            if (message) {
+              this.transcriptCallbacks.forEach((callback) => callback(message));
+            }
+            return;
+          }
+
+          if (parsedMessage.type === "transcript.final") {
+            const message = normalizeTranscriptFinalMessage(parsedMessage);
             if (message) {
               this.transcriptCallbacks.forEach((callback) => callback(message));
             }
