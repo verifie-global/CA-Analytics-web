@@ -130,15 +130,6 @@ type AskHistoryItem = {
   response: AskResponse;
 };
 
-type AskAnythingPanelProps = {
-  title: string;
-  placeholder: string;
-  disabled?: boolean;
-  mode: "single" | "company";
-  onAsk: (question: string, options: { maxCalls: number; useSemanticSearch: boolean }) => Promise<AskResponse>;
-  onEvidenceOpen?: (conversationId: string) => void;
-};
-
 const uniqueTextValues = (values: Array<string | null | undefined>) => {
   const uniqueValues = new Set<string>();
 
@@ -279,138 +270,6 @@ function MultiSelectDropdown({
         )}
       </div>
     </details>
-  );
-}
-
-function AskAnythingPanel({
-  title,
-  placeholder,
-  disabled,
-  mode,
-  onAsk,
-  onEvidenceOpen,
-}: AskAnythingPanelProps) {
-  const [question, setQuestion] = useState("");
-  const [maxCalls, setMaxCalls] = useState(25);
-  const [useSemanticSearch, setUseSemanticSearch] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [history, setHistory] = useState<AskHistoryItem[]>([]);
-  const canSubmit = question.trim().length > 0 && !isLoading && !disabled;
-
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!canSubmit) {
-      return;
-    }
-
-    const submittedQuestion = question.trim();
-    setIsLoading(true);
-    setErrorMessage("");
-
-    try {
-      const response = await onAsk(submittedQuestion, { maxCalls, useSemanticSearch });
-      setHistory((current) => [
-        {
-          id: `${Date.now()}-${current.length}`,
-          question: submittedQuestion,
-          response,
-        },
-        ...current,
-      ]);
-      setQuestion("");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to answer this question.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <section className="ask-panel" aria-label={title}>
-      <div className="ask-panel-head">
-        <div>
-          <h3>{title}</h3>
-          {history[0]?.response.usedCalls != null || history[0]?.response.semanticSearchUsed != null ? (
-            <p>
-              {history[0]?.response.usedCalls != null
-                ? `${history[0].response.usedCalls} calls used`
-                : "Calls used unavailable"}
-              {" / "}
-              semantic search {history[0]?.response.semanticSearchUsed ? "on" : "off"}
-            </p>
-          ) : null}
-        </div>
-        {mode === "company" ? (
-          <label className="ask-toggle">
-            <input
-              type="checkbox"
-              checked={useSemanticSearch}
-              onChange={(event) => setUseSemanticSearch(event.target.checked)}
-            />
-            <span>Semantic search</span>
-          </label>
-        ) : null}
-      </div>
-
-      <form className="ask-form" onSubmit={handleSubmit}>
-        <textarea
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          rows={3}
-        />
-        <div className="ask-controls">
-          {mode === "company" ? (
-            <label className="ask-max-calls">
-              <span>Max calls</span>
-              <input
-                type="number"
-                min="1"
-                max="250"
-                value={maxCalls}
-                onChange={(event) => {
-                  const parsed = Number(event.target.value);
-                  setMaxCalls(Number.isFinite(parsed) ? Math.max(1, parsed) : 25);
-                }}
-              />
-            </label>
-          ) : null}
-          <button type="submit" className="small-button" disabled={!canSubmit}>
-            {isLoading ? "Asking..." : "Ask"}
-          </button>
-        </div>
-      </form>
-
-      {errorMessage ? <p className="ask-error">{errorMessage}</p> : null}
-
-      {history.length > 0 ? (
-        <div className="ask-history">
-          {history.map((item) => (
-            <article key={item.id} className="ask-answer">
-              <p className="ask-question">{item.question}</p>
-              <p className="ask-answer-copy">
-                {item.response.answer.trim() || "No answer was returned."}
-              </p>
-              {item.response.evidence.length > 0 ? (
-                <div className="ask-evidence-list">
-                  {item.response.evidence.map((evidence, index) => (
-                    <AskEvidenceRow
-                      key={`${item.id}-${index}`}
-                      evidence={evidence}
-                      onEvidenceOpen={onEvidenceOpen}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="ask-empty">No evidence returned.</p>
-              )}
-            </article>
-          ))}
-        </div>
-      ) : null}
-    </section>
   );
 }
 
@@ -1761,6 +1620,10 @@ function App() {
   const [qaScoringSettingsSuccess, setQaScoringSettingsSuccess] = useState("");
   const [qaRecalculating, setQaRecalculating] = useState(false);
   const [qaRecalculateError, setQaRecalculateError] = useState("");
+  const [topbarAskQuestion, setTopbarAskQuestion] = useState("");
+  const [topbarAskLoading, setTopbarAskLoading] = useState(false);
+  const [topbarAskError, setTopbarAskError] = useState("");
+  const [topbarAskHistory, setTopbarAskHistory] = useState<AskHistoryItem[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const diarizationContainerRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -2363,6 +2226,35 @@ function App() {
       }
 
       throw error;
+    }
+  };
+
+  const handleTopbarAsk = async () => {
+    const question = topbarAskQuestion.trim();
+    if (!question || topbarAskLoading || !canQueryApi) {
+      return;
+    }
+
+    setTopbarAskLoading(true);
+    setTopbarAskError("");
+
+    try {
+      const response = detail?.conversationId
+        ? await handleAskSingleCall(question)
+        : await handleAskCompanyCalls(question, { maxCalls: 25, useSemanticSearch: false });
+      setTopbarAskHistory((current) => [
+        {
+          id: `${Date.now()}-${current.length}`,
+          question,
+          response,
+        },
+        ...current,
+      ]);
+      setTopbarAskQuestion("");
+    } catch (error) {
+      setTopbarAskError(error instanceof Error ? error.message : "Unable to answer this question.");
+    } finally {
+      setTopbarAskLoading(false);
     }
   };
 
@@ -3542,19 +3434,52 @@ function App() {
             </svg>
             <input
               type="search"
-              value={filters.search}
-              onChange={(event) => updateCallFilters({ search: event.target.value })}
+              value={topbarAskQuestion}
+              onChange={(event) => setTopbarAskQuestion(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
-                  const nextFilters = { ...filters, search: filters.search, page: 1 };
-                  setFilters(nextFilters);
-                  void refreshCalls(settings, { filtersOverride: nextFilters });
+                  void handleTopbarAsk();
                 }
               }}
+              disabled={!canQueryApi || topbarAskLoading}
               placeholder="Ask Anything..."
-              aria-label="Ask Anything or search calls"
+              aria-label="Ask Anything"
             />
+            {topbarAskLoading || topbarAskError || topbarAskHistory.length > 0 ? (
+              <div className="topbar-ask-popover">
+                {topbarAskLoading ? <p className="ask-empty">Asking...</p> : null}
+                {topbarAskError ? <p className="ask-error">{topbarAskError}</p> : null}
+                {topbarAskHistory.slice(0, 3).map((item) => (
+                  <article key={item.id} className="ask-answer topbar-ask-answer">
+                    <p className="ask-question">{item.question}</p>
+                    <p className="ask-answer-copy">
+                      {item.response.answer.trim() || "No answer was returned."}
+                    </p>
+                    {item.response.usedCalls != null || item.response.semanticSearchUsed != null ? (
+                      <p className="topbar-ask-meta">
+                        {item.response.usedCalls != null
+                          ? `${item.response.usedCalls} calls used`
+                          : "Single call"}
+                        {" / "}
+                        semantic search {item.response.semanticSearchUsed ? "on" : "off"}
+                      </p>
+                    ) : null}
+                    {item.response.evidence.length > 0 ? (
+                      <div className="ask-evidence-list">
+                        {item.response.evidence.slice(0, 4).map((evidence, index) => (
+                          <AskEvidenceRow
+                            key={`${item.id}-${index}`}
+                            evidence={evidence}
+                            onEvidenceOpen={handleOpenEvidenceCall}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div className="topbar-user">
             <div className="topbar-user-text">
@@ -3711,15 +3636,6 @@ function App() {
                 <ExternalArrowIcon />
               </button>
             </div>
-
-            <AskAnythingPanel
-              title="Ask Anything"
-              placeholder="What are the top reasons customers are unhappy?"
-              disabled={!canQueryApi}
-              mode="company"
-              onAsk={handleAskCompanyCalls}
-              onEvidenceOpen={handleOpenEvidenceCall}
-            />
 
             <form
               className="filters"
@@ -4040,15 +3956,6 @@ function App() {
                       <p>{summary || "No conversation summary available yet."}</p>
                     </div>
                   </section>
-
-                  <AskAnythingPanel
-                    title="Ask Anything"
-                    placeholder="What did the agent do well in this call?"
-                    disabled={!canQueryApi || !detail.conversationId}
-                    mode="single"
-                    onAsk={(question) => handleAskSingleCall(question)}
-                    onEvidenceOpen={handleOpenEvidenceCall}
-                  />
 
                   <ConversationPlayback
                     audioUrl={audioUrl}

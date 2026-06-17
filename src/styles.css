@@ -915,93 +915,23 @@ textarea:focus {
   line-height: 1;
 }
 
-/* ------------------------------------------------------ Ask panel ----- */
+/* ------------------------------------------------------ Ask results --- */
 
-.ask-panel {
+.topbar-ask-popover {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  z-index: 20;
+  width: min(680px, calc(100vw - 2rem));
+  max-height: 520px;
+  overflow: auto;
   display: grid;
   gap: 0.75rem;
-  margin: 1rem 0;
-  padding: 0.95rem;
+  padding: 0.85rem;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
-}
-
-.ask-panel-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.ask-panel-head h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: 0.9rem;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.ask-panel-head p {
-  margin: 0.25rem 0 0;
-  color: var(--muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.ask-toggle {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--ink);
-  font-size: 0.78rem;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.ask-toggle input {
-  width: auto;
-  margin: 0;
-}
-
-.ask-form {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.ask-form textarea {
-  min-height: 78px;
-  border-radius: 8px;
-  font-size: 0.84rem;
-}
-
-.ask-controls {
-  display: flex;
-  justify-content: flex-end;
-  align-items: end;
-  gap: 0.65rem;
-  flex-wrap: wrap;
-}
-
-.ask-max-calls {
-  display: inline-grid;
-  grid-template-columns: auto 72px;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--muted);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.ask-max-calls input {
-  min-height: 34px;
-  padding: 0.35rem 0.55rem;
-  border-radius: 8px;
-  font-size: 0.82rem;
+  box-shadow: 0 18px 42px rgba(20, 28, 48, 0.14);
 }
 
 .ask-error {
@@ -1010,19 +940,16 @@ textarea:focus {
   font-size: 0.8rem;
 }
 
-.ask-history {
-  display: grid;
-  gap: 0.65rem;
-  max-height: 420px;
-  overflow: auto;
-  padding-right: 0.2rem;
-}
-
 .ask-answer {
   display: grid;
   gap: 0.5rem;
   padding-top: 0.7rem;
   border-top: 1px solid var(--line);
+}
+
+.topbar-ask-answer:first-of-type {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .ask-question {
@@ -1039,6 +966,14 @@ textarea:focus {
   font-size: 0.88rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.topbar-ask-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .ask-evidence-list {
