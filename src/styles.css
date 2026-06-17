@@ -3497,11 +3497,13 @@ details.scroll-toggle > summary {
 /* ======================================================== Demo call === */
 
 .demo-call-shell {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   padding: clamp(1rem, 2.4vw, 2rem);
+  overflow: hidden;
   background: #fff;
   color: #090b10;
   font-family: var(--font-mono);
@@ -3572,6 +3574,8 @@ details.scroll-toggle > summary {
 }
 
 .demo-call-grid {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(480px, 1.28fr) minmax(360px, 1fr) minmax(300px, 0.82fr);
   gap: 1rem;
@@ -3580,12 +3584,13 @@ details.scroll-toggle > summary {
 
 .demo-panel {
   min-width: 0;
-  min-height: min(68vh, 720px);
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-radius: 8px;
   background: #edf4ff;
   padding: clamp(1rem, 1.5vw, 1.45rem);
+  overflow: hidden;
 }
 
 .demo-panel h2 {
@@ -3633,6 +3638,7 @@ details.scroll-toggle > summary {
 
 .demo-face-panel {
   gap: 1.1rem;
+  overflow-y: auto;
 }
 
 .demo-face-analyzer {
@@ -3953,10 +3959,11 @@ details.scroll-toggle > summary {
 .demo-transcript-list {
   display: flex;
   flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
   align-items: stretch;
   gap: 0.55rem;
-  padding: 0;
+  padding: 0 0.15rem 0.15rem 0;
 }
 
 .demo-transcript-card {
@@ -4066,6 +4073,7 @@ details.scroll-toggle > summary {
   flex: 1 1 auto;
   flex-direction: column;
   gap: 0.75rem;
+  overflow: hidden;
 }
 
 .demo-assist-meta {
@@ -4094,6 +4102,8 @@ details.scroll-toggle > summary {
 
 .demo-tips-list {
   display: grid;
+  flex: 1 1 auto;
+  min-height: 90px;
   gap: 0.62rem;
   margin: 0;
   padding: 0;
@@ -4128,9 +4138,12 @@ details.scroll-toggle > summary {
 }
 
 .demo-tips-history {
-  margin-top: auto;
+  flex: 0 1 auto;
+  max-height: 34%;
+  margin-top: 0;
   border-top: 1px solid rgba(159, 198, 255, 0.36);
   padding-top: 0.65rem;
+  overflow-y: auto;
 }
 
 .demo-tips-history summary {
@@ -4207,6 +4220,7 @@ details.scroll-toggle > summary {
 }
 
 .demo-call-footer {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -4340,6 +4354,25 @@ details.scroll-toggle > summary {
   .grid-pager {
     justify-content: stretch;
     flex-wrap: wrap;
+  }
+
+  .demo-call-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .demo-call-grid {
+    flex: none;
+  }
+
+  .demo-panel {
+    min-height: min(68vh, 720px);
+    overflow: visible;
+  }
+
+  .demo-face-panel {
+    overflow: visible;
   }
 }
 
