@@ -1624,6 +1624,7 @@ function App() {
   const [topbarAskLoading, setTopbarAskLoading] = useState(false);
   const [topbarAskError, setTopbarAskError] = useState("");
   const [topbarAskHistory, setTopbarAskHistory] = useState<AskHistoryItem[]>([]);
+  const [isTopbarAskOpen, setIsTopbarAskOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const diarizationContainerRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -2237,6 +2238,7 @@ function App() {
 
     setTopbarAskLoading(true);
     setTopbarAskError("");
+    setIsTopbarAskOpen(true);
 
     try {
       const response = detail?.conversationId
@@ -2253,6 +2255,7 @@ function App() {
       setTopbarAskQuestion("");
     } catch (error) {
       setTopbarAskError(error instanceof Error ? error.message : "Unable to answer this question.");
+      setIsTopbarAskOpen(true);
     } finally {
       setTopbarAskLoading(false);
     }
@@ -3440,14 +3443,32 @@ function App() {
                 if (event.key === "Enter") {
                   event.preventDefault();
                   void handleTopbarAsk();
+                } else if (event.key === "Escape") {
+                  setIsTopbarAskOpen(false);
+                }
+              }}
+              onFocus={() => {
+                if (topbarAskError || topbarAskHistory.length > 0) {
+                  setIsTopbarAskOpen(true);
                 }
               }}
               disabled={!canQueryApi || topbarAskLoading}
               placeholder="Ask Anything..."
               aria-label="Ask Anything"
             />
-            {topbarAskLoading || topbarAskError || topbarAskHistory.length > 0 ? (
+            {isTopbarAskOpen && (topbarAskLoading || topbarAskError || topbarAskHistory.length > 0) ? (
               <div className="topbar-ask-popover">
+                <div className="topbar-ask-popover-head">
+                  <span>{topbarAskLoading ? "Asking" : "Answer"}</span>
+                  <button
+                    type="button"
+                    className="topbar-ask-close"
+                    onClick={() => setIsTopbarAskOpen(false)}
+                    aria-label="Close answer"
+                  >
+                    Close
+                  </button>
+                </div>
                 {topbarAskLoading ? <p className="ask-empty">Asking...</p> : null}
                 {topbarAskError ? <p className="ask-error">{topbarAskError}</p> : null}
                 {topbarAskHistory.slice(0, 3).map((item) => (
