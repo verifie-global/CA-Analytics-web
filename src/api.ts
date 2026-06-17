@@ -530,6 +530,7 @@ const normalizeQaScoringSettings = (
   value: unknown,
   fallbackCompanyId: string,
   fallbackDuration: number | null = null,
+  fallbackRepeatContactAutoPassEnabled = false,
 ): QaScoringSettings => {
   const record = asRecord(value);
   const minScorableCallDurationSeconds = readNullableNumber(
@@ -545,6 +546,9 @@ const normalizeQaScoringSettings = (
       minScorableCallDurationSeconds === undefined
         ? fallbackDuration
         : minScorableCallDurationSeconds,
+    repeatContactAutoPassEnabled:
+      readBoolean(record, "repeatContactAutoPassEnabled") ??
+      fallbackRepeatContactAutoPassEnabled,
     updatedAt: readString(record, "updatedAt", "updatedAtUtc") ?? null,
   };
 };
@@ -812,6 +816,7 @@ export async function fetchQaScoringSettings(settings: AppSettings) {
 export async function saveQaScoringSettings(
   settings: AppSettings,
   minScorableCallDurationSeconds: number | null,
+  repeatContactAutoPassEnabled: boolean,
 ) {
   const response = await request<unknown>(
     settings,
@@ -821,6 +826,7 @@ export async function saveQaScoringSettings(
       headers: jsonHeaders(),
       body: JSON.stringify({
         minScorableCallDurationSeconds,
+        repeatContactAutoPassEnabled,
       }),
     },
   );
@@ -829,6 +835,7 @@ export async function saveQaScoringSettings(
     response,
     settings.companyId,
     minScorableCallDurationSeconds,
+    repeatContactAutoPassEnabled,
   );
 }
 

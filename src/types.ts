@@ -212,6 +212,7 @@ export type QaScoringSettings = {
   isConfigured: boolean;
   isEnabled: boolean;
   minScorableCallDurationSeconds: number | null;
+  repeatContactAutoPassEnabled: boolean;
   updatedAt?: string | null;
 };
 

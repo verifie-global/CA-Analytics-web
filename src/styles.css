@@ -972,7 +972,7 @@ textarea:focus {
   grid-template-columns:
     minmax(190px, 1.2fr)
     minmax(130px, 0.96fr)
-    minmax(112px, 0.72fr)
+    minmax(128px, 0.76fr)
     minmax(104px, 0.66fr)
     minmax(62px, 0.34fr)
     minmax(148px, 0.72fr)
@@ -1247,6 +1247,8 @@ textarea:focus {
   color: var(--ink);
   font-size: 0.82rem;
   border: 1px solid transparent;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .tag-progress,
@@ -1304,9 +1306,12 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .status-pulse {
+  flex: 0 0 0.55rem;
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 999px;
@@ -3162,6 +3167,32 @@ details.scroll-toggle > summary {
 
 .qa-scoring-settings-grid {
   max-width: 520px;
+}
+
+.qa-scoring-toggle {
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.qa-scoring-toggle .qa-field-label {
+  margin-bottom: 0;
+}
+
+.qa-scoring-toggle .qa-field-helper {
+  margin-top: 0.45rem;
+}
+
+.qa-scoring-toggle input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 0.15rem;
 }
 
 .qa-settings-grid label,

@@ -14,7 +14,10 @@ type QaProfilePageProps = {
   qaScoringSettingsErrorMessage: string;
   qaScoringSettingsSuccessMessage: string;
   onSave: (profile: QaProfile) => Promise<void>;
-  onSaveQaScoringSettings: (minScorableCallDurationSeconds: number | null) => Promise<void>;
+  onSaveQaScoringSettings: (
+    minScorableCallDurationSeconds: number | null,
+    repeatContactAutoPassEnabled: boolean,
+  ) => Promise<void>;
 };
 
 const createQuestionId = () =>
@@ -78,7 +81,9 @@ export function QaProfilePage({
   const [draftProfile, setDraftProfile] = useState<QaProfile | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [durationDraft, setDurationDraft] = useState("");
-  const [durationDirty, setDurationDirty] = useState(false);
+  const [scoringSettingsDirty, setScoringSettingsDirty] = useState(false);
+  const [repeatContactAutoPassEnabledDraft, setRepeatContactAutoPassEnabledDraft] =
+    useState(false);
 
   useEffect(() => {
     setDraftProfile(profile);
@@ -88,7 +93,10 @@ export function QaProfilePage({
   useEffect(() => {
     const duration = qaScoringSettings?.minScorableCallDurationSeconds;
     setDurationDraft(duration == null ? "" : String(duration));
-    setDurationDirty(false);
+    setRepeatContactAutoPassEnabledDraft(
+      qaScoringSettings?.repeatContactAutoPassEnabled ?? false,
+    );
+    setScoringSettingsDirty(false);
   }, [qaScoringSettings]);
 
   const questionErrors = useMemo(() => {
@@ -121,8 +129,8 @@ export function QaProfilePage({
       return;
     }
 
-    await onSaveQaScoringSettings(parsedDuration);
-    setDurationDirty(false);
+    await onSaveQaScoringSettings(parsedDuration, repeatContactAutoPassEnabledDraft);
+    setScoringSettingsDirty(false);
   };
 
   if (loading && !draftProfile) {
@@ -171,7 +179,7 @@ export function QaProfilePage({
               value={durationDraft}
               onChange={(event) => {
                 setDurationDraft(event.target.value);
-                setDurationDirty(true);
+                setScoringSettingsDirty(true);
               }}
               placeholder="No minimum"
               disabled={qaScoringSettingsLoading || qaScoringSettingsSaving}
@@ -179,6 +187,26 @@ export function QaProfilePage({
             <small className="qa-field-helper">
               Calls shorter than this duration will be marked as QA not applicable.
             </small>
+          </label>
+
+          <label className="qa-scoring-toggle full-width">
+            <span>
+              <span className="qa-field-label">Enable second-call detection</span>
+              <small className="qa-field-helper">
+                When enabled, repeat or follow-up calls can automatically pass
+                repeat-sensitive QA checks such as customer name, source, need discovery,
+                preferences, appointment CTA, and WhatsApp follow-up.
+              </small>
+            </span>
+            <input
+              type="checkbox"
+              checked={repeatContactAutoPassEnabledDraft}
+              onChange={(event) => {
+                setRepeatContactAutoPassEnabledDraft(event.target.checked);
+                setScoringSettingsDirty(true);
+              }}
+              disabled={qaScoringSettingsLoading || qaScoringSettingsSaving}
+            />
           </label>
         </div>
 
@@ -200,9 +228,12 @@ export function QaProfilePage({
             onClick={() => {
               const duration = qaScoringSettings?.minScorableCallDurationSeconds;
               setDurationDraft(duration == null ? "" : String(duration));
-              setDurationDirty(false);
+              setRepeatContactAutoPassEnabledDraft(
+                qaScoringSettings?.repeatContactAutoPassEnabled ?? false,
+              );
+              setScoringSettingsDirty(false);
             }}
-            disabled={!durationDirty || qaScoringSettingsSaving}
+            disabled={!scoringSettingsDirty || qaScoringSettingsSaving}
           >
             Reset
           </button>

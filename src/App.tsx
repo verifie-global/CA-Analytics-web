@@ -2194,7 +2194,10 @@ function App() {
     }
   };
 
-  const handleSaveQaScoringSettings = async (minScorableCallDurationSeconds: number | null) => {
+  const handleSaveQaScoringSettings = async (
+    minScorableCallDurationSeconds: number | null,
+    repeatContactAutoPassEnabled: boolean,
+  ) => {
     setQaScoringSettingsSaving(true);
     setQaScoringSettingsError("");
     setQaScoringSettingsSuccess("");
@@ -2203,6 +2206,7 @@ function App() {
       const savedSettings = await saveQaScoringSettings(
         settings,
         minScorableCallDurationSeconds,
+        repeatContactAutoPassEnabled,
       );
       setQaScoringSettings(savedSettings);
       setQaScoringSettingsSuccess("QA scoring settings saved successfully.");
