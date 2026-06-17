@@ -348,9 +348,10 @@ export class RealtimeAsrService {
       this.agentMediaStream = await mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          echoCancellation: true,
+          sampleRate: TARGET_SAMPLE_RATE,
+          echoCancellation: false,
           noiseSuppression: true,
-          autoGainControl: true,
+          autoGainControl: false,
           deviceId: options.agentDeviceId ? { exact: options.agentDeviceId } : undefined,
         },
       });
@@ -358,9 +359,10 @@ export class RealtimeAsrService {
       this.customerMediaStream = await mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
-          echoCancellation: true,
+          sampleRate: TARGET_SAMPLE_RATE,
+          echoCancellation: false,
           noiseSuppression: true,
-          autoGainControl: true,
+          autoGainControl: false,
           deviceId: options.customerDeviceId ? { exact: options.customerDeviceId } : undefined,
         },
       });
