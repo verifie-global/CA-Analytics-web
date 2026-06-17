@@ -1,5 +1,7 @@
 import type {
   AppSettings,
+  AskEvidence,
+  AskResponse,
   AuthTokenResponse,
   CallDetail,
   CallFilterOption,
@@ -20,6 +22,12 @@ import type {
   QaScoringSettings,
   ScoreMetricSummary,
   SpeakerSegment,
+  WorkflowDelivery,
+  WorkflowDestination,
+  WorkflowDestinationFilters,
+  WorkflowDestinationInput,
+  WorkflowDestinationPayloadOptions,
+  WorkflowTestResult,
 } from "./types";
 
 type RequestError = Error & {
@@ -564,6 +572,92 @@ const normalizeRecalculatedQaResult = (value: unknown): QaResult | null => {
   return normalizeQaResult(value);
 };
 
+const normalizeStringRecord = (value: unknown): Record<string, string> =>
+  Object.entries(asRecord(value)).reduce<Record<string, string>>((result, [key, item]) => {
+    const normalizedKey = key.trim();
+    if (!normalizedKey || item == null) {
+      return result;
+    }
+
+    result[normalizedKey] = typeof item === "string" ? item : String(item);
+    return result;
+  }, {});
+
+const normalizeStringList = (value: unknown) =>
+  asArray(value)
+    .map((item) => (typeof item === "string" ? item : String(item ?? "")))
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const normalizeWorkflowFilters = (value: unknown): WorkflowDestinationFilters => {
+  const record = asRecord(value);
+  return {
+    sentiments: normalizeStringList(record.sentiments),
+    taskUrgencies: normalizeStringList(record.taskUrgencies),
+    departments: normalizeStringList(record.departments),
+    minSatisfactionScore: readNullableNumber(record, "minSatisfactionScore") ?? null,
+    maxSatisfactionScore: readNullableNumber(record, "maxSatisfactionScore") ?? null,
+    minFriendlinessScore: readNullableNumber(record, "minFriendlinessScore") ?? null,
+    maxFriendlinessScore: readNullableNumber(record, "maxFriendlinessScore") ?? null,
+    minQaScore: readNullableNumber(record, "minQaScore") ?? null,
+    maxQaScore: readNullableNumber(record, "maxQaScore") ?? null,
+    qaApplicable: readBoolean(record, "qaApplicable") ?? null,
+    isInbound: readBoolean(record, "isInbound") ?? null,
+  };
+};
+
+const normalizeWorkflowPayloadOptions = (value: unknown): WorkflowDestinationPayloadOptions => {
+  const record = asRecord(value);
+  return {
+    includeTranscript: readBoolean(record, "includeTranscript") ?? false,
+    includeRedactedTranscript: readBoolean(record, "includeRedactedTranscript") ?? true,
+    includeAnalysisJson: readBoolean(record, "includeAnalysisJson") ?? true,
+    includeDiarization: readBoolean(record, "includeDiarization") ?? true,
+    includeQaEvaluationJson: readBoolean(record, "includeQaEvaluationJson") ?? true,
+    customFields: normalizeStringRecord(record.customFields),
+  };
+};
+
+const normalizeWorkflowDestination = (value: unknown): WorkflowDestination => {
+  const record = asRecord(value);
+  return {
+    id: readStringLike(record, "id", "destinationId", "workflowDestinationId") ?? "",
+    name: readString(record, "name") ?? "",
+    platform: readString(record, "platform") ?? "Custom Webhook",
+    eventType: readString(record, "eventType") ?? "analysis.completed",
+    isEnabled: readBoolean(record, "isEnabled", "enabled") ?? true,
+    webhookUrl: readString(record, "webhookUrl", "url") ?? "",
+    headers: normalizeStringRecord(record.headers),
+    filters: normalizeWorkflowFilters(record.filters),
+    payloadOptions: normalizeWorkflowPayloadOptions(record.payloadOptions),
+    metadata: normalizeStringRecord(record.metadata),
+    createdAt: readString(record, "createdAt", "createdAtUtc") ?? null,
+    updatedAt: readString(record, "updatedAt", "updatedAtUtc") ?? null,
+    raw: value,
+  };
+};
+
+const normalizeWorkflowDelivery = (value: unknown): WorkflowDelivery => {
+  const record = asRecord(value);
+  const responseBody = record.responseBody;
+  return {
+    id: readStringLike(record, "id", "deliveryId") ?? "",
+    createdAt: readString(record, "createdAt", "createdAtUtc") ?? null,
+    deliveredAt: readString(record, "deliveredAt", "deliveredAtUtc") ?? null,
+    status: readString(record, "status") ?? "unknown",
+    attemptCount: readNumber(record, "attemptCount", "attempts") ?? null,
+    responseStatusCode: readNumber(record, "responseStatusCode", "statusCode") ?? null,
+    error: readString(record, "error", "errorMessage") ?? null,
+    responseBody:
+      typeof responseBody === "string"
+        ? responseBody
+        : responseBody == null
+          ? null
+          : JSON.stringify(responseBody),
+    raw: value,
+  };
+};
+
 const listFromResponse = (payload: unknown) => {
   if (Array.isArray(payload)) {
     return payload;
@@ -606,6 +700,30 @@ const normalizeCallsListResponse = (
     total: readNumber(record, "total", "totalCount", "count") ?? items.length,
     scoreSummary: normalizeCallScoreSummary(record.scoreSummary),
     items,
+  };
+};
+
+const normalizeAskEvidence = (value: unknown): AskEvidence => {
+  const record = asRecord(value);
+
+  return {
+    conversationId: readStringLike(record, "conversationId", "callId", "id") ?? null,
+    source: readString(record, "source") ?? null,
+    snippet: readString(record, "snippet", "text", "value") ?? null,
+    timestampMs: readNumber(record, "timestampMs", "startMs", "offsetMs") ?? null,
+    field: readString(record, "field") ?? null,
+  };
+};
+
+const normalizeAskResponse = (payload: unknown): AskResponse => {
+  const record = asRecord(payload);
+
+  return {
+    answer: readString(record, "answer") ?? "",
+    evidence: asArray(record.evidence).map(normalizeAskEvidence),
+    usedCalls: readNumber(record, "usedCalls") ?? null,
+    scope: readString(record, "scope") ?? null,
+    semanticSearchUsed: readBoolean(record, "semanticSearchUsed") ?? null,
   };
 };
 
@@ -695,6 +813,65 @@ const buildCallsFilterQuery = (filters: CallFilters, includePagination = true) =
   return query;
 };
 
+const numberOrUndefined = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const setAskFilterValue = (
+  target: Record<string, string | number | string[]>,
+  key: string,
+  value: string | string[] | undefined,
+) => {
+  if (Array.isArray(value)) {
+    const values = normalizeQueryValues(value);
+    if (values.length > 0) {
+      target[key] = values;
+    }
+    return;
+  }
+
+  const trimmed = value?.trim();
+  if (trimmed) {
+    target[key] = trimmed;
+  }
+};
+
+const buildAskFilters = (filters: CallFilters) => {
+  const askFilters: Record<string, string | number | string[]> = {};
+
+  setAskFilterValue(askFilters, "search", filters.search);
+  setAskFilterValue(askFilters, "conversationId", filters.conversationId);
+  setAskFilterValue(askFilters, "createdFromUtc", filters.createdFromUtc);
+  setAskFilterValue(askFilters, "createdToUtc", filters.createdToUtc);
+  setAskFilterValue(askFilters, "status", filters.status);
+  setAskFilterValue(askFilters, "sentiment", filters.sentiment);
+  setAskFilterValue(askFilters, "agentName", filters.agentName);
+  setAskFilterValue(askFilters, "agentNames", filters.agentNames);
+  setAskFilterValue(askFilters, "agentExternalId", filters.agentExternalId);
+  setAskFilterValue(askFilters, "agentExternalIds", filters.agentExternalIds);
+  setAskFilterValue(askFilters, "agentPhone", filters.agentPhone);
+  setAskFilterValue(askFilters, "agentPhones", filters.agentPhones);
+  setAskFilterValue(askFilters, "customerName", filters.customerName);
+  setAskFilterValue(askFilters, "customerNames", filters.customerNames);
+  setAskFilterValue(askFilters, "customerExternalId", filters.customerExternalId);
+  setAskFilterValue(askFilters, "customerExternalIds", filters.customerExternalIds);
+  setAskFilterValue(askFilters, "customerPhone", filters.customerPhone);
+  setAskFilterValue(askFilters, "customerPhones", filters.customerPhones);
+
+  const minQaScore = numberOrUndefined(filters.minQaScore);
+  const maxQaScore = numberOrUndefined(filters.maxQaScore);
+  if (minQaScore != null) askFilters.minQaScore = minQaScore;
+  if (maxQaScore != null) askFilters.maxQaScore = maxQaScore;
+
+  return askFilters;
+};
+
 export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
   const query = buildCallsFilterQuery(filters);
 
@@ -706,6 +883,53 @@ export async function fetchCalls(settings: AppSettings, filters: CallFilters) {
   );
 
   return normalizeCallsListResponse(response, filters);
+}
+
+export async function askSingleCall(
+  settings: AppSettings,
+  conversationId: string,
+  question: string,
+) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/calls/${conversationId}/ask`,
+    {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ question }),
+    },
+  );
+
+  return normalizeAskResponse(response);
+}
+
+export async function askCompanyCalls(
+  settings: AppSettings,
+  filters: CallFilters,
+  payload: {
+    question: string;
+    maxCalls: number;
+    useSemanticSearch: boolean;
+    semanticMaxCalls: number;
+  },
+) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/calls/ask`,
+    {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        question: payload.question,
+        maxCalls: payload.maxCalls,
+        useSemanticSearch: payload.useSemanticSearch,
+        semanticMaxCalls: payload.semanticMaxCalls,
+        filters: buildAskFilters(filters),
+      }),
+    },
+  );
+
+  return normalizeAskResponse(response);
 }
 
 export async function fetchCallFilterOptions(settings: AppSettings) {
@@ -837,6 +1061,138 @@ export async function saveQaScoringSettings(
     minScorableCallDurationSeconds,
     repeatContactAutoPassEnabled,
   );
+}
+
+export async function fetchWorkflowDestinations(settings: AppSettings) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/workflow-destinations`,
+  );
+
+  return listFromResponse(response).map(normalizeWorkflowDestination);
+}
+
+export async function createWorkflowDestination(
+  settings: AppSettings,
+  destination: WorkflowDestinationInput,
+) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/workflow-destinations`,
+    {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(destination),
+    },
+  );
+
+  return normalizeWorkflowDestination(response);
+}
+
+export async function updateWorkflowDestination(
+  settings: AppSettings,
+  destinationId: string,
+  patch: Partial<WorkflowDestinationInput>,
+) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/workflow-destinations/${destinationId}`,
+    {
+      method: "PATCH",
+      headers: jsonHeaders(),
+      body: JSON.stringify(patch),
+    },
+  );
+
+  return normalizeWorkflowDestination(response);
+}
+
+export async function deleteWorkflowDestination(settings: AppSettings, destinationId: string) {
+  await request<void>(
+    settings,
+    `/api/companies/${settings.companyId}/workflow-destinations/${destinationId}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+const parseWorkflowTestResponse = async (
+  response: Response,
+): Promise<Pick<WorkflowTestResult, "ok" | "responseStatusCode" | "responseBody" | "error" | "raw">> => {
+  const text = await response.text();
+  if (!text.trim()) {
+    return {
+      ok: response.ok,
+      responseStatusCode: null,
+      responseBody: null,
+      error: response.ok ? null : response.statusText,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    const record = asRecord(parsed);
+    const rawBody = record.responseBody ?? record.body ?? record.content;
+    const responseBody =
+      typeof rawBody === "string"
+        ? rawBody
+        : rawBody == null
+          ? text
+          : JSON.stringify(rawBody, null, 2);
+    return {
+      ok: readBoolean(record, "success", "ok", "isSuccess") ?? response.ok,
+      responseStatusCode: readNumber(record, "responseStatusCode", "statusCode") ?? null,
+      responseBody,
+      error: readString(record, "error", "errorMessage", "message") ?? (response.ok ? null : text),
+      raw: parsed,
+    };
+  } catch {
+    return {
+      ok: response.ok,
+      responseStatusCode: null,
+      responseBody: text,
+      error: response.ok ? null : text,
+    };
+  }
+};
+
+export async function testWorkflowDestination(
+  settings: AppSettings,
+  destinationId: string,
+  conversationId: string | null,
+): Promise<WorkflowTestResult> {
+  const response = await fetch(
+    buildUrl(
+      settings,
+      `/api/companies/${settings.companyId}/workflow-destinations/${destinationId}/test`,
+    ),
+    {
+      method: "POST",
+      headers: authHeaders(settings, jsonHeaders()),
+      body: JSON.stringify({ conversationId }),
+    },
+  );
+
+  if (response.status === 401) {
+    const text = await response.text();
+    throw createRequestError(text || "Unauthorized", response.status);
+  }
+
+  const parsed = await parseWorkflowTestResponse(response);
+  return {
+    status: response.status,
+    ...parsed,
+  };
+}
+
+export async function fetchWorkflowDeliveries(settings: AppSettings, destinationId: string) {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/workflow-destinations/${destinationId}/deliveries`,
+  );
+
+  return listFromResponse(response).map(normalizeWorkflowDelivery);
 }
 
 export async function recalculateQaScore(settings: AppSettings, conversationId: string) {

@@ -59,6 +59,22 @@ export type CallFilterOptions = {
   customers: CallFilterOption[];
 };
 
+export type AskEvidence = {
+  conversationId?: string | null;
+  source?: string | null;
+  snippet?: string | null;
+  timestampMs?: number | null;
+  field?: string | null;
+};
+
+export type AskResponse = {
+  answer: string;
+  evidence: AskEvidence[];
+  usedCalls?: number | null;
+  scope?: string | null;
+  semanticSearchUsed?: boolean | null;
+};
+
 export type AppSettings = {
   baseUrl: string;
   companyId: string;
@@ -243,4 +259,69 @@ export type QaResult = {
   possiblePoints?: number | null;
   notApplicableReason?: string | null;
   evaluation?: QaEvaluation | null;
+};
+
+export type WorkflowDestinationFilters = {
+  sentiments: string[];
+  taskUrgencies: string[];
+  departments: string[];
+  minSatisfactionScore: number | null;
+  maxSatisfactionScore: number | null;
+  minFriendlinessScore: number | null;
+  maxFriendlinessScore: number | null;
+  minQaScore: number | null;
+  maxQaScore: number | null;
+  qaApplicable: boolean | null;
+  isInbound: boolean | null;
+};
+
+export type WorkflowDestinationPayloadOptions = {
+  includeTranscript: boolean;
+  includeRedactedTranscript: boolean;
+  includeAnalysisJson: boolean;
+  includeDiarization: boolean;
+  includeQaEvaluationJson: boolean;
+  customFields: Record<string, string>;
+};
+
+export type WorkflowDestination = {
+  id: string;
+  name: string;
+  platform: string;
+  eventType: string;
+  isEnabled: boolean;
+  webhookUrl: string;
+  headers: Record<string, string>;
+  filters: WorkflowDestinationFilters;
+  payloadOptions: WorkflowDestinationPayloadOptions;
+  metadata: Record<string, string>;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  raw: unknown;
+};
+
+export type WorkflowDestinationInput = Omit<
+  WorkflowDestination,
+  "id" | "createdAt" | "updatedAt" | "raw"
+>;
+
+export type WorkflowDelivery = {
+  id: string;
+  createdAt?: string | null;
+  deliveredAt?: string | null;
+  status: string;
+  attemptCount: number | null;
+  responseStatusCode: number | null;
+  error?: string | null;
+  responseBody?: string | null;
+  raw: unknown;
+};
+
+export type WorkflowTestResult = {
+  ok: boolean;
+  status: number;
+  responseStatusCode?: number | null;
+  responseBody?: string | null;
+  error?: string | null;
+  raw?: unknown;
 };

@@ -11,6 +11,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import {
+  askCompanyCalls,
+  askSingleCall,
   authorizeSettings,
   exportCallsCsv,
   exportQaQuestionnaire,
@@ -30,8 +32,11 @@ import DemoCallPage from "./DemoCallPage";
 import { QaEvaluationPanel } from "./QaEvaluationPanel";
 import { QaProfilePage } from "./QaProfilePage";
 import { QaScoreBadge } from "./QaScoreBadge";
+import { WorkflowAutomationsPage } from "./WorkflowAutomationsPage";
 import type {
   AppSettings,
+  AskEvidence,
+  AskResponse,
   CallDetail,
   CallFilterOption,
   CallFilterOptions,
@@ -50,7 +55,7 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-type AppRoute = "dashboard" | "qa-profile" | "demo-call";
+type AppRoute = "dashboard" | "qa-profile" | "workflow-automations" | "demo-call";
 type AppNavKey =
   | "dashboard"
   | "upload"
@@ -59,6 +64,7 @@ type AppNavKey =
   | "grid"
   | "demo"
   | "qa"
+  | "workflow"
   | "logout";
 
 type KeywordRule = {
@@ -116,6 +122,21 @@ type MultiSelectDropdownProps = {
   options: MultiSelectOption[];
   selectedValues: string[];
   onChange: (values: string[]) => void;
+};
+
+type AskHistoryItem = {
+  id: string;
+  question: string;
+  response: AskResponse;
+};
+
+type AskAnythingPanelProps = {
+  title: string;
+  placeholder: string;
+  disabled?: boolean;
+  mode: "single" | "company";
+  onAsk: (question: string, options: { maxCalls: number; useSemanticSearch: boolean }) => Promise<AskResponse>;
+  onEvidenceOpen?: (conversationId: string) => void;
 };
 
 const uniqueTextValues = (values: Array<string | null | undefined>) => {
@@ -261,6 +282,170 @@ function MultiSelectDropdown({
   );
 }
 
+function AskAnythingPanel({
+  title,
+  placeholder,
+  disabled,
+  mode,
+  onAsk,
+  onEvidenceOpen,
+}: AskAnythingPanelProps) {
+  const [question, setQuestion] = useState("");
+  const [maxCalls, setMaxCalls] = useState(25);
+  const [useSemanticSearch, setUseSemanticSearch] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [history, setHistory] = useState<AskHistoryItem[]>([]);
+  const canSubmit = question.trim().length > 0 && !isLoading && !disabled;
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canSubmit) {
+      return;
+    }
+
+    const submittedQuestion = question.trim();
+    setIsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const response = await onAsk(submittedQuestion, { maxCalls, useSemanticSearch });
+      setHistory((current) => [
+        {
+          id: `${Date.now()}-${current.length}`,
+          question: submittedQuestion,
+          response,
+        },
+        ...current,
+      ]);
+      setQuestion("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to answer this question.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <section className="ask-panel" aria-label={title}>
+      <div className="ask-panel-head">
+        <div>
+          <h3>{title}</h3>
+          {history[0]?.response.usedCalls != null || history[0]?.response.semanticSearchUsed != null ? (
+            <p>
+              {history[0]?.response.usedCalls != null
+                ? `${history[0].response.usedCalls} calls used`
+                : "Calls used unavailable"}
+              {" / "}
+              semantic search {history[0]?.response.semanticSearchUsed ? "on" : "off"}
+            </p>
+          ) : null}
+        </div>
+        {mode === "company" ? (
+          <label className="ask-toggle">
+            <input
+              type="checkbox"
+              checked={useSemanticSearch}
+              onChange={(event) => setUseSemanticSearch(event.target.checked)}
+            />
+            <span>Semantic search</span>
+          </label>
+        ) : null}
+      </div>
+
+      <form className="ask-form" onSubmit={handleSubmit}>
+        <textarea
+          value={question}
+          onChange={(event) => setQuestion(event.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          rows={3}
+        />
+        <div className="ask-controls">
+          {mode === "company" ? (
+            <label className="ask-max-calls">
+              <span>Max calls</span>
+              <input
+                type="number"
+                min="1"
+                max="250"
+                value={maxCalls}
+                onChange={(event) => {
+                  const parsed = Number(event.target.value);
+                  setMaxCalls(Number.isFinite(parsed) ? Math.max(1, parsed) : 25);
+                }}
+              />
+            </label>
+          ) : null}
+          <button type="submit" className="small-button" disabled={!canSubmit}>
+            {isLoading ? "Asking..." : "Ask"}
+          </button>
+        </div>
+      </form>
+
+      {errorMessage ? <p className="ask-error">{errorMessage}</p> : null}
+
+      {history.length > 0 ? (
+        <div className="ask-history">
+          {history.map((item) => (
+            <article key={item.id} className="ask-answer">
+              <p className="ask-question">{item.question}</p>
+              <p className="ask-answer-copy">
+                {item.response.answer.trim() || "No answer was returned."}
+              </p>
+              {item.response.evidence.length > 0 ? (
+                <div className="ask-evidence-list">
+                  {item.response.evidence.map((evidence, index) => (
+                    <AskEvidenceRow
+                      key={`${item.id}-${index}`}
+                      evidence={evidence}
+                      onEvidenceOpen={onEvidenceOpen}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="ask-empty">No evidence returned.</p>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AskEvidenceRow({
+  evidence,
+  onEvidenceOpen,
+}: {
+  evidence: AskEvidence;
+  onEvidenceOpen?: (conversationId: string) => void;
+}) {
+  const conversationId = evidence.conversationId?.trim();
+
+  return (
+    <article className="ask-evidence">
+      <div className="ask-evidence-meta">
+        {conversationId ? (
+          <button
+            type="button"
+            className="ask-evidence-link"
+            onClick={() => onEvidenceOpen?.(conversationId)}
+          >
+            {conversationId}
+          </button>
+        ) : (
+          <span>Unknown call</span>
+        )}
+        {evidence.source ? <span>{evidence.source}</span> : null}
+        {evidence.field ? <span>{evidence.field}</span> : null}
+        {evidence.timestampMs != null ? <span>{formatTimestamp(evidence.timestampMs)}</span> : null}
+      </div>
+      <p>{evidence.snippet?.trim() || "No snippet available."}</p>
+    </article>
+  );
+}
+
 const defaultSettings: AppSettings = {
   baseUrl: "https://ca.satisfai.cx",
   companyId: "",
@@ -317,7 +502,15 @@ const getRouteFromPath = (pathName: string): AppRoute => {
     return "demo-call";
   }
 
-  return pathName === "/settings/qa-profile" ? "qa-profile" : "dashboard";
+  if (pathName === "/settings/qa-profile") {
+    return "qa-profile";
+  }
+
+  if (pathName === "/settings/workflow-automations") {
+    return "workflow-automations";
+  }
+
+  return "dashboard";
 };
 
 const formatDate = (value?: string | null) => {
@@ -1193,6 +1386,12 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
           {...common}
         />
       )}
+      {name === "workflow" && (
+        <path
+          d="M5 7h5m4 0h5M5 17h5m4 0h5M10 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM10 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM12 9v6"
+          {...common}
+        />
+      )}
       {name === "logout" && (
         <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12m0 0-4-4m4 4-4 4" {...common} />
       )}
@@ -1585,7 +1784,13 @@ function App() {
 
   const navigateTo = (route: AppRoute) => {
     const nextPath =
-      route === "qa-profile" ? "/settings/qa-profile" : route === "demo-call" ? "/democall" : "/";
+      route === "qa-profile"
+        ? "/settings/qa-profile"
+        : route === "workflow-automations"
+          ? "/settings/workflow-automations"
+          : route === "demo-call"
+            ? "/democall"
+            : "/";
     window.history.pushState({}, "", nextPath);
     setCurrentRoute(route);
   };
@@ -2123,6 +2328,60 @@ function App() {
         setDetailLoading(false);
       }
     }
+  };
+
+  const handleAskCompanyCalls = async (
+    question: string,
+    options: { maxCalls: number; useSemanticSearch: boolean },
+  ) => {
+    try {
+      return await askCompanyCalls(settings, filters, {
+        question,
+        maxCalls: options.maxCalls,
+        useSemanticSearch: options.useSemanticSearch,
+        semanticMaxCalls: 75,
+      });
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+      }
+
+      throw error;
+    }
+  };
+
+  const handleAskSingleCall = async (question: string) => {
+    if (!detail?.conversationId) {
+      throw new Error("Select a call before asking about it.");
+    }
+
+    try {
+      return await askSingleCall(settings, detail.conversationId, question);
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+      }
+
+      throw error;
+    }
+  };
+
+  const handleOpenEvidenceCall = (conversationId: string) => {
+    const nextFilters = {
+      ...filters,
+      conversationId,
+      page: 1,
+    };
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set("conversationId", conversationId);
+    searchParams.delete("view");
+    window.history.pushState({}, "", `${window.location.pathname}?${searchParams.toString()}`);
+    loadedUrlConversationIdRef.current = conversationId;
+    setFilters(nextFilters);
+    void (async () => {
+      await refreshCalls(settings, { filtersOverride: nextFilters });
+      await handleLoadDetail(conversationId);
+    })();
   };
 
   useEffect(() => {
@@ -3239,6 +3498,12 @@ function App() {
       active: currentRoute === "qa-profile",
       onClick: () => navigateTo("qa-profile"),
     },
+    {
+      key: "workflow",
+      label: "Workflows",
+      active: currentRoute === "workflow-automations",
+      onClick: () => navigateTo("workflow-automations"),
+    },
   ];
 
   return (
@@ -3287,8 +3552,8 @@ function App() {
                   void refreshCalls(settings, { filtersOverride: nextFilters });
                 }
               }}
-              placeholder="Search"
-              aria-label="Search calls"
+              placeholder="Ask Anything..."
+              aria-label="Ask Anything or search calls"
             />
           </div>
           <div className="topbar-user">
@@ -3417,7 +3682,9 @@ function App() {
             onSave={handleSaveQaProfile}
             onSaveQaScoringSettings={handleSaveQaScoringSettings}
           />
-        ) : (
+        ) : currentRoute === "workflow-automations" ? (
+          <WorkflowAutomationsPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
+        ) : currentRoute === "dashboard" ? (
           <section className="panel">
             <div className="section-heading">
               <h2>Call explorer</h2>
@@ -3444,6 +3711,15 @@ function App() {
                 <ExternalArrowIcon />
               </button>
             </div>
+
+            <AskAnythingPanel
+              title="Ask Anything"
+              placeholder="What are the top reasons customers are unhappy?"
+              disabled={!canQueryApi}
+              mode="company"
+              onAsk={handleAskCompanyCalls}
+              onEvidenceOpen={handleOpenEvidenceCall}
+            />
 
             <form
               className="filters"
@@ -3764,6 +4040,15 @@ function App() {
                       <p>{summary || "No conversation summary available yet."}</p>
                     </div>
                   </section>
+
+                  <AskAnythingPanel
+                    title="Ask Anything"
+                    placeholder="What did the agent do well in this call?"
+                    disabled={!canQueryApi || !detail.conversationId}
+                    mode="single"
+                    onAsk={(question) => handleAskSingleCall(question)}
+                    onEvidenceOpen={handleOpenEvidenceCall}
+                  />
 
                   <ConversationPlayback
                     audioUrl={audioUrl}
@@ -4207,7 +4492,7 @@ function App() {
                 : null}
             </div>
           </section>
-        )}
+        ) : null}
       </main>
 
       {isUploadModalOpen ? (

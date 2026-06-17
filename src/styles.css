@@ -915,6 +915,193 @@ textarea:focus {
   line-height: 1;
 }
 
+/* ------------------------------------------------------ Ask panel ----- */
+
+.ask-panel {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0;
+  padding: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.ask-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.ask-panel-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.ask-panel-head p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ask-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--ink);
+  font-size: 0.78rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.ask-toggle input {
+  width: auto;
+  margin: 0;
+}
+
+.ask-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.ask-form textarea {
+  min-height: 78px;
+  border-radius: 8px;
+  font-size: 0.84rem;
+}
+
+.ask-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.ask-max-calls {
+  display: inline-grid;
+  grid-template-columns: auto 72px;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ask-max-calls input {
+  min-height: 34px;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+.ask-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.ask-history {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.ask-answer {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.ask-question {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.ask-answer-copy {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.ask-evidence-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ask-evidence {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.6rem;
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+
+.ask-evidence-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.ask-evidence-meta span,
+.ask-evidence-link {
+  width: auto;
+  min-height: 0;
+  padding: 0.16rem 0.38rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.ask-evidence-link {
+  color: var(--blue-ink);
+  cursor: pointer;
+}
+
+.ask-evidence-link:hover {
+  transform: none;
+  background: var(--blue-soft);
+}
+
+.ask-evidence p,
+.ask-empty {
+  margin: 0;
+  color: var(--ink-soft);
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ask-empty {
+  color: var(--muted);
+}
+
 /* -------------------------------------------------------- Status strip */
 
 .status-strip {
@@ -3290,6 +3477,231 @@ details.scroll-toggle > summary {
   align-items: end;
 }
 
+/* ===================================================== Workflows ===== */
+
+.workflow-settings-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.workflow-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.workflow-table-wrap {
+  display: grid;
+  gap: 0.45rem;
+  overflow-x: auto;
+}
+
+.workflow-table {
+  display: grid;
+  grid-template-columns:
+    minmax(160px, 1fr)
+    minmax(118px, 0.7fr)
+    minmax(150px, 0.8fr)
+    minmax(128px, 0.65fr)
+    minmax(220px, 1.2fr)
+    minmax(168px, 0.8fr)
+    minmax(292px, auto);
+  gap: 0.7rem;
+  align-items: center;
+  min-width: 1200px;
+}
+
+.workflow-table-header {
+  padding: 0.4rem 1rem;
+  color: var(--muted);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workflow-row {
+  padding: 0.95rem 1rem;
+  border-radius: var(--radius-md);
+  background: #fff;
+  border: 1px solid var(--line);
+  font-size: 0.82rem;
+}
+
+.workflow-row > *,
+.workflow-delivery-grid > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-row small {
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.workflow-inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.workflow-inline-toggle input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.workflow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.workflow-modal-card {
+  width: min(960px, 100%);
+}
+
+.workflow-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.workflow-form-grid label {
+  display: grid;
+  gap: 0;
+  color: var(--ink);
+  font-size: 1.02rem;
+  font-weight: 500;
+}
+
+.workflow-form-section {
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.workflow-enabled-toggle {
+  min-height: 100%;
+}
+
+.workflow-kv-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.workflow-kv-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.workflow-add-row {
+  justify-self: start;
+}
+
+.workflow-chip-group,
+.workflow-checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.workflow-chip {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.4rem !important;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-alt);
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+  text-transform: capitalize;
+  cursor: pointer;
+}
+
+.workflow-chip input,
+.workflow-checkbox-grid input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.workflow-json-preview {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.workflow-json-preview summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.workflow-json-preview pre,
+.workflow-test-result pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0.75rem 0 0;
+  border-radius: 8px;
+  background: var(--surface-alt);
+  border: 1px solid var(--line);
+  padding: 0.85rem;
+  font-size: 0.78rem;
+}
+
+.workflow-test-result {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.workflow-test-result .tag {
+  justify-self: start;
+}
+
+.workflow-history-modal {
+  width: min(1120px, 100%);
+}
+
+.workflow-delivery-list {
+  display: grid;
+  gap: 0.4rem;
+  overflow-x: auto;
+}
+
+.workflow-delivery-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(150px, 0.95fr)
+    minmax(150px, 0.95fr)
+    minmax(100px, 0.6fr)
+    minmax(80px, 0.45fr)
+    minmax(72px, 0.4fr)
+    minmax(170px, 1fr)
+    minmax(220px, 1.2fr);
+  gap: 0.65rem;
+  align-items: start;
+  min-width: 980px;
+  padding: 0.75rem 0.85rem;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+}
+
+.workflow-delivery-header {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 /* ======================================================= QA export ==== */
 
 .qa-export-modal {
@@ -4375,6 +4787,8 @@ details.scroll-toggle > summary {
   .grid-form,
   .score-summary-grid,
   .header-editor-grid,
+  .workflow-form-grid,
+  .workflow-kv-row,
   .demo-call-grid {
     grid-template-columns: 1fr;
   }
