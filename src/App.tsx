@@ -49,6 +49,7 @@ const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
+const DEMO_COMPLETED_CONVERSATION_STORAGE_KEY = "ca-demo-completed-conversation-id";
 
 type AppRoute = "dashboard" | "qa-profile" | "demo-call";
 type AppNavKey =
@@ -276,12 +277,26 @@ const formatDateInputValue = (date: Date) =>
     date.getDate(),
   ).padStart(2, "0")}`;
 
+const getUrlConversationId = () => {
+  const queryConversationId =
+    new URLSearchParams(window.location.search).get("conversationId")?.trim() ?? "";
+
+  if (queryConversationId) {
+    return queryConversationId;
+  }
+
+  try {
+    return sessionStorage.getItem(DEMO_COMPLETED_CONVERSATION_STORAGE_KEY)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+};
+
 const getDefaultFilters = (): CallFilters => {
   const today = new Date();
   const fromDate = new Date(today);
   fromDate.setDate(today.getDate() - 30);
-  const conversationId =
-    new URLSearchParams(window.location.search).get("conversationId")?.trim() ?? "";
+  const conversationId = getUrlConversationId();
 
   return {
     page: 1,
@@ -1755,6 +1770,18 @@ function App() {
       return;
     }
 
+    const conversationId = getUrlConversationId();
+    if (conversationId) {
+      const nextFilters = {
+        ...filters,
+        conversationId,
+        page: 1,
+      };
+      setFilters(nextFilters);
+      void refreshCalls(settings, { silent: true, filtersOverride: nextFilters });
+      return;
+    }
+
     void refreshCalls(settings, { silent: true });
   }, [isAuthorized]);
 
@@ -2045,6 +2072,18 @@ function App() {
           : "Authorization successful. Loading dashboard...",
       );
       setTimeout(() => {
+        const conversationId = getUrlConversationId();
+        if (conversationId) {
+          const nextFilters = {
+            ...filters,
+            conversationId,
+            page: 1,
+          };
+          setFilters(nextFilters);
+          void refreshCalls(authorizedSettings, { filtersOverride: nextFilters });
+          return;
+        }
+
         void refreshCalls(authorizedSettings);
       }, 0);
     } catch (error) {
@@ -2104,10 +2143,17 @@ function App() {
     }
 
     const searchParams = new URLSearchParams(window.location.search);
-    const conversationId = searchParams.get("conversationId")?.trim() ?? "";
+    const conversationId = getUrlConversationId();
     const shouldOpenDetail = searchParams.get("view") !== "grid";
 
-    if (!conversationId || loadedUrlConversationIdRef.current === conversationId) {
+    if (!conversationId) {
+      return;
+    }
+
+    if (
+      loadedUrlConversationIdRef.current === conversationId &&
+      filters.conversationId === conversationId
+    ) {
       return;
     }
 
@@ -2119,8 +2165,18 @@ function App() {
     };
 
     setFilters(nextFilters);
+    if (!shouldOpenDetail) {
+      setSelectedId("");
+      setDetail(null);
+      setDetailPortalTarget(null);
+    }
     void (async () => {
       await refreshCalls(settings, { filtersOverride: nextFilters });
+      try {
+        sessionStorage.removeItem(DEMO_COMPLETED_CONVERSATION_STORAGE_KEY);
+      } catch {
+        // Ignore storage failures; the URL parameter remains the primary handoff.
+      }
       if (shouldOpenDetail) {
         await handleLoadDetail(conversationId);
       }
