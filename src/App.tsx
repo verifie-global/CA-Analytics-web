@@ -49,7 +49,6 @@ const STORAGE_KEY = "ca-analytics-settings";
 const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
-const DEMO_COMPLETED_CONVERSATION_STORAGE_KEY = "ca-demo-completed-conversation-id";
 
 type AppRoute = "dashboard" | "qa-profile" | "demo-call";
 type AppNavKey =
@@ -278,18 +277,7 @@ const formatDateInputValue = (date: Date) =>
   ).padStart(2, "0")}`;
 
 const getUrlConversationId = () => {
-  const queryConversationId =
-    new URLSearchParams(window.location.search).get("conversationId")?.trim() ?? "";
-
-  if (queryConversationId) {
-    return queryConversationId;
-  }
-
-  try {
-    return sessionStorage.getItem(DEMO_COMPLETED_CONVERSATION_STORAGE_KEY)?.trim() ?? "";
-  } catch {
-    return "";
-  }
+  return new URLSearchParams(window.location.search).get("conversationId")?.trim() ?? "";
 };
 
 const getDefaultFilters = (): CallFilters => {
@@ -2172,11 +2160,6 @@ function App() {
     }
     void (async () => {
       await refreshCalls(settings, { filtersOverride: nextFilters });
-      try {
-        sessionStorage.removeItem(DEMO_COMPLETED_CONVERSATION_STORAGE_KEY);
-      } catch {
-        // Ignore storage failures; the URL parameter remains the primary handoff.
-      }
       if (shouldOpenDetail) {
         await handleLoadDetail(conversationId);
       }

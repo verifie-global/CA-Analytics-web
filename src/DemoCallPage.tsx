@@ -116,7 +116,6 @@ const defaultSpeakerLabels: Record<string, string> = {
 
 const SETTINGS_STORAGE_KEY = "ca-analytics-settings";
 const DEFAULT_API_BASE_URL = "https://ca.satisfai.cx";
-const DEMO_COMPLETED_CONVERSATION_STORAGE_KEY = "ca-demo-completed-conversation-id";
 
 const emptyAgentTips: AgentTipsState = {
   topic: "",
@@ -1241,11 +1240,9 @@ function DemoCallPage() {
         await asrService.stopRecording();
       }
 
-      const result = await finalizeDemoCallSession(payload);
-      const conversationId = result.conversationId || payload.sessionId;
+      await finalizeDemoCallSession(payload);
       setCompleteMessage("Session sent for analysis.");
-      sessionStorage.setItem(DEMO_COMPLETED_CONVERSATION_STORAGE_KEY, conversationId);
-      window.location.href = `/?view=grid&conversationId=${encodeURIComponent(conversationId)}`;
+      window.location.href = "/?view=grid";
     } catch (error) {
       setCompleteMessage("");
       setErrorMessage(
