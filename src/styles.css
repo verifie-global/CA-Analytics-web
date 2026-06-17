@@ -3639,7 +3639,15 @@ details.scroll-toggle > summary {
 .demo-face-panel {
   gap: clamp(0.45rem, 1vh, 0.85rem);
   padding-block: clamp(0.75rem, 1.1vw, 1rem);
-  overflow: hidden;
+  overflow: hidden !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+
+.demo-face-panel::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .demo-face-analyzer {
