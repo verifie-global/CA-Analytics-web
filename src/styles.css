@@ -1130,7 +1130,7 @@ textarea:focus {
     minmax(130px, 0.96fr)
     minmax(128px, 0.76fr)
     minmax(104px, 0.66fr)
-    minmax(62px, 0.34fr)
+    minmax(120px, 0.52fr)
     minmax(148px, 0.72fr)
     minmax(72px, 0.34fr)
     minmax(96px, 0.48fr);
@@ -1272,7 +1272,7 @@ textarea:focus {
 .call-row .qa-badge-compact {
   width: 100%;
   min-width: 0;
-  max-width: 148px;
+  max-width: 136px;
   padding-inline: 0.5rem;
 }
 
