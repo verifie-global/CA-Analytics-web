@@ -4466,8 +4466,8 @@ details.scroll-toggle > summary {
 }
 
 .demo-role-customer {
-  border-color: rgba(255, 184, 198, 0.55);
-  background: rgba(255, 250, 251, 0.92);
+  border-color: rgba(125, 79, 176, 0.22);
+  background: var(--purple-tint);
 }
 
 .demo-role-unknown {
