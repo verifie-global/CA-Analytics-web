@@ -146,7 +146,22 @@ const preferredInputDevicePair = (devices: MediaDeviceInfo[]) => {
   );
   const fallbackDevices = devices.filter((device) => device.deviceId);
   const agentDeviceId = realDevices[0]?.deviceId ?? fallbackDevices[0]?.deviceId ?? "";
+  const defaultDeviceLabel = devices
+    .find(
+      (device) =>
+        device.deviceId.trim().toLowerCase() === "default" ||
+        device.label.trim().toLowerCase().startsWith("default -"),
+    )
+    ?.label.replace(/^default\s*-\s*/i, "")
+    .trim()
+    .toLowerCase();
   const customerDeviceId =
+    realDevices.find(
+      (device) =>
+        device.deviceId !== agentDeviceId &&
+        defaultDeviceLabel &&
+        device.label.trim().toLowerCase() === defaultDeviceLabel,
+    )?.deviceId ??
     realDevices.find((device) => device.deviceId !== agentDeviceId)?.deviceId ??
     fallbackDevices.find((device) => device.deviceId !== agentDeviceId)?.deviceId ??
     agentDeviceId;
