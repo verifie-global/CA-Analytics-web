@@ -320,9 +320,7 @@ const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
   };
 
   const response = await fetch(
-    `${baseUrl}/api/companies/${encodeURIComponent(settings.companyId)}/calls/${encodeURIComponent(
-      conversationId,
-    )}/finalize-transcript`,
+    `${baseUrl}/api/demo-call/sessions/${encodeURIComponent(conversationId)}/finalize`,
     {
       method: "POST",
       headers,
@@ -335,7 +333,16 @@ const finalizeDemoCallSession = async (payload: FinalizeDemoCallPayload) => {
     throw new Error(text || `Demo call finalize failed with status ${response.status}`);
   }
 
-  const finalizeResult = (await response.json()) as FinalizeDemoCallResponse;
+  const responseText = await response.text();
+  let finalizeResult: FinalizeDemoCallResponse = {};
+
+  if (responseText) {
+    try {
+      finalizeResult = JSON.parse(responseText) as FinalizeDemoCallResponse;
+    } catch {
+      // A successful 202 response does not require a JSON response body.
+    }
+  }
   const detailResponse = await fetch(
     `${baseUrl}/api/companies/${encodeURIComponent(settings.companyId)}/calls/${encodeURIComponent(
       conversationId,

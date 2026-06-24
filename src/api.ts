@@ -996,12 +996,49 @@ export async function exportCallsCsv(settings: AppSettings, filters: CallFilters
 }
 
 export async function fetchCallDetail(settings: AppSettings, conversationId: string) {
-  const response = await request<unknown>(
+  const detailRequest = request<unknown>(
     settings,
     `/api/companies/${settings.companyId}/calls/${conversationId}`,
   );
+  const demoSessionRequest = conversationId.startsWith("demo-")
+    ? request<unknown>(
+        settings,
+        `/api/demo-call/sessions/${encodeURIComponent(conversationId)}`,
+      ).catch((error: RequestError) => {
+        if (error.status === 404) {
+          return null;
+        }
 
-  return normalizeCallDetail(response);
+        throw error;
+      })
+    : Promise.resolve(null);
+  const [response, demoSessionResponse] = await Promise.all([
+    detailRequest,
+    demoSessionRequest,
+  ]);
+  const detail = normalizeCallDetail(response);
+  const demoSession = asOptionalRecord(demoSessionResponse);
+
+  if (!demoSession) {
+    return detail;
+  }
+
+  const summarizedVideoStats = firstOptionalRecord(demoSession.videoStats) ?? {
+    framesAnalyzed: readNumber(demoSession, "videoFramesAnalyzed"),
+    dominantEmotion: readString(demoSession, "dominantEmotion"),
+    averageFaceScore: readNumber(demoSession, "averageFaceScore"),
+    facePresenceRatio: readNumber(demoSession, "facePresenceRatio"),
+  };
+
+  return {
+    ...detail,
+    demoCall: demoSession,
+    videoStats: firstOptionalRecord(summarizedVideoStats, detail.videoStats),
+    roleMapping: firstOptionalRecord(demoSession.roleMapping, detail.roleMapping),
+    agentTipsHistory: Array.isArray(demoSession.agentTipsHistory)
+      ? demoSession.agentTipsHistory
+      : detail.agentTipsHistory,
+  };
 }
 
 export async function fetchQaProfile(settings: AppSettings) {
