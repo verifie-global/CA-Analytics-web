@@ -88,6 +88,17 @@ const asOptionalRecord = (value: unknown): Record<string, unknown> | null => {
   return Object.keys(record).length > 0 ? record : null;
 };
 
+const firstOptionalRecord = (...values: unknown[]) => {
+  for (const value of values) {
+    const record = asOptionalRecord(value);
+    if (record) {
+      return record;
+    }
+  }
+
+  return null;
+};
+
 const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
 const readString = (record: Record<string, unknown>, ...keys: string[]) => {
@@ -404,7 +415,7 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
 const normalizeCallDetail = (item: unknown): CallDetail => {
   const record = asRecord(item);
   const rawAnalysis = asRecord(record.analysis ?? record.rawAnalysis);
-  const demoCall = asOptionalRecord(record.demoCall ?? rawAnalysis.demoCall);
+  const demoCall = firstOptionalRecord(record.demoCall, rawAnalysis.demoCall);
   const entities = asRecord(record.entities ?? rawAnalysis.entities);
   const qa = normalizeQaResult(record.qa);
   const segments = toSegments(
@@ -443,9 +454,21 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
     entities,
     analysis: rawAnalysis,
     demoCall,
-    videoStats: asOptionalRecord(record.videoStats ?? rawAnalysis.videoStats),
-    videoAnalysis: asOptionalRecord(record.videoAnalysis ?? rawAnalysis.videoAnalysis),
-    roleMapping: asOptionalRecord(record.roleMapping ?? rawAnalysis.roleMapping),
+    videoStats: firstOptionalRecord(
+      record.videoStats,
+      rawAnalysis.videoStats,
+      demoCall?.videoStats,
+    ),
+    videoAnalysis: firstOptionalRecord(
+      record.videoAnalysis,
+      rawAnalysis.videoAnalysis,
+      demoCall?.videoAnalysis,
+    ),
+    roleMapping: firstOptionalRecord(
+      record.roleMapping,
+      rawAnalysis.roleMapping,
+      demoCall?.roleMapping,
+    ),
     agentTipsHistory:
       Array.isArray(record.agentTipsHistory)
         ? record.agentTipsHistory

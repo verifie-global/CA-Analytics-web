@@ -496,7 +496,7 @@ const readDetailString = (record: Record<string, unknown> | null, ...keys: strin
 };
 
 const getDetailDemoCall = (detail?: CallDetail | null) =>
-  asDetailRecord(detail?.analysis?.demoCall) ?? asDetailRecord(detail?.demoCall);
+  asDetailRecord(detail?.demoCall) ?? asDetailRecord(detail?.analysis?.demoCall);
 
 const getDetailVideoStats = (detail?: CallDetail | null) => {
   const demoCall = getDetailDemoCall(detail);
@@ -504,7 +504,8 @@ const getDetailVideoStats = (detail?: CallDetail | null) => {
   return (
     asDetailRecord(detail?.videoStats) ??
     asDetailRecord(detail?.videoAnalysis) ??
-    asDetailRecord(demoCall?.videoStats)
+    asDetailRecord(demoCall?.videoStats) ??
+    asDetailRecord(demoCall?.videoAnalysis)
   );
 };
 

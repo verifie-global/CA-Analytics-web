@@ -1255,9 +1255,12 @@ function DemoCallPage() {
         await asrService.stopRecording();
       }
 
-      await finalizeDemoCallSession(payload);
+      const finalizeResult = await finalizeDemoCallSession(payload);
       setCompleteMessage("Session sent for analysis.");
-      window.location.href = "/?view=grid";
+      const searchParams = new URLSearchParams({
+        conversationId: finalizeResult.conversationId || payload.sessionId,
+      });
+      window.location.href = `/?${searchParams.toString()}`;
     } catch (error) {
       setCompleteMessage("");
       setErrorMessage(
