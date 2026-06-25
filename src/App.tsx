@@ -2335,7 +2335,11 @@ function App() {
     setPlaybackTimeSeconds(0);
   };
 
-  const handleRowClick = (conversationId: string) => {
+  const handleRowClick = (conversationId: string, event?: MouseEvent<HTMLDivElement>) => {
+    if (event && window.getSelection()?.toString()) {
+      return;
+    }
+
     if (selectedId === conversationId) {
       handleCloseDetail();
       return;
@@ -3802,15 +3806,12 @@ function App() {
                         <Fragment key={call.conversationId}>
                           <div
                             className={`call-row ${call.sentiment ? `row-${call.sentiment.toLowerCase()}` : ""} ${selectedId === call.conversationId ? "selected" : ""}`}
-                            onClick={() => handleRowClick(call.conversationId)}
+                            onClick={(event) => handleRowClick(call.conversationId, event)}
                             onKeyDown={(event) => handleRowKeyDown(event, call.conversationId)}
                             role="row"
                             tabIndex={0}
                           >
-                            <span
-                              className="call-row-primary"
-                              onClick={(event) => event.stopPropagation()}
-                            >
+                            <span className="call-row-primary">
                               <span className="call-row-id">{call.conversationId}</span>
                             </span>
                             <span className="call-row-agent">
