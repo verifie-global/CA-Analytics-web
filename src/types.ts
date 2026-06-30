@@ -59,6 +59,44 @@ export type CallFilterOptions = {
   customers: CallFilterOption[];
 };
 
+export type CallSummaryReportSentiment = {
+  sentiment: "positive" | "neutral" | "negative";
+  count: number;
+  percentage: number;
+};
+
+export type CallSummaryReportWeakestQuestion = {
+  id: string;
+  title: string;
+  evaluatedCount: number;
+  passedCount: number;
+  failedCount: number;
+  averageScorePercentage: number;
+};
+
+export type CallSummaryReportAgent = {
+  agentKey: string;
+  agentName: string | null;
+  agentExternalId: string | null;
+  agentPhone: string | null;
+  callCount: number;
+  qaScoredCallCount: number;
+  averageQaScore: number | null;
+  weakestQuestion: CallSummaryReportWeakestQuestion | null;
+};
+
+export type CallSummaryReport = {
+  companyId: number;
+  createdFromUtc: string;
+  createdToUtc: string;
+  totalCalls: number;
+  sentiments: CallSummaryReportSentiment[];
+  unknownSentimentCount: number;
+  averageQaScore: number | null;
+  qaScoredCallCount: number;
+  agents: CallSummaryReportAgent[];
+};
+
 export type AskEvidence = {
   conversationId?: string | null;
   source?: string | null;

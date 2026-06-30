@@ -10,6 +10,7 @@ import type {
   CallsListResult,
   CallScoreSummary,
   CallSummary,
+  CallSummaryReport,
   DiarizationSegment,
   EmotionInfo,
   PartyInfo,
@@ -78,6 +79,24 @@ async function request<T>(
   }
 
   return (await response.json()) as T;
+}
+
+export async function fetchCallSummaryReport(
+  settings: AppSettings,
+  createdFromUtc: string,
+  createdToUtc: string,
+) {
+  const query = new URLSearchParams({
+    createdFromUtc,
+    createdToUtc,
+  });
+
+  return request<CallSummaryReport>(
+    settings,
+    `/api/companies/${settings.companyId}/reports/call-summary`,
+    undefined,
+    query,
+  );
 }
 
 const asRecord = (value: unknown): Record<string, unknown> =>

@@ -32,6 +32,7 @@ import DemoCallPage from "./DemoCallPage";
 import { QaEvaluationPanel } from "./QaEvaluationPanel";
 import { QaProfilePage } from "./QaProfilePage";
 import { QaScoreBadge } from "./QaScoreBadge";
+import { CallSummaryReportPage } from "./CallSummaryReportPage";
 import { WorkflowAutomationsPage } from "./WorkflowAutomationsPage";
 import type {
   AppSettings,
@@ -55,9 +56,10 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-type AppRoute = "dashboard" | "qa-profile" | "workflow-automations" | "demo-call";
+type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "demo-call";
 type AppNavKey =
   | "dashboard"
+  | "reports"
   | "upload"
   | "record"
   | "keyword"
@@ -367,6 +369,10 @@ const getRouteFromPath = (pathName: string): AppRoute => {
 
   if (pathName === "/settings/workflow-automations") {
     return "workflow-automations";
+  }
+
+  if (pathName === "/reports") {
+    return "reports";
   }
 
   return "dashboard";
@@ -1213,6 +1219,9 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
       {name === "dashboard" && (
         <path d="M4 20V9M10 20V4M16 20v-7M22 20H2" {...common} />
       )}
+      {name === "reports" && (
+        <path d="M4 20V10h4v10M10 20V4h4v16M16 20v-7h4v7M2 20h20" {...common} />
+      )}
       {name === "upload" && (
         <path d="M12 16V4m0 0 4 4m-4-4-4 4M4 18v2h16v-2" {...common} />
       )}
@@ -1655,6 +1664,8 @@ function App() {
           ? "/settings/workflow-automations"
           : route === "demo-call"
             ? "/democall"
+            : route === "reports"
+              ? "/reports"
             : "/";
     window.history.pushState({}, "", nextPath);
     setCurrentRoute(route);
@@ -3372,6 +3383,12 @@ function App() {
       onClick: () => void openRecordingModal(),
     },
     {
+      key: "reports",
+      label: "Reports",
+      active: currentRoute === "reports",
+      onClick: () => navigateTo("reports"),
+    },
+    {
       key: "demo",
       label: "Demo call",
       active: false,
@@ -3635,6 +3652,11 @@ function App() {
           />
         ) : currentRoute === "workflow-automations" ? (
           <WorkflowAutomationsPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
+        ) : currentRoute === "reports" ? (
+          <CallSummaryReportPage
+            settings={settings}
+            onUnauthorized={handleUnauthorizedSession}
+          />
         ) : currentRoute === "dashboard" ? (
           <section className="panel">
             <div className="section-heading">
