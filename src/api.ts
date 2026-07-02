@@ -18,6 +18,7 @@ import type {
   QaProfile,
   QaProfileDefinition,
   QaQuestionDefinition,
+  QaQuestionCorrection,
   QaQuestionResult,
   QaResult,
   QaScoringSettings,
@@ -29,6 +30,9 @@ import type {
   WorkflowDestinationInput,
   WorkflowDestinationPayloadOptions,
   WorkflowTestResult,
+  CompanyAgent,
+  CompanyUser,
+  CompanyUserInput,
 } from "./types";
 
 type RequestError = Error & {
@@ -530,6 +534,11 @@ const normalizeQaProfileDefinition = (value: unknown): QaProfileDefinition => {
 
 const normalizeQaQuestionResult = (item: unknown): QaQuestionResult => {
   const record = asRecord(item);
+  const correction = asRecord(record.manualCorrection);
+  const originalScore =
+    readNumber(record, "originalScore", "originalAutomaticScore", "automaticScore") ??
+    readNumber(correction, "originalScore", "score") ??
+    null;
   return {
     id: readString(record, "id") ?? "",
     title: readString(record, "title") ?? "",
@@ -537,6 +546,16 @@ const normalizeQaQuestionResult = (item: unknown): QaQuestionResult => {
     weight: readNumber(record, "weight") ?? 0,
     score: readNumber(record, "score") ?? 0,
     reason: readString(record, "reason") ?? "",
+    isManuallyCorrected:
+      readBoolean(
+        record,
+        "isManuallyCorrected",
+        "manuallyCorrected",
+        "wasManuallyCorrected",
+        "isCorrected",
+      ) ??
+      Object.keys(correction).length > 0,
+    originalScore,
   };
 };
 
@@ -563,6 +582,7 @@ const normalizeQaResult = (value: unknown): QaResult | null => {
     return null;
   }
 
+  const manualCorrectionRecord = asRecord(record.manualCorrection);
   return {
     status: readString(record, "status") ?? null,
     isApplicable:
@@ -573,6 +593,15 @@ const normalizeQaResult = (value: unknown): QaResult | null => {
     possiblePoints: readNumber(record, "possiblePoints") ?? null,
     notApplicableReason: readString(record, "notApplicableReason") ?? null,
     evaluation: normalizeQaEvaluation(record.evaluation),
+    manualCorrection: Object.keys(manualCorrectionRecord).length
+      ? {
+          originalScore: readNumber(manualCorrectionRecord, "originalScore") ?? null,
+          reason: readString(manualCorrectionRecord, "reason") ?? null,
+          correctedAt: readString(manualCorrectionRecord, "correctedAt") ?? null,
+          correctedByUserId: readNumber(manualCorrectionRecord, "correctedByUserId") ?? null,
+          correctedBy: readString(manualCorrectionRecord, "correctedBy") ?? null,
+        }
+      : null,
   };
 };
 
@@ -1306,6 +1335,44 @@ export async function recalculateQaScore(settings: AppSettings, conversationId: 
   return normalizeRecalculatedQaResult(JSON.parse(text));
 }
 
+export async function updateQaScore(
+  settings: AppSettings,
+  conversationId: string,
+  reason: string,
+  questionResults: QaQuestionCorrection[],
+) {
+  const response = await fetch(
+    buildUrl(settings, `/api/companies/${settings.companyId}/calls/${conversationId}/qa-score`),
+    {
+      method: "PATCH",
+      headers: authHeaders(settings, jsonHeaders()),
+      body: JSON.stringify({ reason, questionResults }),
+    },
+  );
+
+  if (!response.ok) {
+    let message = "";
+    const text = await response.text();
+    if (text.trim()) {
+      try {
+        const body = JSON.parse(text) as Record<string, unknown>;
+        const errors = asRecord(body.errors);
+        const validationMessages = Object.values(errors)
+          .flatMap((value) => asArray(value))
+          .map(String)
+          .filter(Boolean);
+        message = validationMessages.join(" ") || String(body.message ?? body.error ?? body.title ?? text);
+      } catch {
+        message = text;
+      }
+    }
+    throw createRequestError(message || `QA update failed with status ${response.status}`, response.status);
+  }
+
+  const body = (await response.json()) as unknown;
+  return normalizeRecalculatedQaResult(body);
+}
+
 export async function uploadCall(
   settings: AppSettings,
   payload: { conversationId: string; url: string; file: File | null },
@@ -1411,5 +1478,122 @@ export async function authorizeSettings(settings: AppSettings): Promise<AppSetti
     tokenType: auth.tokenType ?? "Bearer",
     companyName: auth.companyName ?? settings.companyName ?? null,
     expiresAtUtc: auth.expiresAtUtc ?? settings.expiresAtUtc ?? null,
+    userRole: auth.userRole ?? settings.userRole ?? null,
+    userId: auth.userId ?? settings.userId ?? null,
   };
+}
+
+const normalizeAgent = (value: unknown): CompanyAgent => {
+  const record = asRecord(value);
+  return {
+    id: readNumber(record, "id", "agentId") ?? 0,
+    name: readString(record, "name", "displayName", "fullName") ?? "Unnamed agent",
+    externalId: readStringLike(record, "externalId", "externalAgentId") ?? null,
+  };
+};
+
+const normalizeCompanyUser = (value: unknown): CompanyUser => {
+  const record = asRecord(value);
+  const status = readString(record, "status");
+  return {
+    id: readNumber(record, "id", "userId") ?? 0,
+    name: readString(record, "name", "displayName", "fullName") ?? "",
+    email: readString(record, "email") ?? "",
+    role: readString(record, "role")?.toLowerCase() === "admin" ? "Admin" : "User",
+    isActive:
+      readBoolean(record, "isActive", "active") ?? status?.toLowerCase() !== "inactive",
+    assignedAgents: asArray(
+      record.assignedAgents ?? record.agents ?? record.agentAssignments,
+    ).map(normalizeAgent),
+    createdUtc: readString(record, "createdUtc", "createdAtUtc", "createdAt") ?? null,
+    lastLoginUtc:
+      readString(record, "lastLoginUtc", "lastLoginAtUtc", "lastLoginAt") ?? null,
+  };
+};
+
+export async function fetchCompanyUsers(settings: AppSettings) {
+  const payload = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/users`,
+  );
+  const record = asRecord(payload);
+  return asArray(record.items ?? record.users ?? payload).map(normalizeCompanyUser);
+}
+
+export async function fetchCompanyAgents(settings: AppSettings) {
+  const payload = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/agents`,
+  );
+  const record = asRecord(payload);
+  return asArray(record.items ?? record.agents ?? payload).map(normalizeAgent);
+}
+
+export async function createCompanyUser(settings: AppSettings, input: CompanyUserInput) {
+  const payload = await request<unknown>(settings, `/api/companies/${settings.companyId}/users`, {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify(input),
+  });
+  return normalizeCompanyUser(payload);
+}
+
+export async function updateCompanyUser(
+  settings: AppSettings,
+  userId: number,
+  input: Pick<CompanyUserInput, "name" | "role">,
+) {
+  return request<void>(settings, `/api/companies/${settings.companyId}/users/${userId}`, {
+    method: "PUT",
+    headers: jsonHeaders(),
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateCompanyUserStatus(
+  settings: AppSettings,
+  userId: number,
+  isActive: boolean,
+) {
+  return request<void>(
+    settings,
+    `/api/companies/${settings.companyId}/users/${userId}/status`,
+    {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ isActive }),
+    },
+  );
+}
+
+export async function resetCompanyUserPassword(
+  settings: AppSettings,
+  userId: number,
+  password: string,
+) {
+  return request<void>(
+    settings,
+    `/api/companies/${settings.companyId}/users/${userId}/password`,
+    {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ password }),
+    },
+  );
+}
+
+export async function assignCompanyUserAgents(
+  settings: AppSettings,
+  userId: number,
+  agentIds: number[],
+) {
+  return request<void>(
+    settings,
+    `/api/companies/${settings.companyId}/users/${userId}/agents`,
+    {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ agentIds }),
+    },
+  );
 }

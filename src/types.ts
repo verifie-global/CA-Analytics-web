@@ -121,6 +121,8 @@ export type AppSettings = {
   tokenType?: string | null;
   companyName?: string | null;
   expiresAtUtc?: string | null;
+  userRole?: string | null;
+  userId?: number | string | null;
 };
 
 export type AuthTokenResponse = {
@@ -129,6 +131,32 @@ export type AuthTokenResponse = {
   expiresAtUtc?: string | null;
   companyId?: number | string | null;
   companyName?: string | null;
+  userRole?: string | null;
+  userId?: number | string | null;
+};
+
+export type CompanyAgent = {
+  id: number;
+  name: string;
+  externalId?: string | null;
+};
+
+export type CompanyUser = {
+  id: number;
+  name: string;
+  email: string;
+  role: "Admin" | "User";
+  isActive: boolean;
+  assignedAgents: CompanyAgent[];
+  createdUtc?: string | null;
+  lastLoginUtc?: string | null;
+};
+
+export type CompanyUserInput = {
+  name: string;
+  email: string;
+  role: "Admin" | "User";
+  password?: string;
 };
 
 export type CallSummary = {
@@ -277,6 +305,8 @@ export type QaQuestionResult = {
   weight: number;
   score: number;
   reason: string;
+  isManuallyCorrected?: boolean;
+  originalScore?: number | null;
 };
 
 export type QaEvaluation = {
@@ -297,6 +327,19 @@ export type QaResult = {
   possiblePoints?: number | null;
   notApplicableReason?: string | null;
   evaluation?: QaEvaluation | null;
+  manualCorrection?: {
+    originalScore?: number | null;
+    reason?: string | null;
+    correctedAt?: string | null;
+    correctedByUserId?: number | null;
+    correctedBy?: string | null;
+  } | null;
+};
+
+export type QaQuestionCorrection = {
+  id: string;
+  score: 0 | 1;
+  reason: string;
 };
 
 export type WorkflowDestinationFilters = {

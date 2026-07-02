@@ -23,6 +23,7 @@ import {
   fetchQaProfile,
   fetchQaScoringSettings,
   recalculateQaScore,
+  updateQaScore,
   saveQaProfile,
   saveQaScoringSettings,
   uploadCall,
@@ -34,6 +35,7 @@ import { QaProfilePage } from "./QaProfilePage";
 import { QaScoreBadge } from "./QaScoreBadge";
 import { CallSummaryReportPage } from "./CallSummaryReportPage";
 import { WorkflowAutomationsPage } from "./WorkflowAutomationsPage";
+import { UserManagementPage } from "./UserManagementPage";
 import type {
   AppSettings,
   AskEvidence,
@@ -56,7 +58,7 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "demo-call";
+type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "demo-call";
 type AppNavKey =
   | "dashboard"
   | "reports"
@@ -67,6 +69,7 @@ type AppNavKey =
   | "demo"
   | "qa"
   | "workflow"
+  | "users"
   | "logout";
 
 type KeywordRule = {
@@ -315,6 +318,8 @@ const defaultSettings: AppSettings = {
   tokenType: "Bearer",
   companyName: "",
   expiresAtUtc: "",
+  userRole: "",
+  userId: "",
 };
 
 const formatDateInputValue = (date: Date) =>
@@ -373,6 +378,10 @@ const getRouteFromPath = (pathName: string): AppRoute => {
 
   if (pathName === "/reports") {
     return "reports";
+  }
+
+  if (pathName === "/admin/users") {
+    return "user-management";
   }
 
   return "dashboard";
@@ -1261,6 +1270,9 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
           {...common}
         />
       )}
+      {name === "users" && (
+        <path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM18 8v6m3-3h-6" {...common} />
+      )}
       {name === "logout" && (
         <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12m0 0-4-4m4 4-4 4" {...common} />
       )}
@@ -1664,6 +1676,8 @@ function App() {
           ? "/settings/workflow-automations"
           : route === "demo-call"
             ? "/democall"
+            : route === "user-management"
+              ? "/admin/users"
             : route === "reports"
               ? "/reports"
             : "/";
@@ -2486,6 +2500,42 @@ function App() {
     } finally {
       setQaRecalculating(false);
     }
+  };
+
+  const handleSaveManualQa = async (
+    reason: string,
+    questionResults: import("./types").QaQuestionCorrection[],
+  ) => {
+    if (!detail?.conversationId) {
+      return;
+    }
+
+    const updatedQa = await updateQaScore(
+      settings,
+      detail.conversationId,
+      reason,
+      questionResults,
+    );
+    if (!updatedQa) {
+      throw new Error("The server did not return the updated QA questionnaire.");
+    }
+
+    setDetail((current) => current ? { ...current, qa: updatedQa } : current);
+    setCalls((current) =>
+      current.map((call) =>
+        call.conversationId === detail.conversationId
+          ? {
+              ...call,
+              qaScore: updatedQa.score ?? null,
+              qaIsApplicable: updatedQa.isApplicable ?? null,
+              qaStatus: updatedQa.status ?? null,
+              qaNotApplicableReason: updatedQa.notApplicableReason ?? null,
+              qaEarnedPoints: updatedQa.earnedPoints ?? null,
+              qaPossiblePoints: updatedQa.possiblePoints ?? null,
+            }
+          : call,
+      ),
+    );
   };
 
   const openUploadModal = () => {
@@ -3421,6 +3471,14 @@ function App() {
       active: currentRoute === "workflow-automations",
       onClick: () => navigateTo("workflow-automations"),
     },
+    ...(settings.userRole?.toLowerCase() === "admin"
+      ? [{
+          key: "users" as const,
+          label: "User Management",
+          active: currentRoute === "user-management",
+          onClick: () => navigateTo("user-management" as AppRoute),
+        }]
+      : []),
   ];
 
   return (
@@ -3635,7 +3693,20 @@ function App() {
         ) : null}
 
       <main className="layout">
-        {currentRoute === "qa-profile" ? (
+        {currentRoute === "user-management" ? (
+          settings.userRole?.toLowerCase() === "admin" ? (
+            <UserManagementPage
+              settings={settings}
+              onUnauthorized={handleUnauthorizedSession}
+            />
+          ) : (
+            <section className="panel permission-denied" role="alert">
+              <h1>Permission denied</h1>
+              <p>Administrator access is required to manage users.</p>
+              <button type="button" onClick={() => navigateTo("dashboard")}>Return to dashboard</button>
+            </section>
+          )
+        ) : currentRoute === "qa-profile" ? (
           <QaProfilePage
             profile={qaProfile}
             qaScoringSettings={qaScoringSettings}
@@ -3806,7 +3877,11 @@ function App() {
                 {calls.length === 0 ? (
                   <div className="empty-state">
                     <h3>No calls loaded yet</h3>
-                    <p>Save your connection settings, then load or upload a call.</p>
+                    <p>
+                      {settings.userRole?.toLowerCase() === "user"
+                        ? "No agents have been assigned to your account. Contact your administrator."
+                        : "Save your connection settings, then load or upload a call."}
+                    </p>
                   </div>
                 ) : (
                   <div className="calls-grid" role="table" aria-label="Conversations">
@@ -4426,6 +4501,7 @@ function App() {
                         recalculateError={qaRecalculateError}
                         generatedAtLabel={formatDate(detail.qa?.evaluation?.generatedAtUtc)}
                         initiallyExpanded
+                        onSaveManualCorrection={handleSaveManualQa}
                       />
                     </DetailAccordion>
                   </div>

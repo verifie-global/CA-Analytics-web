@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatQaNotApplicableReason, isQaNotApplicable } from "./qaDisplay";
 import { QaScoreBadge } from "./QaScoreBadge";
-import type { QaResult } from "./types";
+import type { QaQuestionCorrection, QaResult } from "./types";
 
 type QaEvaluationPanelProps = {
   qa?: QaResult | null;
@@ -11,6 +11,10 @@ type QaEvaluationPanelProps = {
   recalculateError?: string;
   generatedAtLabel?: string;
   initiallyExpanded?: boolean;
+  onSaveManualCorrection: (
+    reason: string,
+    questionResults: QaQuestionCorrection[],
+  ) => Promise<void>;
 };
 
 export function QaEvaluationPanel({
@@ -21,11 +25,103 @@ export function QaEvaluationPanel({
   recalculateError,
   generatedAtLabel,
   initiallyExpanded = false,
+  onSaveManualCorrection,
 }: QaEvaluationPanelProps) {
   const evaluation = qa?.evaluation;
   const [isCollapsed, setIsCollapsed] = useState(!initiallyExpanded);
   const qaNotApplicable = isQaNotApplicable(qa);
   const notApplicableReason = formatQaNotApplicableReason(qa?.notApplicableReason);
+  const [isEditing, setIsEditing] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, { score: 0 | 1; reason: string }>>({});
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDrafts({});
+    }
+  }, [qa, isEditing]);
+
+  const changedQuestions = useMemo(
+    () =>
+      (evaluation?.questionResults ?? []).flatMap<QaQuestionCorrection>((question) => {
+        const draft = drafts[question.id];
+        if (!draft || (draft.score === question.score && draft.reason === question.reason)) {
+          return [];
+        }
+        return [{ id: question.id, score: draft.score, reason: draft.reason }];
+      }),
+    [drafts, evaluation?.questionResults],
+  );
+
+  const preview = useMemo(() => {
+    const questions = evaluation?.questionResults ?? [];
+    const possiblePoints = questions.reduce((sum, question) => sum + question.weight, 0);
+    const earnedPoints = questions.reduce(
+      (sum, question) => sum + question.weight * (drafts[question.id]?.score ?? question.score),
+      0,
+    );
+    return {
+      earnedPoints,
+      possiblePoints,
+      score: possiblePoints > 0 ? (earnedPoints / possiblePoints) * 100 : 0,
+    };
+  }, [drafts, evaluation?.questionResults]);
+
+  const startEditing = () => {
+    setDrafts(
+      Object.fromEntries(
+        (evaluation?.questionResults ?? []).map((question) => [
+          question.id,
+          { score: question.score > 0 ? 1 : 0, reason: question.reason },
+        ]),
+      ),
+    );
+    setCorrectionReason("");
+    setSaveError("");
+    setSaveSuccess("");
+    setIsEditing(true);
+  };
+
+  const closeEditing = () => {
+    if (changedQuestions.length && !window.confirm("Discard your unsaved QA changes?")) {
+      return;
+    }
+    setIsEditing(false);
+    setSaveError("");
+  };
+
+  const saveCorrection = async () => {
+    if (!correctionReason.trim()) {
+      setSaveError("Enter an overall correction reason before saving.");
+      return;
+    }
+    if (!changedQuestions.length) {
+      setSaveError("Change at least one question before saving.");
+      return;
+    }
+    setIsSaving(true);
+    setSaveError("");
+    setSaveSuccess("");
+    try {
+      await onSaveManualCorrection(correctionReason.trim(), changedQuestions);
+      setIsEditing(false);
+      setSaveSuccess("QA corrections saved successfully.");
+    } catch (error) {
+      const status = (error as Error & { status?: number }).status;
+      if (status === 401 || status === 403) {
+        setSaveError("You are not authorized to edit this QA questionnaire.");
+      } else if (status === 404) {
+        setSaveError("Conversation not found.");
+      } else {
+        setSaveError(error instanceof Error ? error.message : "Unable to save QA corrections.");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (!qa && !isCompleted && !recalculateError) {
     return null;
@@ -78,6 +174,16 @@ export function QaEvaluationPanel({
               {isRecalculating ? "Recalculating..." : "Recalculate QA Score"}
             </button>
           ) : null}
+          {!qaNotApplicable && evaluation?.questionResults?.length ? (
+            <button
+              type="button"
+              className="secondary-button small-button"
+              onClick={isEditing ? closeEditing : startEditing}
+              disabled={isSaving}
+            >
+              {isEditing ? "Close edit mode" : "Edit QA"}
+            </button>
+          ) : null}
           <button
             type="button"
             className="secondary-button small-button qa-collapse-button"
@@ -99,23 +205,23 @@ export function QaEvaluationPanel({
           <div className="qa-panel-body">
             <div className="qa-overview-grid">
               <article className="routing-card">
-                <label>QA score</label>
+                <label>{isEditing ? "Preview QA score" : "QA score"}</label>
                 <QaScoreBadge
-                  score={qa.score}
+                  score={isEditing ? preview.score : qa.score}
                   isApplicable={qa.isApplicable}
                   status={qa.status}
                   notApplicableReason={qa.notApplicableReason}
-                  earnedPoints={qa.earnedPoints}
-                  possiblePoints={qa.possiblePoints}
+                  earnedPoints={isEditing ? preview.earnedPoints : qa.earnedPoints}
+                  possiblePoints={isEditing ? preview.possiblePoints : qa.possiblePoints}
                 />
               </article>
               <article className="routing-card">
                 <label>Earned points</label>
-                <strong>{qaNotApplicable ? "N/A" : qa.earnedPoints ?? "-"}</strong>
+                <strong>{qaNotApplicable ? "N/A" : isEditing ? preview.earnedPoints : qa.earnedPoints ?? "-"}</strong>
               </article>
               <article className="routing-card">
                 <label>Possible points</label>
-                <strong>{qaNotApplicable ? "N/A" : qa.possiblePoints ?? "-"}</strong>
+                <strong>{qaNotApplicable ? "N/A" : isEditing ? preview.possiblePoints : qa.possiblePoints ?? "-"}</strong>
               </article>
               <article className="routing-card">
                 <label>{qaNotApplicable ? "Reason" : "Resolution status"}</label>
@@ -179,9 +285,11 @@ export function QaEvaluationPanel({
                   <h5>Question results</h5>
                   {evaluation?.questionResults?.length ? (
                     evaluation.questionResults.map((question) => {
-                      const passed = question.score > 0;
+                      const draft = drafts[question.id];
+                      const shownScore = isEditing ? draft?.score ?? question.score : question.score;
+                      const passed = shownScore > 0;
                       return (
-                        <article key={question.id || question.title} className="qa-question-result">
+                        <article key={question.id || question.title} className={`qa-question-result ${draft && (draft.score !== question.score || draft.reason !== question.reason) ? "qa-question-changed" : ""}`}>
                           <div className="qa-question-result-head">
                             <div>
                               <strong>{question.title}</strong>
@@ -194,9 +302,51 @@ export function QaEvaluationPanel({
                               <small>Weight {question.weight}</small>
                             </div>
                           </div>
-                          <p>
-                            <strong>Reason:</strong> {question.reason || "No reason provided."}
-                          </p>
+                          {question.isManuallyCorrected || question.originalScore != null ? (
+                            <p className="qa-manual-indicator">
+                              Manually corrected
+                              {question.originalScore != null
+                                ? ` · Original automatic score: ${question.originalScore > 0 ? "Passed" : "Failed"}`
+                                : ""}
+                            </p>
+                          ) : null}
+                          {isEditing && draft ? (
+                            <div className="qa-question-edit-fields">
+                              <label>
+                                Result
+                                <select
+                                  value={draft.score}
+                                  onChange={(event) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [question.id]: {
+                                        ...current[question.id],
+                                        score: Number(event.target.value) as 0 | 1,
+                                      },
+                                    }))
+                                  }
+                                >
+                                  <option value={0}>0 — Failed</option>
+                                  <option value={1}>1 — Passed</option>
+                                </select>
+                              </label>
+                              <label>
+                                Explanation
+                                <textarea
+                                  rows={3}
+                                  value={draft.reason}
+                                  onChange={(event) =>
+                                    setDrafts((current) => ({
+                                      ...current,
+                                      [question.id]: { ...current[question.id], reason: event.target.value },
+                                    }))
+                                  }
+                                />
+                              </label>
+                            </div>
+                          ) : (
+                            <p><strong>Explanation:</strong> {question.reason || "No explanation provided."}</p>
+                          )}
                         </article>
                       );
                     })
@@ -207,6 +357,25 @@ export function QaEvaluationPanel({
                     </div>
                   )}
                 </div>
+                {isEditing ? (
+                  <div className="qa-correction-footer">
+                    <label>
+                      Overall correction reason
+                      <textarea
+                        rows={3}
+                        value={correctionReason}
+                        onChange={(event) => setCorrectionReason(event.target.value)}
+                        placeholder="Why is this questionnaire being corrected?"
+                      />
+                    </label>
+                    <div className="qa-correction-actions">
+                      <span>{changedQuestions.length} changed question{changedQuestions.length === 1 ? "" : "s"}</span>
+                      <button type="button" className="primary-button" onClick={() => void saveCorrection()} disabled={isSaving}>
+                        {isSaving ? "Saving..." : "Save QA corrections"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </>
             ) : null}
 
@@ -218,6 +387,8 @@ export function QaEvaluationPanel({
       ) : null}
 
       {recalculateError ? <p className="error-text">{recalculateError}</p> : null}
+      {saveError ? <p className="error-text" role="alert">{saveError}</p> : null}
+      {saveSuccess ? <p className="qa-success-text" role="status">{saveSuccess}</p> : null}
     </section>
   );
 }

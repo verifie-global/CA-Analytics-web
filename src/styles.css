@@ -3600,6 +3600,11 @@ details.scroll-toggle > summary {
   background: #fff;
 }
 
+.qa-question-result.qa-question-changed {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 28%, transparent);
+}
+
 .qa-question-result p {
   margin: 0.4rem 0 0;
 }
@@ -3645,6 +3650,48 @@ details.scroll-toggle > summary {
 
 .qa-scoring-settings-grid {
   max-width: 520px;
+}
+
+.qa-manual-indicator {
+  color: var(--green-ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.qa-question-edit-fields,
+.qa-correction-footer {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.qa-question-edit-fields label,
+.qa-correction-footer label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.qa-question-edit-fields select,
+.qa-question-edit-fields textarea,
+.qa-correction-footer textarea {
+  width: 100%;
+}
+
+.qa-correction-footer {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.qa-correction-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  color: var(--muted);
 }
 
 .qa-scoring-toggle {
@@ -4221,6 +4268,43 @@ details.scroll-toggle > summary {
   background: var(--surface);
   border-radius: var(--radius-md);
   padding: 1rem;
+}
+
+/* User management */
+.user-management { display: grid; gap: 1rem; min-width: 0; }
+.user-management-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.assignment-notice, .form-message { padding: .85rem 1rem; border-radius: var(--radius-md); background: #f4f7ff; border: 1px solid #cbd7ff; color: #30436f; }
+.error-message { background: #fff2f2; border-color: #f2b8b8; color: #8b2525; }
+.success-message { background: #eefaf4; border-color: #a9dec2; color: #17663a; }
+.user-table-wrap { overflow-x: auto; }
+.user-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.user-table th, .user-table td { padding: .8rem .65rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+.user-table th { color: var(--muted); font-size: .68rem; letter-spacing: .04em; text-transform: uppercase; }
+.user-table td:nth-child(5) { min-width: 160px; max-width: 260px; }
+.user-actions { display: flex; flex-wrap: wrap; gap: .4rem; min-width: 220px; }
+.status-badge { display: inline-flex; padding: .25rem .55rem; border-radius: 999px; font-size: .72rem; }
+.status-active { color: #17663a; background: #e8f7ef; }
+.status-inactive { color: #7b3540; background: #f9e9ec; }
+.self-label { display: block; margin-top: .2rem; color: var(--muted); }
+.user-modal { width: min(680px, 100%); }
+.modal-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.modal-heading h2 { margin: 0; }
+.modal-close { border: 0; background: transparent; padding: .25rem .5rem; font-size: 1.6rem; line-height: 1; }
+.agent-picker { min-width: 0; padding: 1rem; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.agent-options { display: grid; gap: .35rem; max-height: 230px; overflow-y: auto; margin: .65rem 0; padding: .25rem; }
+.agent-options label { display: flex; align-items: center; gap: .65rem; padding: .45rem; border-radius: 8px; }
+.agent-options label:hover { background: var(--surface); }
+.agent-options input { width: auto; }
+.permission-denied { max-width: 680px; }
+
+@media (max-width: 760px) {
+  .user-management-heading { align-items: stretch; flex-direction: column; }
+  .user-table thead { display: none; }
+  .user-table, .user-table tbody, .user-table tr, .user-table td { display: block; width: 100%; }
+  .user-table tr { padding: .75rem 0; border-bottom: 1px solid var(--line); }
+  .user-table td { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: .75rem; border: 0; padding: .35rem; max-width: none !important; }
+  .user-table td::before { content: attr(data-label); color: var(--muted); font-size: .7rem; text-transform: uppercase; }
+  .user-actions { min-width: 0; }
 }
 
 .recording-preview-copy {
