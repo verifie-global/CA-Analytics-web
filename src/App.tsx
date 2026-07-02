@@ -24,6 +24,7 @@ import {
   fetchQaProfile,
   fetchQaScoringSettings,
   hydrateAuthIdentity,
+  loginUser,
   recalculateQaScore,
   updateQaScore,
   saveQaProfile,
@@ -1578,6 +1579,9 @@ function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [authChecking, setAuthChecking] = useState(false);
+  const [authMode, setAuthMode] = useState<"user" | "partner">("user");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [hasAdminAccess, setHasAdminAccess] = useState(
     () => settings.userRole?.trim().toLowerCase() === "admin",
@@ -1809,13 +1813,18 @@ function App() {
   }, [calls, isAuthorized, keywordRules, settings, transcriptCache]);
 
   useEffect(() => {
-    if (!settings.companyId || !settings.apiToken) {
+    if (!settings.companyId) {
       setIsAuthorized(false);
       return;
     }
 
     if (settings.accessToken) {
       setIsAuthorized(true);
+      return;
+    }
+
+    if (!settings.apiToken) {
+      setIsAuthorized(false);
       return;
     }
 
@@ -2148,11 +2157,15 @@ function App() {
     setStatusMessage("Checking authorization...");
 
     try {
-      const authorizedSettings = await authorizeSettings({
-        ...draftSettings,
-        accessToken: "",
-      });
+      const authorizedSettings =
+        authMode === "user"
+          ? await loginUser(draftSettings, loginEmail, loginPassword)
+          : await authorizeSettings({
+              ...draftSettings,
+              accessToken: "",
+            });
       setSettings(authorizedSettings);
+      setLoginPassword("");
       setIsAuthorized(true);
       setStatusMessage(
         authorizedSettings.companyName
@@ -2845,6 +2858,7 @@ function App() {
     setAudioPendingFor("");
     setIsAuthorized(false);
     setHasAdminAccess(false);
+    setLoginPassword("");
     setIsUploadModalOpen(false);
     setIsRecordingModalOpen(false);
     setUploadSubmitting(false);
@@ -2896,6 +2910,7 @@ function App() {
     setAudioPendingFor("");
     setIsAuthorized(false);
     setHasAdminAccess(false);
+    setLoginPassword("");
     setIsUploadModalOpen(false);
     setIsRecordingModalOpen(false);
     setIsKeywordManagerOpen(false);
@@ -3392,11 +3407,14 @@ function App() {
           <p className="eyebrow">Authorization</p>
           <h1>Call Analytics Dashboard</h1>
           <p className="hero-copy">
-            Enter your company ID and partner API token. We will exchange it for a backend JWT
-            before loading the dashboard.
+            Sign in with your company user account, or use a partner API token.
           </p>
 
           <form className="grid-form" onSubmit={handleSettingsSubmit}>
+            <div className="auth-mode-switch full-width" role="group" aria-label="Sign-in method">
+              <button type="button" className={authMode === "user" ? "active" : ""} onClick={() => setAuthMode("user")}>User account</button>
+              <button type="button" className={authMode === "partner" ? "active" : ""} onClick={() => setAuthMode("partner")}>Partner API token</button>
+            </div>
             <label>
               Base URL
               <input
@@ -3418,19 +3436,27 @@ function App() {
               />
             </label>
 
-            <label className="full-width">
-              API token
-              <input
-                type="password"
-                value={draftSettings.apiToken}
-                onChange={(event) =>
-                  setDraftSettings((current) => ({ ...current, apiToken: event.target.value }))
-                }
-              />
-            </label>
+            {authMode === "user" ? (
+              <>
+                <label className="full-width">Email<input type="email" autoComplete="username" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} required /></label>
+                <label className="full-width">Password<input type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} minLength={8} required /></label>
+              </>
+            ) : (
+              <label className="full-width">
+                API token
+                <input
+                  type="password"
+                  value={draftSettings.apiToken}
+                  onChange={(event) =>
+                    setDraftSettings((current) => ({ ...current, apiToken: event.target.value }))
+                  }
+                  required
+                />
+              </label>
+            )}
 
             <button className="full-width" type="submit" disabled={authChecking}>
-              {authChecking ? "Checking..." : "Authorize"}
+              {authChecking ? "Signing in..." : authMode === "user" ? "Sign in" : "Authorize"}
             </button>
           </form>
 

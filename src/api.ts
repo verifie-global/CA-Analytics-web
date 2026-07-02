@@ -1492,6 +1492,60 @@ export async function requestAuthToken(settings: AppSettings): Promise<AuthToken
   };
 }
 
+export async function loginUser(
+  settings: Pick<AppSettings, "baseUrl" | "companyId">,
+  email: string,
+  password: string,
+): Promise<AppSettings> {
+  const response = await fetch(
+    `${trimSlash(settings.baseUrl)}/api/auth/login`,
+    {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        companyId: Number(settings.companyId),
+        email: email.trim(),
+        password,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw createRequestError(
+      response.status === 401
+        ? "Invalid email or password."
+        : response.status === 403
+          ? "This user account is inactive or does not have permission to sign in."
+          : text || `Sign in failed with status ${response.status}`,
+      response.status,
+    );
+  }
+
+  const payload = asRecord(await response.json());
+  const data = Object.keys(asRecord(payload.data)).length ? asRecord(payload.data) : payload;
+  const accessToken = readString(data, "accessToken", "token", "jwt") ?? "";
+  if (!accessToken) {
+    throw new Error("The login response did not include an access token.");
+  }
+
+  return hydrateAuthIdentity({
+    baseUrl: settings.baseUrl,
+    companyId: String(
+      readNumber(data, "companyId") ??
+      readStringLike(data, "companyId") ??
+      settings.companyId,
+    ),
+    apiToken: "",
+    accessToken,
+    tokenType: readString(data, "tokenType") ?? "Bearer",
+    expiresAtUtc: readString(data, "expiresAtUtc", "expiresAt") ?? null,
+    companyName: readString(data, "companyName") ?? null,
+    userRole: readString(data, "userRole", "role") ?? null,
+    userId: readNumber(data, "userId") ?? readStringLike(data, "userId") ?? null,
+  });
+}
+
 const readJwtClaims = (accessToken: string): Record<string, unknown> => {
   try {
     const encodedPayload = accessToken.split(".")[1];

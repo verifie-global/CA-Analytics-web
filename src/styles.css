@@ -5209,6 +5209,28 @@ details.scroll-toggle > summary {
   }
 }
 
+.auth-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .35rem;
+  padding: .3rem;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.auth-mode-switch button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.auth-mode-switch button.active {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: 0 2px 8px rgba(20, 28, 48, .08);
+}
+
 @media (max-width: 860px) {
   .app-shell {
     flex-direction: column;
