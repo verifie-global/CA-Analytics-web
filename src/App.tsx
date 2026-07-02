@@ -20,6 +20,7 @@ import {
   fetchCallDetail,
   fetchCallFilterOptions,
   fetchCalls,
+  fetchCompanyUsers,
   fetchQaProfile,
   fetchQaScoringSettings,
   hydrateAuthIdentity,
@@ -1578,6 +1579,9 @@ function App() {
   const [audioLoading, setAudioLoading] = useState(false);
   const [authChecking, setAuthChecking] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const [hasAdminAccess, setHasAdminAccess] = useState(
+    () => settings.userRole?.trim().toLowerCase() === "admin",
+  );
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [uploadSubmitting, setUploadSubmitting] = useState(false);
@@ -2840,6 +2844,7 @@ function App() {
     setAudioRequestedFor("");
     setAudioPendingFor("");
     setIsAuthorized(false);
+    setHasAdminAccess(false);
     setIsUploadModalOpen(false);
     setIsRecordingModalOpen(false);
     setUploadSubmitting(false);
@@ -2890,6 +2895,7 @@ function App() {
     setAudioRequestedFor("");
     setAudioPendingFor("");
     setIsAuthorized(false);
+    setHasAdminAccess(false);
     setIsUploadModalOpen(false);
     setIsRecordingModalOpen(false);
     setIsKeywordManagerOpen(false);
@@ -2917,6 +2923,39 @@ function App() {
       files: [],
     });
   };
+
+  useEffect(() => {
+    if (!isAuthorized) {
+      setHasAdminAccess(false);
+      return;
+    }
+
+    if (settings.userRole?.trim().toLowerCase() === "admin") {
+      setHasAdminAccess(true);
+      return;
+    }
+
+    let cancelled = false;
+    const verifyAdminAccess = async () => {
+      try {
+        await fetchCompanyUsers(settings);
+        if (!cancelled) setHasAdminAccess(true);
+      } catch (error) {
+        if (cancelled) return;
+        const status =
+          error && typeof error === "object" && "status" in error
+            ? (error as { status?: number }).status
+            : undefined;
+        setHasAdminAccess(false);
+        if (status === 401) handleUnauthorizedSession();
+      }
+    };
+
+    void verifyAdminAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthorized, settings]);
 
   const addKeywordRule = () => {
     setKeywordRules((current) => [...current, defaultKeywordRule()]);
@@ -3472,7 +3511,7 @@ function App() {
       active: currentRoute === "workflow-automations",
       onClick: () => navigateTo("workflow-automations"),
     },
-    ...(settings.userRole?.toLowerCase() === "admin"
+    ...(hasAdminAccess
       ? [{
           key: "users" as const,
           label: "User Management",
@@ -3695,7 +3734,7 @@ function App() {
 
       <main className="layout">
         {currentRoute === "user-management" ? (
-          settings.userRole?.toLowerCase() === "admin" ? (
+          hasAdminAccess ? (
             <UserManagementPage
               settings={settings}
               onUnauthorized={handleUnauthorizedSession}
