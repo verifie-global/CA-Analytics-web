@@ -90,6 +90,7 @@ export type CallSummaryReport = {
   createdFromUtc: string;
   createdToUtc: string;
   totalCalls: number;
+  totalDurationSeconds: number | null;
   sentiments: CallSummaryReportSentiment[];
   unknownSentimentCount: number;
   averageQaScore: number | null;

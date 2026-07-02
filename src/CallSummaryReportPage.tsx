@@ -36,6 +36,20 @@ const formatPercent = (value: number | null | undefined) =>
 const formatCount = (value: number) =>
   new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
 
+const formatDuration = (value: number | null | undefined) => {
+  if (value == null || !Number.isFinite(value) || value < 0) return EM_DASH;
+
+  const totalMinutes = Math.floor(value / 60);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (totalMinutes > 0) return `${totalMinutes}m`;
+  return `${Math.floor(value)}s`;
+};
+
 const getErrorMessage = (error: unknown) => {
   if (!(error instanceof Error)) return "The report could not be loaded.";
   try {
@@ -168,6 +182,7 @@ export function CallSummaryReportPage({
         <div className={loading ? "report-content report-content-loading" : "report-content"}>
           <div className="report-summary-grid">
             <article><span>Total calls</span><strong>{formatCount(report.totalCalls)}</strong></article>
+            <article><span>Total calls duration</span><strong>{formatDuration(report.totalDurationSeconds)}</strong></article>
             <article><span>Average QA score</span><strong>{formatPercent(report.averageQaScore)}</strong></article>
             <article><span>QA-scored calls</span><strong>{formatCount(report.qaScoredCallCount)}</strong></article>
             <article><span>Unknown sentiment calls</span><strong>{formatCount(report.unknownSentimentCount)}</strong></article>
