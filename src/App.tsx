@@ -22,6 +22,7 @@ import {
   fetchCalls,
   fetchQaProfile,
   fetchQaScoringSettings,
+  hydrateAuthIdentity,
   recalculateQaScore,
   updateQaScore,
   saveQaProfile,
@@ -1542,12 +1543,12 @@ function App() {
 
     try {
       const parsed = JSON.parse(saved) as Partial<AppSettings> & { token?: string };
-      return {
+      return hydrateAuthIdentity({
         ...defaultSettings,
         ...parsed,
         apiToken: parsed.apiToken ?? parsed.token ?? "",
         accessToken: parsed.accessToken ?? "",
-      };
+      });
     } catch {
       return defaultSettings;
     }

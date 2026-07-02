@@ -1464,13 +1464,78 @@ export async function requestAuthToken(settings: AppSettings): Promise<AuthToken
     );
   }
 
-  return (await response.json()) as AuthTokenResponse;
+  const payload = (await response.json()) as unknown;
+  const root = asRecord(payload);
+  const record = Object.keys(asRecord(root.data)).length ? asRecord(root.data) : root;
+  const user = asRecord(record.user ?? record.currentUser ?? record.identity);
+
+  return {
+    accessToken: readString(record, "accessToken", "token", "jwt") ?? "",
+    tokenType: readString(record, "tokenType") ?? null,
+    expiresAtUtc: readString(record, "expiresAtUtc", "expiresAt") ?? null,
+    companyId:
+      readNumber(record, "companyId") ??
+      readStringLike(record, "companyId") ??
+      readNumber(user, "companyId") ??
+      readStringLike(user, "companyId") ??
+      null,
+    companyName:
+      readString(record, "companyName") ?? readString(user, "companyName") ?? null,
+    userRole:
+      readString(record, "userRole", "role") ?? readString(user, "userRole", "role") ?? null,
+    userId:
+      readNumber(record, "userId") ??
+      readStringLike(record, "userId") ??
+      readNumber(user, "id", "userId") ??
+      readStringLike(user, "id", "userId") ??
+      null,
+  };
 }
+
+const readJwtClaims = (accessToken: string): Record<string, unknown> => {
+  try {
+    const encodedPayload = accessToken.split(".")[1];
+    if (!encodedPayload) return {};
+    const normalized = encodedPayload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return asRecord(JSON.parse(atob(padded)));
+  } catch {
+    return {};
+  }
+};
+
+export const hydrateAuthIdentity = (settings: AppSettings): AppSettings => {
+  const claims = readJwtClaims(settings.accessToken);
+  return {
+    ...settings,
+    userRole:
+      (settings.userRole?.trim() || undefined) ??
+      readString(
+        claims,
+        "userRole",
+        "role",
+        "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+      ) ??
+      null,
+    userId:
+      (settings.userId != null && String(settings.userId).trim()
+        ? settings.userId
+        : undefined) ??
+      readStringLike(
+        claims,
+        "userId",
+        "sub",
+        "nameid",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+      ) ??
+      null,
+  };
+};
 
 export async function authorizeSettings(settings: AppSettings): Promise<AppSettings> {
   const auth = await requestAuthToken(settings);
 
-  return {
+  return hydrateAuthIdentity({
     ...settings,
     companyId:
       auth.companyId != null && auth.companyId !== "" ? String(auth.companyId) : settings.companyId,
@@ -1480,7 +1545,7 @@ export async function authorizeSettings(settings: AppSettings): Promise<AppSetti
     expiresAtUtc: auth.expiresAtUtc ?? settings.expiresAtUtc ?? null,
     userRole: auth.userRole ?? settings.userRole ?? null,
     userId: auth.userId ?? settings.userId ?? null,
-  };
+  });
 }
 
 const normalizeAgent = (value: unknown): CompanyAgent => {
