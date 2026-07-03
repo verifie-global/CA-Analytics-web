@@ -4297,8 +4297,38 @@ details.scroll-toggle > summary {
 .agent-options input { width: auto; }
 .permission-denied { max-width: 680px; }
 
+/* Account */
+.account-page { max-width: 760px; }
+.account-card {
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1rem, 3vw, 1.75rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-alt);
+}
+.account-card h3, .account-card > p { margin: 0; }
+.account-card > p { color: var(--muted); font-size: .84rem; }
+.password-form { margin-top: .25rem; }
+.password-input-wrap { position: relative; display: block; }
+.password-input-wrap input { width: 100%; padding-right: 4.5rem; }
+.password-visibility-button {
+  position: absolute;
+  top: 50%;
+  right: .45rem;
+  min-height: auto;
+  padding: .35rem .55rem;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  transform: translateY(-50%);
+  box-shadow: none;
+}
+.password-form-actions { display: flex; justify-content: flex-end; }
+
 @media (max-width: 760px) {
   .user-management-heading { align-items: stretch; flex-direction: column; }
+  .password-form-actions button { width: 100%; }
   .user-table thead { display: none; }
   .user-table, .user-table tbody, .user-table tr, .user-table td { display: block; width: 100%; }
   .user-table tr { padding: .75rem 0; border-bottom: 1px solid var(--line); }

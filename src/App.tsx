@@ -39,6 +39,7 @@ import { QaScoreBadge } from "./QaScoreBadge";
 import { CallSummaryReportPage } from "./CallSummaryReportPage";
 import { WorkflowAutomationsPage } from "./WorkflowAutomationsPage";
 import { UserManagementPage } from "./UserManagementPage";
+import { AccountPage } from "./AccountPage";
 import type {
   AppSettings,
   AskEvidence,
@@ -61,7 +62,7 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "demo-call";
+type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "demo-call" | "account";
 type AppNavKey =
   | "dashboard"
   | "reports"
@@ -73,6 +74,7 @@ type AppNavKey =
   | "qa"
   | "workflow"
   | "users"
+  | "account"
   | "logout";
 
 type KeywordRule = {
@@ -385,6 +387,10 @@ const getRouteFromPath = (pathName: string): AppRoute => {
 
   if (pathName === "/admin/users") {
     return "user-management";
+  }
+
+  if (pathName === "/account") {
+    return "account";
   }
 
   return "dashboard";
@@ -1276,6 +1282,9 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
       {name === "users" && (
         <path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM18 8v6m3-3h-6" {...common} />
       )}
+      {name === "account" && (
+        <path d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0" {...common} />
+      )}
       {name === "logout" && (
         <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12m0 0-4-4m4 4-4 4" {...common} />
       )}
@@ -1687,6 +1696,8 @@ function App() {
             ? "/democall"
             : route === "user-management"
               ? "/admin/users"
+            : route === "account"
+              ? "/account"
             : route === "reports"
               ? "/reports"
             : "/";
@@ -3545,6 +3556,14 @@ function App() {
           onClick: () => navigateTo("user-management" as AppRoute),
         }]
       : []),
+    ...(!settings.apiToken
+      ? [{
+          key: "account" as const,
+          label: "Account",
+          active: currentRoute === "account",
+          onClick: () => navigateTo("account" as AppRoute),
+        }]
+      : []),
   ];
 
   return (
@@ -3759,7 +3778,17 @@ function App() {
         ) : null}
 
       <main className="layout">
-        {currentRoute === "user-management" ? (
+        {currentRoute === "account" ? (
+          settings.apiToken ? (
+            <section className="panel permission-denied" role="alert">
+              <h1>Account unavailable</h1>
+              <p>API-token credentials cannot change a user password.</p>
+              <button type="button" onClick={() => navigateTo("dashboard")}>Return to dashboard</button>
+            </section>
+          ) : (
+            <AccountPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
+          )
+        ) : currentRoute === "user-management" ? (
           hasAdminAccess ? (
             <UserManagementPage
               settings={settings}

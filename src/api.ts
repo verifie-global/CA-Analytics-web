@@ -1546,6 +1546,33 @@ export async function loginUser(
   });
 }
 
+export async function changePassword(
+  settings: AppSettings,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const response = await fetch(buildUrl(settings, "/api/auth/password"), {
+    method: "PUT",
+    headers: authHeaders(settings, jsonHeaders()),
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+  if (response.ok) return;
+
+  const raw = await response.text();
+  let message = raw;
+  try {
+    message = readString(asRecord(JSON.parse(raw)), "message") ?? raw;
+  } catch {
+    // The API may return plain text for unexpected failures.
+  }
+
+  throw createRequestError(
+    message || `Password change failed with status ${response.status}`,
+    response.status,
+  );
+}
+
 const readJwtClaims = (accessToken: string): Record<string, unknown> => {
   try {
     const encodedPayload = accessToken.split(".")[1];
