@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   assignCompanyUserAgents,
   createCompanyUser,
@@ -38,6 +38,7 @@ const formatDate = (value?: string | null) => {
 };
 
 export function UserManagementPage({ settings, onUnauthorized }: Props) {
+  const onUnauthorizedRef = useRef(onUnauthorized);
   const [users, setUsers] = useState<CompanyUser[]>([]);
   const [agents, setAgents] = useState<CompanyAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,16 +50,20 @@ export function UserManagementPage({ settings, onUnauthorized }: Props) {
   const [passwordUser, setPasswordUser] = useState<CompanyUser | null>(null);
   const [newPassword, setNewPassword] = useState("");
 
+  useEffect(() => {
+    onUnauthorizedRef.current = onUnauthorized;
+  }, [onUnauthorized]);
+
   const handleError = useCallback((caught: unknown, fallback: string) => {
     const status = caught && typeof caught === "object" && "status" in caught
       ? (caught as { status?: number }).status : undefined;
     if (status === 401) {
-      onUnauthorized();
+      onUnauthorizedRef.current();
       return;
     }
     setError(status === 403 ? "Permission denied. Administrator access is required." :
       caught instanceof Error ? caught.message : fallback);
-  }, [onUnauthorized]);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
