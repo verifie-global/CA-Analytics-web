@@ -74,7 +74,6 @@ type AppNavKey =
   | "qa"
   | "workflow"
   | "users"
-  | "account"
   | "logout";
 
 type KeywordRule = {
@@ -1281,9 +1280,6 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
       )}
       {name === "users" && (
         <path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM18 8v6m3-3h-6" {...common} />
-      )}
-      {name === "account" && (
-        <path d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0" {...common} />
       )}
       {name === "logout" && (
         <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12m0 0-4-4m4 4-4 4" {...common} />
@@ -3556,14 +3552,6 @@ function App() {
           onClick: () => navigateTo("user-management" as AppRoute),
         }]
       : []),
-    ...(!settings.apiToken
-      ? [{
-          key: "account" as const,
-          label: "Account",
-          active: currentRoute === "account",
-          onClick: () => navigateTo("account" as AppRoute),
-        }]
-      : []),
   ];
 
   return (
@@ -3667,15 +3655,29 @@ function App() {
               </div>
             ) : null}
           </div>
-          <div className="topbar-user">
-            <div className="topbar-user-text">
-              <strong>{settings.companyName || "Workspace"}</strong>
-              <span>{settings.companyId || settings.baseUrl}</span>
+          {settings.apiToken ? (
+            <div className="topbar-user">
+              <div className="topbar-user-text">
+                <strong>{settings.companyName || "Workspace"}</strong>
+                <span>{settings.companyId || settings.baseUrl}</span>
+              </div>
+              <div className="topbar-avatar" aria-hidden="true">{companyInitials || "CA"}</div>
             </div>
-            <div className="topbar-avatar" aria-hidden="true">
-              {companyInitials || "CA"}
-            </div>
-          </div>
+          ) : (
+            <button
+              type="button"
+              className={`topbar-user topbar-account-button ${currentRoute === "account" ? "is-active" : ""}`}
+              onClick={() => navigateTo("account")}
+              aria-label="Open account settings"
+              aria-current={currentRoute === "account" ? "page" : undefined}
+            >
+              <span className="topbar-user-text">
+                <strong>{settings.companyName || "Workspace"}</strong>
+                <span>{settings.companyId || settings.baseUrl}</span>
+              </span>
+              <span className="topbar-avatar" aria-hidden="true">{companyInitials || "CA"}</span>
+            </button>
+          )}
         </div>
 
         {currentRoute === "dashboard" ? (

@@ -399,6 +399,25 @@ textarea:focus {
   gap: 0.75rem;
 }
 
+.topbar-account-button {
+  padding: .25rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+
+.topbar-account-button:hover,
+.topbar-account-button.is-active {
+  background: var(--surface-alt);
+}
+
+.topbar-account-button:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
 .topbar-user-text {
   text-align: right;
   line-height: 1.2;
