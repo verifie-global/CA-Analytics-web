@@ -65,7 +65,7 @@ export type CallSummaryReportSentiment = {
   percentage: number;
 };
 
-export type CallSummaryReportWeakestQuestion = {
+export type QaQuestion = {
   id: string;
   title: string;
   evaluatedCount: number;
@@ -82,7 +82,9 @@ export type CallSummaryReportAgent = {
   callCount: number;
   qaScoredCallCount: number;
   averageQaScore: number | null;
-  weakestQuestion: CallSummaryReportWeakestQuestion | null;
+  weakestQuestion: QaQuestion | null;
+  passedQuestions: QaQuestion[];
+  notPassedQuestions: QaQuestion[];
 };
 
 export type CallSummaryReport = {

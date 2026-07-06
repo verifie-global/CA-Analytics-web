@@ -1,6 +1,6 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { fetchCallSummaryReport } from "./api";
-import type { AppSettings, CallSummaryReport } from "./types";
+import type { AppSettings, CallSummaryReport, QaQuestion } from "./types";
 
 type DateRange = {
   from: string;
@@ -60,6 +60,26 @@ const getErrorMessage = (error: unknown) => {
   }
 };
 
+function QaQuestionCard({ question, tone }: {
+  question: QaQuestion;
+  tone: "weakest" | "passed" | "failed";
+}) {
+  return (
+    <article className={`agent-qa-question agent-qa-question-${tone}`}>
+      <div className="agent-qa-question-heading">
+        <span className="agent-qa-indicator" aria-hidden="true" />
+        <strong>{question.title}</strong>
+        <span>{formatPercent(question.averageScorePercentage)}</span>
+      </div>
+      <dl className="agent-qa-metrics">
+        <div><dt>Evaluated</dt><dd>{formatCount(question.evaluatedCount)}</dd></div>
+        <div><dt>Passed</dt><dd>{formatCount(question.passedCount)}</dd></div>
+        <div><dt>Failed</dt><dd>{formatCount(question.failedCount)}</dd></div>
+      </dl>
+    </article>
+  );
+}
+
 export function CallSummaryReportPage({
   settings,
   onUnauthorized,
@@ -71,6 +91,7 @@ export function CallSummaryReportPage({
   const [report, setReport] = useState<CallSummaryReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(() => new Set());
   const requestId = useRef(0);
   const onUnauthorizedRef = useRef(onUnauthorized);
   onUnauthorizedRef.current = onUnauthorized;
@@ -125,6 +146,15 @@ export function CallSummaryReportPage({
   const handleApply = (event: FormEvent) => {
     event.preventDefault();
     void loadReport(range);
+  };
+
+  const toggleAgent = (agentKey: string) => {
+    setExpandedAgents((current) => {
+      const next = new Set(current);
+      if (next.has(agentKey)) next.delete(agentKey);
+      else next.add(agentKey);
+      return next;
+    });
   };
 
   const sentimentByName = new Map(report?.sentiments.map((item) => [item.sentiment, item]));
@@ -222,37 +252,88 @@ export function CallSummaryReportPage({
                   <thead><tr>
                     <th>Agent</th><th>External ID</th><th>Phone</th><th>Total calls</th>
                     <th>QA-scored</th><th>Avg. QA</th><th>Weakest QA question</th>
-                    <th>Pass / fail</th><th>Avg. question score</th>
+                    <th>Pass / fail</th><th>Avg. question score</th><th>QA details</th>
                   </tr></thead>
                   <tbody>
-                    {report.agents.map((agent) => (
-                      <tr key={agent.agentKey}>
-                        <td data-label="Agent"><strong>{agent.agentName?.trim() || EM_DASH}</strong></td>
-                        <td data-label="External ID">{agent.agentExternalId?.trim() || EM_DASH}</td>
-                        <td data-label="Phone">{agent.agentPhone?.trim() || EM_DASH}</td>
-                        <td data-label="Total calls">{formatCount(agent.callCount)}</td>
-                        <td data-label="QA-scored">{formatCount(agent.qaScoredCallCount)}</td>
-                        <td data-label="Avg. QA">{formatPercent(agent.averageQaScore)}</td>
-                        <td data-label="Weakest QA question">
-                          {agent.weakestQuestion ? (
-                            <span className="question-cell">
-                              <strong>{agent.weakestQuestion.title}</strong>
-                              <small>{formatCount(agent.weakestQuestion.evaluatedCount)} evaluated</small>
-                            </span>
-                          ) : EM_DASH}
-                        </td>
-                        <td data-label="Pass / fail">
-                          {agent.weakestQuestion
-                            ? `${formatCount(agent.weakestQuestion.passedCount)} / ${formatCount(agent.weakestQuestion.failedCount)}`
-                            : EM_DASH}
-                        </td>
-                        <td data-label="Avg. question score">
-                          {agent.weakestQuestion
-                            ? formatPercent(agent.weakestQuestion.averageScorePercentage)
-                            : EM_DASH}
-                        </td>
-                      </tr>
-                    ))}
+                    {report.agents.map((agent) => {
+                      const isExpanded = expandedAgents.has(agent.agentKey);
+                      const passedQuestions = agent.passedQuestions ?? [];
+                      const notPassedQuestions = [...(agent.notPassedQuestions ?? [])].sort(
+                        (left, right) => left.averageScorePercentage - right.averageScorePercentage,
+                      );
+
+                      return (
+                        <Fragment key={agent.agentKey}>
+                          <tr className={isExpanded ? "agent-summary-row is-expanded" : "agent-summary-row"}>
+                            <td data-label="Agent"><strong>{agent.agentName?.trim() || EM_DASH}</strong></td>
+                            <td data-label="External ID">{agent.agentExternalId?.trim() || EM_DASH}</td>
+                            <td data-label="Phone">{agent.agentPhone?.trim() || EM_DASH}</td>
+                            <td data-label="Total calls">{formatCount(agent.callCount)}</td>
+                            <td data-label="QA-scored">{formatCount(agent.qaScoredCallCount)}</td>
+                            <td data-label="Avg. QA">{formatPercent(agent.averageQaScore)}</td>
+                            <td data-label="Weakest QA question">
+                              {agent.weakestQuestion ? (
+                                <span className="question-cell">
+                                  <strong>{agent.weakestQuestion.title}</strong>
+                                  <small>{formatCount(agent.weakestQuestion.evaluatedCount)} evaluated</small>
+                                </span>
+                              ) : EM_DASH}
+                            </td>
+                            <td data-label="Pass / fail">
+                              {agent.weakestQuestion
+                                ? `${formatCount(agent.weakestQuestion.passedCount)} / ${formatCount(agent.weakestQuestion.failedCount)}`
+                                : EM_DASH}
+                            </td>
+                            <td data-label="Avg. question score">
+                              {agent.weakestQuestion
+                                ? formatPercent(agent.weakestQuestion.averageScorePercentage)
+                                : EM_DASH}
+                            </td>
+                            <td data-label="QA details" className="agent-details-cell">
+                              <button
+                                type="button"
+                                className="agent-details-toggle"
+                                aria-expanded={isExpanded}
+                                aria-controls={`agent-qa-${agent.agentKey}`}
+                                onClick={() => toggleAgent(agent.agentKey)}
+                              >
+                                {isExpanded ? "Hide" : "View"} <span aria-hidden="true">⌄</span>
+                              </button>
+                            </td>
+                          </tr>
+                          {isExpanded ? (
+                            <tr className="agent-qa-details-row">
+                              <td colSpan={10}>
+                                <div className="agent-qa-details" id={`agent-qa-${agent.agentKey}`}>
+                                  <section className="agent-qa-section agent-qa-weakest">
+                                    <h4>Weakest QA question</h4>
+                                    {agent.weakestQuestion ? (
+                                      <QaQuestionCard question={agent.weakestQuestion} tone="weakest" />
+                                    ) : <p className="agent-qa-empty">No weakest question</p>}
+                                  </section>
+                                  <section className="agent-qa-section">
+                                    <h4>Passed questions <span>{formatCount(passedQuestions.length)}</span></h4>
+                                    <div className="agent-qa-list">
+                                      {passedQuestions.length > 0 ? passedQuestions.map((question) => (
+                                        <QaQuestionCard key={question.id} question={question} tone="passed" />
+                                      )) : <p className="agent-qa-empty">No passed questions</p>}
+                                    </div>
+                                  </section>
+                                  <section className="agent-qa-section">
+                                    <h4>Not-passed questions <span>{formatCount(notPassedQuestions.length)}</span></h4>
+                                    <div className="agent-qa-list">
+                                      {notPassedQuestions.length > 0 ? notPassedQuestions.map((question) => (
+                                        <QaQuestionCard key={question.id} question={question} tone="failed" />
+                                      )) : <p className="agent-qa-empty">No failed questions</p>}
+                                    </div>
+                                  </section>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
