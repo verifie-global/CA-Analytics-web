@@ -2043,6 +2043,7 @@ function App() {
     () => Boolean(settings.baseUrl && settings.companyId && settings.accessToken),
     [settings],
   );
+  const canManageQaScore = hasAdminAccess;
 
   const updateCallFilters = (patch: Partial<CallFilters>) => {
     setFilters((current) => ({
@@ -2476,6 +2477,10 @@ function App() {
     if (!detail?.conversationId) {
       return;
     }
+    if (!canManageQaScore) {
+      setQaRecalculateError("Administrator access is required to recalculate QA scores.");
+      return;
+    }
 
     setQaRecalculating(true);
     setQaRecalculateError("");
@@ -2533,6 +2538,12 @@ function App() {
   ) => {
     if (!detail?.conversationId) {
       return;
+    }
+    if (!canManageQaScore) {
+      throw Object.assign(
+        new Error("Administrator access is required to edit QA questionnaires."),
+        { status: 403 },
+      );
     }
 
     const updatedQa = await updateQaScore(
@@ -4598,6 +4609,7 @@ function App() {
                         recalculateError={qaRecalculateError}
                         generatedAtLabel={formatDate(detail.qa?.evaluation?.generatedAtUtc)}
                         initiallyExpanded
+                        canManageQaScore={canManageQaScore}
                         onSaveManualCorrection={handleSaveManualQa}
                       />
                     </DetailAccordion>

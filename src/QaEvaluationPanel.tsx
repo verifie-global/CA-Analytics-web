@@ -11,6 +11,7 @@ type QaEvaluationPanelProps = {
   recalculateError?: string;
   generatedAtLabel?: string;
   initiallyExpanded?: boolean;
+  canManageQaScore: boolean;
   onSaveManualCorrection: (
     reason: string,
     questionResults: QaQuestionCorrection[],
@@ -25,6 +26,7 @@ export function QaEvaluationPanel({
   recalculateError,
   generatedAtLabel,
   initiallyExpanded = false,
+  canManageQaScore,
   onSaveManualCorrection,
 }: QaEvaluationPanelProps) {
   const evaluation = qa?.evaluation;
@@ -43,6 +45,14 @@ export function QaEvaluationPanel({
       setDrafts({});
     }
   }, [qa, isEditing]);
+
+  useEffect(() => {
+    if (!canManageQaScore && isEditing) {
+      setIsEditing(false);
+      setDrafts({});
+      setSaveError("");
+    }
+  }, [canManageQaScore, isEditing]);
 
   const changedQuestions = useMemo(
     () =>
@@ -71,6 +81,11 @@ export function QaEvaluationPanel({
   }, [drafts, evaluation?.questionResults]);
 
   const startEditing = () => {
+    if (!canManageQaScore) {
+      setSaveError("You are not authorized to edit this QA questionnaire.");
+      return;
+    }
+
     setDrafts(
       Object.fromEntries(
         (evaluation?.questionResults ?? []).map((question) => [
@@ -94,6 +109,11 @@ export function QaEvaluationPanel({
   };
 
   const saveCorrection = async () => {
+    if (!canManageQaScore) {
+      setSaveError("You are not authorized to edit this QA questionnaire.");
+      return;
+    }
+
     if (!correctionReason.trim()) {
       setSaveError("Enter an overall correction reason before saving.");
       return;
@@ -135,7 +155,7 @@ export function QaEvaluationPanel({
             <h4>QA evaluation</h4>
           </div>
           <div className="qa-panel-actions">
-            {isCompleted ? (
+            {isCompleted && canManageQaScore ? (
               <button type="button" className="secondary-button small-button" onClick={onRecalculate} disabled={isRecalculating}>
                 {isRecalculating ? "Recalculating..." : "Recalculate QA Score"}
               </button>
@@ -169,12 +189,12 @@ export function QaEvaluationPanel({
           <h4>QA evaluation</h4>
         </div>
         <div className="qa-panel-actions">
-          {isCompleted ? (
+          {isCompleted && canManageQaScore ? (
             <button type="button" className="secondary-button small-button" onClick={onRecalculate} disabled={isRecalculating}>
               {isRecalculating ? "Recalculating..." : "Recalculate QA Score"}
             </button>
           ) : null}
-          {!qaNotApplicable && evaluation?.questionResults?.length ? (
+          {canManageQaScore && !qaNotApplicable && evaluation?.questionResults?.length ? (
             <button
               type="button"
               className="secondary-button small-button"
