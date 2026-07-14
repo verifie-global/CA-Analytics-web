@@ -32,6 +32,8 @@ export function QaEvaluationPanel({
   const evaluation = qa?.evaluation;
   const [isCollapsed, setIsCollapsed] = useState(!initiallyExpanded);
   const qaNotApplicable = isQaNotApplicable(qa);
+  const isUnscored = !qa || qa.score == null;
+  const canRecalculate = canManageQaScore && (isCompleted || isUnscored);
   const notApplicableReason = formatQaNotApplicableReason(qa?.notApplicableReason);
   const [isEditing, setIsEditing] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, { score: 0 | 1; reason: string }>>({});
@@ -143,7 +145,7 @@ export function QaEvaluationPanel({
     }
   };
 
-  if (!qa && !isCompleted && !recalculateError) {
+  if (!qa && !isCompleted && !canRecalculate && !recalculateError) {
     return null;
   }
 
@@ -155,7 +157,7 @@ export function QaEvaluationPanel({
             <h4>QA evaluation</h4>
           </div>
           <div className="qa-panel-actions">
-            {isCompleted && canManageQaScore ? (
+            {canRecalculate ? (
               <button type="button" className="secondary-button small-button" onClick={onRecalculate} disabled={isRecalculating}>
                 {isRecalculating ? "Recalculating..." : "Recalculate QA Score"}
               </button>
@@ -189,7 +191,7 @@ export function QaEvaluationPanel({
           <h4>QA evaluation</h4>
         </div>
         <div className="qa-panel-actions">
-          {isCompleted && canManageQaScore ? (
+          {canRecalculate ? (
             <button type="button" className="secondary-button small-button" onClick={onRecalculate} disabled={isRecalculating}>
               {isRecalculating ? "Recalculating..." : "Recalculate QA Score"}
             </button>
