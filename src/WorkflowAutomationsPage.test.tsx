@@ -27,6 +27,12 @@ describe("WorkflowAutomationsPage platform forms", () => {
     await user.click(screen.getAllByRole("button", { name: "Create workflow" })[0]);
 
     const platform = screen.getByLabelText("Platform");
+    expect(screen.getByRole("option", { name: "Zapier" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Make" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "n8n" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Pipedream" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Power Automate" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Custom Webhook" })).toBeTruthy();
     await user.selectOptions(platform, "jira");
     expect(screen.getByTestId("jira-fields")).toBeTruthy();
     expect(screen.queryByTestId("bitrix24-fields")).toBeNull();

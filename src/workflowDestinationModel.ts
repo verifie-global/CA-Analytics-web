@@ -44,7 +44,10 @@ export const emptyBitrix24Lead = (): Bitrix24LeadOptions => ({
 });
 
 export const platformLabel = (platform: WorkflowPlatform) =>
-  platform === "jira" ? "Jira" : platform === "bitrix24" ? "Bitrix24" : "Webhook";
+  platform === "jira" ? "Jira" : platform === "bitrix24" ? "Bitrix24" : platform;
+
+export const isWebhookPlatform = (platform: WorkflowPlatform) =>
+  platform !== "jira" && platform !== "bitrix24";
 
 const base64Utf8 = (value: string) => {
   const bytes = new TextEncoder().encode(value);
@@ -94,7 +97,7 @@ export const buildWorkflowDestinationRequest = (
     ...draft,
     name: draft.name.trim(),
     webhookUrl: draft.webhookUrl.trim(),
-    headers: draft.platform === "jira" ? headers : draft.platform === "webhook" ? headers : {},
+    headers: draft.platform === "bitrix24" ? {} : headers,
     payloadOptions: payloadForPlatform(draft.platform, draft.payloadOptions),
   };
 };

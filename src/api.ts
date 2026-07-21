@@ -724,11 +724,18 @@ const normalizeWorkflowPayloadOptions = (value: unknown): WorkflowDestinationPay
 };
 
 const normalizeWorkflowPlatform = (value: unknown): WorkflowPlatform => {
-  const platform = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (platform === "jira" || platform === "bitrix24") {
-    return platform;
-  }
-  return "webhook";
+  const platform = typeof value === "string" ? value.trim() : "";
+  const knownPlatforms: WorkflowPlatform[] = [
+    "Zapier",
+    "Make",
+    "n8n",
+    "Pipedream",
+    "Power Automate",
+    "Custom Webhook",
+    "jira",
+    "bitrix24",
+  ];
+  return knownPlatforms.find((item) => item.toLowerCase() === platform.toLowerCase()) ?? "Custom Webhook";
 };
 
 const normalizeWorkflowDestination = (value: unknown): WorkflowDestination => {

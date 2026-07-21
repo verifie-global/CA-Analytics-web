@@ -32,6 +32,16 @@ const baseDraft = (platform: WorkflowDestinationInput["platform"]): WorkflowDest
 });
 
 describe("workflow destination request mapping", () => {
+  it("preserves legacy webhook platform names and headers", () => {
+    const draft = baseDraft("Make");
+    draft.headers["X-Source"] = "call-analytics";
+
+    const request = buildWorkflowDestinationRequest(draft, { email: "", apiToken: "" });
+
+    expect(request.platform).toBe("Make");
+    expect(request.headers).toEqual({ "X-Source": "call-analytics" });
+  });
+
   it("maps Jira options and generates Basic authorization without exposing it in previews", () => {
     const draft = baseDraft("jira");
     draft.payloadOptions.jiraIssue = {

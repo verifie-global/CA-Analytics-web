@@ -395,7 +395,15 @@ export type WorkflowDestinationPayloadOptions = Partial<WebhookPayloadOptions> &
   bitrix24Lead?: Bitrix24LeadOptions;
 };
 
-export type WorkflowPlatform = "webhook" | "jira" | "bitrix24";
+export type WorkflowPlatform =
+  | "Zapier"
+  | "Make"
+  | "n8n"
+  | "Pipedream"
+  | "Power Automate"
+  | "Custom Webhook"
+  | "jira"
+  | "bitrix24";
 
 export type WorkflowDestination = {
   id: string;

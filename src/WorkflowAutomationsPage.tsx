@@ -20,6 +20,7 @@ import {
   emptyBitrix24Lead,
   emptyJiraIssue,
   emptyWebhookOptions,
+  isWebhookPlatform,
   platformLabel,
 } from "./workflowDestinationModel";
 
@@ -37,7 +38,12 @@ type KeyValueRow = {
 type WorkflowDraft = WorkflowDestinationInput;
 
 const platformPresets: { value: WorkflowPlatform; label: string }[] = [
-  { value: "webhook", label: "Webhook" },
+  { value: "Zapier", label: "Zapier" },
+  { value: "Make", label: "Make" },
+  { value: "n8n", label: "n8n" },
+  { value: "Pipedream", label: "Pipedream" },
+  { value: "Power Automate", label: "Power Automate" },
+  { value: "Custom Webhook", label: "Custom Webhook" },
   { value: "jira", label: "Jira" },
   { value: "bitrix24", label: "Bitrix24" },
 ];
@@ -50,7 +56,7 @@ const createRowId = () =>
 
 const emptyDraft = (): WorkflowDraft => ({
   name: "",
-  platform: "webhook",
+  platform: "Custom Webhook",
   eventType: "analysis.completed",
   isEnabled: true,
   webhookUrl: "",
@@ -768,7 +774,7 @@ export function WorkflowAutomationsPage({
               </label>
             </div>
 
-            {draft.platform === "webhook" ? <div className="editor-group workflow-form-section">
+            {isWebhookPlatform(draft.platform) ? <div className="editor-group workflow-form-section">
               <div className="editor-group-head">
                 <h3>Headers</h3>
               </div>
@@ -935,7 +941,7 @@ export function WorkflowAutomationsPage({
               </div>
             </div>
 
-            {draft.platform === "webhook" ? <div className="editor-group workflow-form-section">
+            {isWebhookPlatform(draft.platform) ? <div className="editor-group workflow-form-section">
               <div className="editor-group-head">
                 <h3>Payload options</h3>
               </div>
