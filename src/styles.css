@@ -4071,6 +4071,16 @@ details.scroll-toggle > summary {
   min-height: 100%;
 }
 
+.workflow-inline-reveal {
+  justify-self: start;
+  margin-top: 0.4rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.78rem;
+}
+
 .workflow-kv-list {
   display: grid;
   gap: 0.65rem;

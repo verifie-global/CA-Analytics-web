@@ -359,7 +359,7 @@ export type WorkflowDestinationFilters = {
   isInbound: boolean | null;
 };
 
-export type WorkflowDestinationPayloadOptions = {
+export type WebhookPayloadOptions = {
   includeTranscript: boolean;
   includeRedactedTranscript: boolean;
   includeAnalysisJson: boolean;
@@ -368,10 +368,39 @@ export type WorkflowDestinationPayloadOptions = {
   customFields: Record<string, string>;
 };
 
+export type JiraIssueOptions = {
+  projectKey: string;
+  issueType: string;
+  summary: string | null;
+  priorityName: string | null;
+  assigneeAccountId: string | null;
+  labels: string[];
+  includeAnalysisSummaryInDescription: boolean;
+  includeTranscriptInDescription: boolean;
+  additionalFields: Record<string, string>;
+};
+
+export type Bitrix24LeadOptions = {
+  title: string | null;
+  sourceId: string | null;
+  statusId: string | null;
+  assignedById: number | null;
+  opened: boolean | null;
+  includeAnalysisSummaryInComments: boolean;
+  additionalFields: Record<string, string>;
+};
+
+export type WorkflowDestinationPayloadOptions = Partial<WebhookPayloadOptions> & {
+  jiraIssue?: JiraIssueOptions;
+  bitrix24Lead?: Bitrix24LeadOptions;
+};
+
+export type WorkflowPlatform = "webhook" | "jira" | "bitrix24";
+
 export type WorkflowDestination = {
   id: string;
   name: string;
-  platform: string;
+  platform: WorkflowPlatform;
   eventType: string;
   isEnabled: boolean;
   webhookUrl: string;
@@ -403,6 +432,7 @@ export type WorkflowDelivery = {
 
 export type WorkflowTestResult = {
   ok: boolean;
+  deliveryStatus?: string | null;
   status: number;
   responseStatusCode?: number | null;
   responseBody?: string | null;

@@ -12,8 +12,16 @@ import type {
   WorkflowDelivery,
   WorkflowDestination,
   WorkflowDestinationInput,
+  WorkflowPlatform,
   WorkflowTestResult,
 } from "./types";
+import {
+  buildWorkflowDestinationRequest,
+  emptyBitrix24Lead,
+  emptyJiraIssue,
+  emptyWebhookOptions,
+  platformLabel,
+} from "./workflowDestinationModel";
 
 type WorkflowAutomationsPageProps = {
   settings: AppSettings;
@@ -28,14 +36,11 @@ type KeyValueRow = {
 
 type WorkflowDraft = WorkflowDestinationInput;
 
-const platformPresets = [
-  "Zapier",
-  "Make",
-  "n8n",
-  "Pipedream",
-  "Power Automate",
-  "Custom Webhook",
-] as const;
+const platformPresets: { value: WorkflowPlatform; label: string }[] = [
+  { value: "webhook", label: "Webhook" },
+  { value: "jira", label: "Jira" },
+  { value: "bitrix24", label: "Bitrix24" },
+];
 
 const sentimentOptions = ["positive", "neutral", "negative"];
 const urgencyOptions = ["low", "medium", "high", "critical"];
@@ -45,7 +50,7 @@ const createRowId = () =>
 
 const emptyDraft = (): WorkflowDraft => ({
   name: "",
-  platform: "Custom Webhook",
+  platform: "webhook",
   eventType: "analysis.completed",
   isEnabled: true,
   webhookUrl: "",
@@ -64,14 +69,9 @@ const emptyDraft = (): WorkflowDraft => ({
     isInbound: null,
   },
   payloadOptions: {
-    includeTranscript: false,
-    includeRedactedTranscript: true,
-    includeAnalysisJson: true,
-    includeDiarization: true,
-    includeQaEvaluationJson: true,
-    customFields: {
-      source: "call-analytics",
-    },
+    ...emptyWebhookOptions(),
+    jiraIssue: emptyJiraIssue(),
+    bitrix24Lead: emptyBitrix24Lead(),
   },
   metadata: {},
 });
@@ -234,9 +234,14 @@ export function WorkflowAutomationsPage({
   const [customFieldRows, setCustomFieldRows] = useState<KeyValueRow[]>(() =>
     toKeyValueRows({ source: "call-analytics" }),
   );
-  const [metadataRows, setMetadataRows] = useState<KeyValueRow[]>(() => toKeyValueRows({}));
+  const [integrationFieldRows, setIntegrationFieldRows] = useState<KeyValueRow[]>(() =>
+    toKeyValueRows({}),
+  );
+  const [jiraEmail, setJiraEmail] = useState("");
+  const [jiraApiToken, setJiraApiToken] = useState("");
+  const [jiraLabels, setJiraLabels] = useState("");
+  const [showBitrixUrl, setShowBitrixUrl] = useState(false);
   const [departmentInput, setDepartmentInput] = useState("");
-  const [showJsonPreview, setShowJsonPreview] = useState(false);
   const [testingDestination, setTestingDestination] = useState<WorkflowDestination | null>(null);
   const [testConversationId, setTestConversationId] = useState("");
   const [testResult, setTestResult] = useState<WorkflowTestResult | null>(null);
@@ -246,17 +251,39 @@ export function WorkflowAutomationsPage({
   const [deliveriesLoading, setDeliveriesLoading] = useState(false);
   const [deliveriesError, setDeliveriesError] = useState("");
 
-  const requestBody = useMemo(
-    () => ({
+  const requestBody = useMemo(() => {
+    const jiraIssue = draft.payloadOptions.jiraIssue ?? emptyJiraIssue();
+    const bitrix24Lead = draft.payloadOptions.bitrix24Lead ?? emptyBitrix24Lead();
+    const payloadOptions = {
+      ...draft.payloadOptions,
+      customFields: fromKeyValueRows(customFieldRows),
+      jiraIssue: {
+        ...jiraIssue,
+        labels: jiraLabels.split(",").map((item) => item.trim()).filter(Boolean),
+        additionalFields:
+          draft.platform === "jira"
+            ? fromKeyValueRows(integrationFieldRows)
+            : jiraIssue.additionalFields,
+      },
+      bitrix24Lead: {
+        ...bitrix24Lead,
+        additionalFields:
+          draft.platform === "bitrix24"
+            ? fromKeyValueRows(integrationFieldRows)
+            : bitrix24Lead.additionalFields,
+      },
+    };
+
+    return buildWorkflowDestinationRequest({
       ...draft,
       headers: fromKeyValueRows(headersRows),
-      metadata: fromKeyValueRows(metadataRows),
-      payloadOptions: {
-        ...draft.payloadOptions,
-        customFields: fromKeyValueRows(customFieldRows),
-      },
-    }),
-    [customFieldRows, draft, headersRows, metadataRows],
+      payloadOptions,
+    }, { email: jiraEmail, apiToken: jiraApiToken });
+  }, [customFieldRows, draft, headersRows, integrationFieldRows, jiraApiToken, jiraEmail, jiraLabels]);
+
+  const hasConfiguredJiraAuth = Boolean(
+    editingDestination &&
+      Object.keys(editingDestination.headers).some((key) => key.toLowerCase() === "authorization"),
   );
 
   const validationError = useMemo(() => {
@@ -264,17 +291,29 @@ export function WorkflowAutomationsPage({
       return "Name is required.";
     }
 
+    if (requestBody.platform === "jira") {
+      const jira = requestBody.payloadOptions.jiraIssue;
+      const isNewAuthorization = !hasConfiguredJiraAuth;
+      if (!jiraEmail.trim() && isNewAuthorization) return "Jira account email is required.";
+      if (!jiraApiToken && isNewAuthorization) return "Jira API token is required.";
+      if ((jiraEmail.trim() && !jiraApiToken) || (!jiraEmail.trim() && jiraApiToken)) {
+        return "Enter both Jira email and API token to replace the configured credentials.";
+      }
+      if (!jira?.projectKey.trim()) return "Jira project key is required.";
+      if (!jira?.issueType.trim()) return "Jira issue type is required.";
+    }
+
     try {
       const url = new URL(requestBody.webhookUrl);
       if (url.protocol !== "https:" && url.protocol !== "http:") {
-        return "Webhook URL must start with http:// or https://.";
+        return "URL must start with http:// or https://.";
       }
     } catch {
-      return "Enter a valid webhook URL.";
+      return `Enter a valid ${requestBody.platform === "jira" ? "Jira site" : requestBody.platform === "bitrix24" ? "Bitrix24 webhook" : "webhook"} URL.`;
     }
 
     return "";
-  }, [requestBody.name, requestBody.webhookUrl]);
+  }, [hasConfiguredJiraAuth, jiraApiToken, jiraEmail, requestBody]);
 
   const loadDestinations = async () => {
     setLoading(true);
@@ -305,10 +344,13 @@ export function WorkflowAutomationsPage({
     setEditingDestination(null);
     setDraft(nextDraft);
     setHeadersRows(toKeyValueRows(nextDraft.headers));
-    setCustomFieldRows(toKeyValueRows(nextDraft.payloadOptions.customFields));
-    setMetadataRows(toKeyValueRows(nextDraft.metadata));
+    setCustomFieldRows(toKeyValueRows(nextDraft.payloadOptions.customFields ?? {}));
+    setIntegrationFieldRows(toKeyValueRows({}));
+    setJiraEmail("");
+    setJiraApiToken("");
+    setJiraLabels("");
+    setShowBitrixUrl(false);
     setDepartmentInput("");
-    setShowJsonPreview(false);
     setIsFormOpen(true);
     setErrorMessage("");
     setSuccessMessage("");
@@ -328,10 +370,21 @@ export function WorkflowAutomationsPage({
       metadata: destination.metadata,
     });
     setHeadersRows(toKeyValueRows(destination.headers));
-    setCustomFieldRows(toKeyValueRows(destination.payloadOptions.customFields));
-    setMetadataRows(toKeyValueRows(destination.metadata));
+    setCustomFieldRows(toKeyValueRows(destination.payloadOptions.customFields ?? {}));
+    setIntegrationFieldRows(
+      toKeyValueRows(
+        destination.platform === "jira"
+          ? destination.payloadOptions.jiraIssue?.additionalFields ?? {}
+          : destination.platform === "bitrix24"
+            ? destination.payloadOptions.bitrix24Lead?.additionalFields ?? {}
+            : {},
+      ),
+    );
+    setJiraEmail("");
+    setJiraApiToken("");
+    setJiraLabels(destination.payloadOptions.jiraIssue?.labels.join(", ") ?? "");
+    setShowBitrixUrl(false);
     setDepartmentInput(destination.filters.departments.join(", "));
-    setShowJsonPreview(false);
     setIsFormOpen(true);
     setErrorMessage("");
     setSuccessMessage("");
@@ -348,8 +401,15 @@ export function WorkflowAutomationsPage({
     setSuccessMessage("");
 
     try {
+      const shouldPreserveJiraHeaders =
+        editingDestination && requestBody.platform === "jira" && !jiraEmail.trim() && !jiraApiToken;
+      const { headers: _preservedHeaders, ...requestWithoutHeaders } = requestBody;
       const saved = editingDestination
-        ? await updateWorkflowDestination(settings, editingDestination.id, requestBody)
+        ? await updateWorkflowDestination(
+            settings,
+            editingDestination.id,
+            shouldPreserveJiraHeaders ? requestWithoutHeaders : requestBody,
+          )
         : await createWorkflowDestination(settings, requestBody);
 
       setDestinations((current) => {
@@ -402,7 +462,7 @@ export function WorkflowAutomationsPage({
   };
 
   const handleDelete = async (destination: WorkflowDestination) => {
-    const confirmed = window.confirm(`Delete "${destination.name}"? This workflow will stop sending webhooks.`);
+    const confirmed = window.confirm(`Delete "${destination.name}"? This destination will stop receiving analyses.`);
     if (!confirmed) {
       return;
     }
@@ -504,6 +564,46 @@ export function WorkflowAutomationsPage({
     }));
   };
 
+  const updateJiraIssue = (
+    patch: Partial<NonNullable<WorkflowDraft["payloadOptions"]["jiraIssue"]>>,
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      payloadOptions: {
+        ...current.payloadOptions,
+        jiraIssue: { ...(current.payloadOptions.jiraIssue ?? emptyJiraIssue()), ...patch },
+      },
+    }));
+  };
+
+  const updateBitrix24Lead = (
+    patch: Partial<NonNullable<WorkflowDraft["payloadOptions"]["bitrix24Lead"]>>,
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      payloadOptions: {
+        ...current.payloadOptions,
+        bitrix24Lead: {
+          ...(current.payloadOptions.bitrix24Lead ?? emptyBitrix24Lead()),
+          ...patch,
+        },
+      },
+    }));
+  };
+
+  const handlePlatformChange = (platform: WorkflowPlatform) => {
+    setDraft((current) => ({ ...current, platform }));
+    setIntegrationFieldRows(
+      toKeyValueRows(
+        platform === "jira"
+          ? draft.payloadOptions.jiraIssue?.additionalFields ?? {}
+          : platform === "bitrix24"
+            ? draft.payloadOptions.bitrix24Lead?.additionalFields ?? {}
+            : {},
+      ),
+    );
+  };
+
   const updateDepartments = (value: string) => {
     setDepartmentInput(value);
     updateFilter(
@@ -520,7 +620,7 @@ export function WorkflowAutomationsPage({
       <div className="workflow-page-head">
         <div className="section-heading">
           <h2>Workflow Automations</h2>
-          <p>Send completed call analyses to no-code tools and webhook receivers.</p>
+          <p>Send completed call analyses to Webhook, Jira, and Bitrix24 destinations.</p>
         </div>
         <button type="button" onClick={openCreateForm}>
           Create workflow
@@ -538,7 +638,7 @@ export function WorkflowAutomationsPage({
       ) : destinations.length === 0 ? (
         <div className="empty-state">
           <h3>No workflow automations</h3>
-          <p>Create a workflow to send completed call analyses to Zapier, Make, n8n, Pipedream, Power Automate, or a custom webhook.</p>
+          <p>Create a workflow to deliver completed analyses to a webhook, Jira project, or Bitrix24 CRM.</p>
           <button type="button" onClick={openCreateForm}>
             Create workflow
           </button>
@@ -557,7 +657,7 @@ export function WorkflowAutomationsPage({
           {destinations.map((destination) => (
             <article key={destination.id} className="workflow-table workflow-row">
               <strong>{destination.name || "Untitled workflow"}</strong>
-              <span>{destination.platform}</span>
+              <span>{platformLabel(destination.platform)}</span>
               <span>{destination.eventType}</span>
               <label className="workflow-inline-toggle">
                 <input
@@ -569,7 +669,9 @@ export function WorkflowAutomationsPage({
                   {destination.isEnabled ? "Enabled" : "Disabled"}
                 </span>
               </label>
-              <span title={destination.webhookUrl}>{truncateUrl(destination.webhookUrl)}</span>
+              <span title={destination.platform === "bitrix24" ? "Credential-bearing URL hidden" : destination.webhookUrl}>
+                {destination.platform === "bitrix24" ? "Configured" : truncateUrl(destination.webhookUrl)}
+              </span>
               <span>
                 {formatDate(destination.updatedAt ?? destination.createdAt)}
                 <small>Created {formatDate(destination.createdAt)}</small>
@@ -587,7 +689,7 @@ export function WorkflowAutomationsPage({
                     setTestResult(null);
                   }}
                 >
-                  Test
+                  Test Integration
                 </button>
                 <button type="button" className="secondary-button small-button" onClick={() => void openDeliveries(destination)}>
                   History
@@ -606,7 +708,7 @@ export function WorkflowAutomationsPage({
           <form className="modal-card workflow-modal-card" onSubmit={handleSubmit} onClick={(event) => event.stopPropagation()}>
             <div className="section-heading">
               <h2>{editingDestination ? "Edit workflow" : "Create workflow"}</h2>
-              <p>Choose a destination, add any filtering rules, and control what analysis data is sent.</p>
+              <p>Choose a platform, configure its fields, and control which analyses are delivered.</p>
             </div>
 
             <div className="workflow-form-grid">
@@ -622,28 +724,25 @@ export function WorkflowAutomationsPage({
                 <span className="qa-field-label">Platform</span>
                 <select
                   value={draft.platform}
-                  onChange={(event) => setDraft((current) => ({ ...current, platform: event.target.value }))}
+                  onChange={(event) => handlePlatformChange(event.target.value as WorkflowPlatform)}
                 >
                   {platformPresets.map((platform) => (
-                    <option key={platform} value={platform}>
-                      {platform}
+                    <option key={platform.value} value={platform.value}>
+                      {platform.label}
                     </option>
                   ))}
                 </select>
               </label>
               <label>
                 <span className="qa-field-label">Event type</span>
-                <select
-                  value={draft.eventType}
-                  onChange={(event) => setDraft((current) => ({ ...current, eventType: event.target.value }))}
-                >
+                <select value={draft.eventType} disabled>
                   <option value="analysis.completed">analysis.completed</option>
                 </select>
               </label>
               <label className="qa-scoring-toggle workflow-enabled-toggle">
                 <span>
                   <span className="qa-field-label">Enabled</span>
-                  <small className="qa-field-helper">Disabled workflows are saved but do not send webhooks.</small>
+                  <small className="qa-field-helper">Disabled destinations are saved but do not deliver events.</small>
                 </span>
                 <input
                   type="checkbox"
@@ -652,16 +751,24 @@ export function WorkflowAutomationsPage({
                 />
               </label>
               <label className="full-width">
-                <span className="qa-field-label">Webhook URL</span>
+                <span className="qa-field-label">
+                  {draft.platform === "jira" ? "Jira site URL" : draft.platform === "bitrix24" ? "Incoming webhook URL" : "Webhook URL"}
+                </span>
                 <input
+                  type={draft.platform === "bitrix24" && !showBitrixUrl ? "password" : "url"}
                   value={draft.webhookUrl}
                   onChange={(event) => setDraft((current) => ({ ...current, webhookUrl: event.target.value }))}
-                  placeholder="https://hooks.zapier.com/hooks/catch/xxx/yyy"
+                  placeholder={draft.platform === "jira" ? "https://company.atlassian.net" : draft.platform === "bitrix24" ? "https://company.bitrix24.com/rest/7/secret/" : "https://example.com/hooks/call-analysis"}
                 />
+                {draft.platform === "bitrix24" ? (
+                  <button type="button" className="workflow-inline-reveal" onClick={() => setShowBitrixUrl((value) => !value)}>
+                    {showBitrixUrl ? "Hide URL" : "Reveal URL"}
+                  </button>
+                ) : null}
               </label>
             </div>
 
-            <div className="editor-group workflow-form-section">
+            {draft.platform === "webhook" ? <div className="editor-group workflow-form-section">
               <div className="editor-group-head">
                 <h3>Headers</h3>
               </div>
@@ -671,7 +778,74 @@ export function WorkflowAutomationsPage({
                 keyPlaceholder="X-Source"
                 valuePlaceholder="call-analytics"
               />
-            </div>
+            </div> : null}
+
+            {draft.platform === "jira" ? (
+              <div className="editor-group workflow-form-section" data-testid="jira-fields">
+                <div className="editor-group-head"><h3>Jira issue</h3></div>
+                <div className="workflow-form-grid">
+                  <label>
+                    <span className="qa-field-label">Jira account email</span>
+                    <input type="email" value={jiraEmail} onChange={(event) => setJiraEmail(event.target.value)} placeholder="agent@company.com" autoComplete="off" />
+                    {hasConfiguredJiraAuth ? <small className="qa-field-helper">Configured. Enter email and token only to replace credentials.</small> : null}
+                  </label>
+                  <label>
+                    <span className="qa-field-label">Jira API token</span>
+                    <input type="password" value={jiraApiToken} onChange={(event) => setJiraApiToken(event.target.value)} placeholder={hasConfiguredJiraAuth ? "Configured" : "Required"} autoComplete="new-password" />
+                  </label>
+                  <label>
+                    <span className="qa-field-label">Project key</span>
+                    <input value={draft.payloadOptions.jiraIssue?.projectKey ?? ""} onChange={(event) => updateJiraIssue({ projectKey: event.target.value })} placeholder="SUP" />
+                  </label>
+                  <label>
+                    <span className="qa-field-label">Issue type</span>
+                    <input value={draft.payloadOptions.jiraIssue?.issueType ?? "Task"} onChange={(event) => updateJiraIssue({ issueType: event.target.value })} placeholder="Task" />
+                  </label>
+                  <label className="full-width">
+                    <span className="qa-field-label">Custom summary</span>
+                    <input value={draft.payloadOptions.jiraIssue?.summary ?? ""} onChange={(event) => updateJiraIssue({ summary: event.target.value || null })} placeholder="Optional; generated from the analysis by default" />
+                  </label>
+                  <label>
+                    <span className="qa-field-label">Priority name</span>
+                    <input value={draft.payloadOptions.jiraIssue?.priorityName ?? ""} onChange={(event) => updateJiraIssue({ priorityName: event.target.value || null })} placeholder="High" />
+                  </label>
+                  <label>
+                    <span className="qa-field-label">Assignee account ID</span>
+                    <input value={draft.payloadOptions.jiraIssue?.assigneeAccountId ?? ""} onChange={(event) => updateJiraIssue({ assigneeAccountId: event.target.value || null })} placeholder="Optional account ID" />
+                  </label>
+                  <label className="full-width">
+                    <span className="qa-field-label">Labels</span>
+                    <input value={jiraLabels} onChange={(event) => setJiraLabels(event.target.value)} placeholder="call-analytics, support" />
+                    <small className="qa-field-helper">Separate labels with commas.</small>
+                  </label>
+                </div>
+                <div className="workflow-checkbox-grid">
+                  <label className="selection-toggle"><input type="checkbox" checked={draft.payloadOptions.jiraIssue?.includeAnalysisSummaryInDescription ?? true} onChange={(event) => updateJiraIssue({ includeAnalysisSummaryInDescription: event.target.checked })} /><span>Include analysis summary in description</span></label>
+                  <label className="selection-toggle"><input type="checkbox" checked={draft.payloadOptions.jiraIssue?.includeTranscriptInDescription ?? false} onChange={(event) => {
+                    if (event.target.checked && !window.confirm("Transcripts may contain sensitive information. Include the transcript in Jira issues?")) return;
+                    updateJiraIssue({ includeTranscriptInDescription: event.target.checked });
+                  }} /><span>Include transcript in description</span></label>
+                </div>
+                <div className="editor-group-head"><h3>Advanced additional fields</h3></div>
+                <KeyValueEditor rows={integrationFieldRows} onChange={setIntegrationFieldRows} keyPlaceholder="customfield_10001" valuePlaceholder="Value" />
+              </div>
+            ) : null}
+
+            {draft.platform === "bitrix24" ? (
+              <div className="editor-group workflow-form-section" data-testid="bitrix24-fields">
+                <div className="editor-group-head"><h3>Bitrix24 lead</h3></div>
+                <div className="workflow-form-grid">
+                  <label className="full-width"><span className="qa-field-label">Lead title</span><input value={draft.payloadOptions.bitrix24Lead?.title ?? ""} onChange={(event) => updateBitrix24Lead({ title: event.target.value || null })} placeholder="Optional; generated from the analysis by default" /></label>
+                  <label><span className="qa-field-label">Source ID</span><input value={draft.payloadOptions.bitrix24Lead?.sourceId ?? ""} onChange={(event) => updateBitrix24Lead({ sourceId: event.target.value || null })} placeholder="CALL" /></label>
+                  <label><span className="qa-field-label">Status ID</span><input value={draft.payloadOptions.bitrix24Lead?.statusId ?? ""} onChange={(event) => updateBitrix24Lead({ statusId: event.target.value || null })} placeholder="Optional" /></label>
+                  <label><span className="qa-field-label">Assigned user ID</span><input type="number" min="1" step="1" value={numberInputValue(draft.payloadOptions.bitrix24Lead?.assignedById ?? null)} onChange={(event) => updateBitrix24Lead({ assignedById: parseNullableNumber(event.target.value) })} /></label>
+                  <label><span className="qa-field-label">Opened</span><select value={draft.payloadOptions.bitrix24Lead?.opened == null ? "default" : draft.payloadOptions.bitrix24Lead.opened ? "yes" : "no"} onChange={(event) => updateBitrix24Lead({ opened: event.target.value === "default" ? null : event.target.value === "yes" })}><option value="default">Default</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+                </div>
+                <div className="workflow-checkbox-grid"><label className="selection-toggle"><input type="checkbox" checked={draft.payloadOptions.bitrix24Lead?.includeAnalysisSummaryInComments ?? true} onChange={(event) => updateBitrix24Lead({ includeAnalysisSummaryInComments: event.target.checked })} /><span>Include analysis summary in comments</span></label></div>
+                <div className="editor-group-head"><h3>Additional lead fields</h3></div>
+                <KeyValueEditor rows={integrationFieldRows} onChange={setIntegrationFieldRows} keyPlaceholder="UF_CRM_CALL_ID" valuePlaceholder="external-value" />
+              </div>
+            ) : null}
 
             <div className="editor-group workflow-form-section">
               <div className="editor-group-head">
@@ -761,7 +935,7 @@ export function WorkflowAutomationsPage({
               </div>
             </div>
 
-            <div className="editor-group workflow-form-section">
+            {draft.platform === "webhook" ? <div className="editor-group workflow-form-section">
               <div className="editor-group-head">
                 <h3>Payload options</h3>
               </div>
@@ -794,24 +968,7 @@ export function WorkflowAutomationsPage({
                 keyPlaceholder="source"
                 valuePlaceholder="call-analytics"
               />
-            </div>
-
-            <div className="editor-group workflow-form-section">
-              <div className="editor-group-head">
-                <h3>Metadata</h3>
-              </div>
-              <KeyValueEditor
-                rows={metadataRows}
-                onChange={setMetadataRows}
-                keyPlaceholder="description"
-                valuePlaceholder="Escalate negative urgent calls"
-              />
-            </div>
-
-            <details className="workflow-json-preview" open={showJsonPreview} onToggle={(event) => setShowJsonPreview(event.currentTarget.open)}>
-              <summary>Advanced JSON preview</summary>
-              <pre>{JSON.stringify(requestBody, null, 2)}</pre>
-            </details>
+            </div> : null}
 
             {validationError ? <p className="field-error">{validationError}</p> : null}
 
@@ -847,10 +1004,10 @@ export function WorkflowAutomationsPage({
             {testResult ? (
               <div className="workflow-test-result">
                 <span className={`tag ${testResult.ok ? "status-completed" : "tag-warning"}`}>
-                  {testResult.ok ? "Success" : "Failed"}
+                  {testResult.ok && (!testResult.deliveryStatus || testResult.deliveryStatus === "delivered") ? "Success" : "Failed"}
                 </span>
                 <strong>API HTTP {testResult.status || "-"}</strong>
-                <strong>Webhook HTTP {testResult.responseStatusCode ?? "-"}</strong>
+                <strong>Integration HTTP {testResult.responseStatusCode ?? "-"}</strong>
                 {testResult.error ? <p className="upload-error">{testResult.error}</p> : null}
                 {testResult.responseBody ? <pre>{testResult.responseBody}</pre> : <p>No response body returned.</p>}
               </div>

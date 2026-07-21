@@ -29,6 +29,7 @@ import type {
   WorkflowDestinationFilters,
   WorkflowDestinationInput,
   WorkflowDestinationPayloadOptions,
+  WorkflowPlatform,
   WorkflowTestResult,
   CompanyAgent,
   CompanyUser,
@@ -679,6 +680,8 @@ const normalizeWorkflowFilters = (value: unknown): WorkflowDestinationFilters =>
 
 const normalizeWorkflowPayloadOptions = (value: unknown): WorkflowDestinationPayloadOptions => {
   const record = asRecord(value);
+  const jiraRecord = asOptionalRecord(record.jiraIssue);
+  const bitrixRecord = asOptionalRecord(record.bitrix24Lead);
   return {
     includeTranscript: readBoolean(record, "includeTranscript") ?? false,
     includeRedactedTranscript: readBoolean(record, "includeRedactedTranscript") ?? true,
@@ -686,7 +689,46 @@ const normalizeWorkflowPayloadOptions = (value: unknown): WorkflowDestinationPay
     includeDiarization: readBoolean(record, "includeDiarization") ?? true,
     includeQaEvaluationJson: readBoolean(record, "includeQaEvaluationJson") ?? true,
     customFields: normalizeStringRecord(record.customFields),
+    ...(jiraRecord
+      ? {
+          jiraIssue: {
+            projectKey: readString(jiraRecord, "projectKey") ?? "",
+            issueType: readString(jiraRecord, "issueType") ?? "Task",
+            summary: readString(jiraRecord, "summary") ?? null,
+            priorityName: readString(jiraRecord, "priorityName") ?? null,
+            assigneeAccountId: readString(jiraRecord, "assigneeAccountId") ?? null,
+            labels: normalizeStringList(jiraRecord.labels),
+            includeAnalysisSummaryInDescription:
+              readBoolean(jiraRecord, "includeAnalysisSummaryInDescription") ?? true,
+            includeTranscriptInDescription:
+              readBoolean(jiraRecord, "includeTranscriptInDescription") ?? false,
+            additionalFields: normalizeStringRecord(jiraRecord.additionalFields),
+          },
+        }
+      : {}),
+    ...(bitrixRecord
+      ? {
+          bitrix24Lead: {
+            title: readString(bitrixRecord, "title") ?? null,
+            sourceId: readString(bitrixRecord, "sourceId") ?? null,
+            statusId: readString(bitrixRecord, "statusId") ?? null,
+            assignedById: readNullableNumber(bitrixRecord, "assignedById") ?? null,
+            opened: readBoolean(bitrixRecord, "opened") ?? null,
+            includeAnalysisSummaryInComments:
+              readBoolean(bitrixRecord, "includeAnalysisSummaryInComments") ?? true,
+            additionalFields: normalizeStringRecord(bitrixRecord.additionalFields),
+          },
+        }
+      : {}),
   };
+};
+
+const normalizeWorkflowPlatform = (value: unknown): WorkflowPlatform => {
+  const platform = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (platform === "jira" || platform === "bitrix24") {
+    return platform;
+  }
+  return "webhook";
 };
 
 const normalizeWorkflowDestination = (value: unknown): WorkflowDestination => {
@@ -694,7 +736,7 @@ const normalizeWorkflowDestination = (value: unknown): WorkflowDestination => {
   return {
     id: readStringLike(record, "id", "destinationId", "workflowDestinationId") ?? "",
     name: readString(record, "name") ?? "",
-    platform: readString(record, "platform") ?? "Custom Webhook",
+    platform: normalizeWorkflowPlatform(record.platform),
     eventType: readString(record, "eventType") ?? "analysis.completed",
     isEnabled: readBoolean(record, "isEnabled", "enabled") ?? true,
     webhookUrl: readString(record, "webhookUrl", "url") ?? "",
@@ -1227,7 +1269,7 @@ export async function deleteWorkflowDestination(settings: AppSettings, destinati
 
 const parseWorkflowTestResponse = async (
   response: Response,
-): Promise<Pick<WorkflowTestResult, "ok" | "responseStatusCode" | "responseBody" | "error" | "raw">> => {
+): Promise<Pick<WorkflowTestResult, "ok" | "deliveryStatus" | "responseStatusCode" | "responseBody" | "error" | "raw">> => {
   const text = await response.text();
   if (!text.trim()) {
     return {
@@ -1241,6 +1283,7 @@ const parseWorkflowTestResponse = async (
   try {
     const parsed = JSON.parse(text) as unknown;
     const record = asRecord(parsed);
+    const deliveryStatus = readString(record, "status") ?? null;
     const rawBody = record.responseBody ?? record.body ?? record.content;
     const responseBody =
       typeof rawBody === "string"
@@ -1249,7 +1292,13 @@ const parseWorkflowTestResponse = async (
           ? text
           : JSON.stringify(rawBody, null, 2);
     return {
-      ok: readBoolean(record, "success", "ok", "isSuccess") ?? response.ok,
+      ok:
+        deliveryStatus === "delivered"
+          ? true
+          : deliveryStatus === "failed"
+            ? false
+            : readBoolean(record, "success", "ok", "isSuccess") ?? response.ok,
+      deliveryStatus,
       responseStatusCode: readNumber(record, "responseStatusCode", "statusCode") ?? null,
       responseBody,
       error: readString(record, "error", "errorMessage", "message") ?? (response.ok ? null : text),
@@ -1258,6 +1307,7 @@ const parseWorkflowTestResponse = async (
   } catch {
     return {
       ok: response.ok,
+      deliveryStatus: null,
       responseStatusCode: null,
       responseBody: text,
       error: response.ok ? null : text,
