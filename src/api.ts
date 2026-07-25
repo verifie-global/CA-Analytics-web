@@ -589,7 +589,7 @@ const normalizeQaResult = (value: unknown): QaResult | null => {
     isApplicable:
       readBoolean(record, "isApplicable") ??
       (readString(record, "status")?.toLowerCase() === "not_applicable" ? false : null),
-    score: readNumber(record, "score") ?? null,
+    score: readNumber(record, "score", "qaScore") ?? null,
     earnedPoints: readNumber(record, "earnedPoints") ?? null,
     possiblePoints: readNumber(record, "possiblePoints") ?? null,
     notApplicableReason: readString(record, "notApplicableReason") ?? null,
@@ -1428,6 +1428,65 @@ export async function updateQaScore(
 
   const body = (await response.json()) as unknown;
   return normalizeRecalculatedQaResult(body);
+}
+
+export async function updateQaApplicability(
+  settings: AppSettings,
+  conversationId: string,
+  isApplicable: boolean,
+  reason?: string,
+) {
+  const response = await fetch(
+    buildUrl(
+      settings,
+      `/api/companies/${settings.companyId}/calls/${conversationId}/qa-applicability`,
+    ),
+    {
+      method: "PATCH",
+      headers: authHeaders(settings, jsonHeaders()),
+      body: JSON.stringify(
+        isApplicable
+          ? { isApplicable: true }
+          : { isApplicable: false, reason: reason?.trim() ?? "" },
+      ),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = "";
+
+    if (text.trim()) {
+      try {
+        const body = JSON.parse(text) as Record<string, unknown>;
+        const errors = asRecord(body.errors);
+        const reasonErrors = asArray(errors.reason).map(String).filter(Boolean);
+        const validationErrors = Object.values(errors)
+          .flatMap((value) => asArray(value))
+          .map(String)
+          .filter(Boolean);
+        message =
+          reasonErrors[0] ??
+          validationErrors[0] ??
+          String(body.message ?? body.error ?? body.title ?? text);
+      } catch {
+        message = text;
+      }
+    }
+
+    throw createRequestError(
+      message || `QA applicability update failed with status ${response.status}`,
+      response.status,
+    );
+  }
+
+  const body = (await response.json()) as unknown;
+  const qa = normalizeRecalculatedQaResult(body);
+  if (!qa) {
+    throw new Error("The server did not return updated QA applicability data.");
+  }
+
+  return qa;
 }
 
 export async function uploadCall(

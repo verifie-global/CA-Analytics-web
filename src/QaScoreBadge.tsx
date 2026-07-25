@@ -40,6 +40,14 @@ export function QaScoreBadge({
     );
   }
 
+  if (status?.trim().toLowerCase() === "pending") {
+    return (
+      <span className={`qa-badge qa-badge-muted ${compact ? "qa-badge-compact" : ""}`}>
+        <strong>Pending QA recalculation</strong>
+      </span>
+    );
+  }
+
   if (score == null) {
     return <span className="qa-badge qa-badge-muted">Not scored</span>;
   }

@@ -8,11 +8,5 @@ export const isQaNotApplicable = (qa?: QaApplicabilityFields | null) =>
 
 export const formatQaNotApplicableReason = (reason?: string | null) => {
   const trimmed = reason?.trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  return trimmed
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+  return trimmed || "";
 };

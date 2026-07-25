@@ -4427,6 +4427,25 @@ details.scroll-toggle > summary {
   padding: 1rem;
 }
 
+.qa-applicability-backdrop {
+  z-index: 1200;
+}
+
+.qa-applicability-modal {
+  width: min(520px, 100%);
+}
+
+.qa-applicability-modal p {
+  color: var(--muted);
+}
+
+.qa-applicability-modal .field-hint {
+  display: block;
+  margin-top: 0.35rem;
+  color: var(--muted);
+  text-align: right;
+}
+
 /* User management */
 .user-management { display: grid; gap: 1rem; min-width: 0; }
 .user-management-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }

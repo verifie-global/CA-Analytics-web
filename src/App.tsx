@@ -27,6 +27,7 @@ import {
   loginUser,
   recalculateQaScore,
   updateQaScore,
+  updateQaApplicability,
   saveQaProfile,
   saveQaScoringSettings,
   uploadCall,
@@ -2574,6 +2575,59 @@ function App() {
     );
   };
 
+  const handleQaApplicabilityChange = async (
+    isApplicable: boolean,
+    reason?: string,
+  ) => {
+    if (!detail?.conversationId) {
+      return;
+    }
+
+    const conversationId = detail.conversationId;
+    try {
+      const updatedQa = await updateQaApplicability(
+        settings,
+        conversationId,
+        isApplicable,
+        reason,
+      );
+
+      setDetail((current) =>
+        current?.conversationId === conversationId
+          ? { ...current, qa: updatedQa }
+          : current,
+      );
+      setCalls((current) =>
+        current.map((call) =>
+          call.conversationId === conversationId
+            ? {
+                ...call,
+                qaScore: updatedQa.score ?? null,
+                qaIsApplicable: updatedQa.isApplicable ?? null,
+                qaStatus: updatedQa.status ?? null,
+                qaNotApplicableReason: updatedQa.notApplicableReason ?? null,
+                qaEarnedPoints: updatedQa.earnedPoints ?? null,
+                qaPossiblePoints: updatedQa.possiblePoints ?? null,
+              }
+            : call,
+        ),
+      );
+      setErrorMessage("");
+      setStatusMessage(
+        isApplicable
+          ? "Call restored for QA. QA recalculation is required to generate a new score."
+          : "Call marked as not applicable for QA.",
+      );
+
+      void refreshCalls(settings, { silent: true });
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+      }
+      throw error;
+    }
+  };
+
   const openUploadModal = () => {
     setUploadState({
       conversationId: generateConversationId(),
@@ -4611,6 +4665,7 @@ function App() {
                         initiallyExpanded
                         canManageQaScore={canManageQaScore}
                         onSaveManualCorrection={handleSaveManualQa}
+                        onApplicabilityChange={handleQaApplicabilityChange}
                       />
                     </DetailAccordion>
                   </div>

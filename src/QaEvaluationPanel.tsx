@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatQaNotApplicableReason, isQaNotApplicable } from "./qaDisplay";
 import { QaScoreBadge } from "./QaScoreBadge";
+import { QaApplicabilityControl } from "./QaApplicabilityControl";
 import type { QaQuestionCorrection, QaResult } from "./types";
 
 type QaEvaluationPanelProps = {
@@ -16,6 +17,7 @@ type QaEvaluationPanelProps = {
     reason: string,
     questionResults: QaQuestionCorrection[],
   ) => Promise<void>;
+  onApplicabilityChange: (isApplicable: boolean, reason?: string) => Promise<void>;
 };
 
 export function QaEvaluationPanel({
@@ -28,6 +30,7 @@ export function QaEvaluationPanel({
   initiallyExpanded = false,
   canManageQaScore,
   onSaveManualCorrection,
+  onApplicabilityChange,
 }: QaEvaluationPanelProps) {
   const evaluation = qa?.evaluation;
   const [isCollapsed, setIsCollapsed] = useState(!initiallyExpanded);
@@ -157,6 +160,11 @@ export function QaEvaluationPanel({
             <h4>QA evaluation</h4>
           </div>
           <div className="qa-panel-actions">
+            <QaApplicabilityControl
+              qa={qa}
+              isCompleted={isCompleted}
+              onChange={onApplicabilityChange}
+            />
             {canRecalculate ? (
               <button type="button" className="secondary-button small-button" onClick={onRecalculate} disabled={isRecalculating}>
                 {isRecalculating ? "Recalculating..." : "Recalculate QA Score"}
@@ -191,6 +199,11 @@ export function QaEvaluationPanel({
           <h4>QA evaluation</h4>
         </div>
         <div className="qa-panel-actions">
+          <QaApplicabilityControl
+            qa={qa}
+            isCompleted={isCompleted}
+            onChange={onApplicabilityChange}
+          />
           {canRecalculate ? (
             <button type="button" className="secondary-button small-button" onClick={onRecalculate} disabled={isRecalculating}>
               {isRecalculating ? "Recalculating..." : "Recalculate QA Score"}
