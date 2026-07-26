@@ -2807,12 +2807,12 @@ function App() {
     event.preventDefault();
 
     if (!uploadState.conversationId || (!uploadState.url && uploadState.files.length === 0)) {
-      setUploadErrorMessage("Provide either a presigned URL or one or more local audio files.");
+      setUploadErrorMessage("Provide either a presigned URL or one or more local media files.");
       return;
     }
 
     if (uploadState.url && uploadState.files.length > 0) {
-      setUploadErrorMessage("Use either a presigned URL or local audio files in a single upload.");
+      setUploadErrorMessage("Use either a presigned URL or local media files in a single upload.");
       return;
     }
 
@@ -4729,10 +4729,10 @@ function App() {
               </label>
 
               <label className="full-width">
-                Local audio files
+                Local audio or MOV files
                 <input
                   type="file"
-                  accept="audio/*"
+                  accept="audio/*,.mov,video/quicktime"
                   multiple
                   onChange={(event) =>
                     {
@@ -4766,7 +4766,8 @@ function App() {
               ) : null}
 
               <p className="upload-note full-width">
-                Client-side sample-rate validation is temporarily disabled for local uploads.
+                Audio and MOV files are supported. Client-side sample-rate validation is
+                temporarily disabled for local uploads.
                 Presigned URLs are still queued as-is because the browser cannot inspect remote
                 files before upload.
               </p>

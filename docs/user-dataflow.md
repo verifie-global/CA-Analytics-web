@@ -30,7 +30,7 @@ flowchart TD
 
     G --> Q[Open Upload call modal]
     Q --> R{Upload source}
-    R -- Local file(s) --> S[Select one or more audio files]
+    R -- Local file(s) --> S[Select one or more audio or MOV files]
     R -- Presigned URL --> T[Paste audio URL]
     S --> U[Queue analysis]
     T --> U
@@ -84,7 +84,7 @@ flowchart TD
    User filters the calls grid, opens a row, and reviews full call analytics.
 
 3. Upload flow
-   User uploads local audio files or a presigned URL, then watches the grid refresh with new calls.
+   User uploads local audio or MOV files, or a presigned URL, then watches the grid refresh with new calls.
 
 4. Recording flow
    User starts `Record conversation`, sees live ASR and diarization during the call, gets agent-focused knowledge-base hints in real time, then stops, previews, and uploads the conversation.
