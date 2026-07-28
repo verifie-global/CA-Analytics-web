@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchCallDetail, fetchCalls } from "./api";
+import { fetchCallDetail, fetchCalls, uploadCall } from "./api";
 import type { AppSettings, CallFilters } from "./types";
 
 const settings: AppSettings = {
@@ -99,6 +99,38 @@ describe("call display metadata", () => {
       conversationId: "call-456",
       conversationName: "Billing follow-up",
       originalAudioFileName: "billing-follow-up.mp3",
+    });
+  });
+
+  it("returns upload display metadata while keeping the route keyed by conversation ID", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          conversationId: "call-42",
+          conversationName: "call-42",
+          originalAudioFileName: "customer-recording.mp3",
+        }),
+        { status: 202, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await uploadCall(settings, {
+      conversationId: "call-42",
+      url: "",
+      file: new File(["audio"], "customer-recording.mp3", {
+        type: "audio/mpeg",
+      }),
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/api/companies/123/calls/call-42",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result).toEqual({
+      conversationId: "call-42",
+      conversationName: "call-42",
+      originalAudioFileName: "customer-recording.mp3",
     });
   });
 });

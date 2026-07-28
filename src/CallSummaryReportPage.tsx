@@ -1,5 +1,6 @@
 import { FormEvent, Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { fetchCallSummaryReport } from "./api";
+import { DEFAULT_QA_SCORE_MAXIMUM, formatQaScore } from "./qaDisplay";
 import type { AppSettings, CallSummaryReport, QaQuestion } from "./types";
 
 type DateRange = {
@@ -83,9 +84,11 @@ function QaQuestionCard({ question, tone }: {
 export function CallSummaryReportPage({
   settings,
   onUnauthorized,
+  qaScoreMaximum = DEFAULT_QA_SCORE_MAXIMUM,
 }: {
   settings: AppSettings;
   onUnauthorized: () => void;
+  qaScoreMaximum?: number;
 }) {
   const [range, setRange] = useState<DateRange>(getInitialRange);
   const [report, setReport] = useState<CallSummaryReport | null>(null);
@@ -213,7 +216,10 @@ export function CallSummaryReportPage({
           <div className="report-summary-grid">
             <article><span>Total calls</span><strong>{formatCount(report.totalCalls)}</strong></article>
             <article><span>Total calls duration</span><strong>{formatDuration(report.totalDurationSeconds)}</strong></article>
-            <article><span>Average QA score</span><strong>{formatPercent(report.averageQaScore)}</strong></article>
+            <article>
+              <span>Average QA score</span>
+              <strong>{formatQaScore(report.averageQaScore, qaScoreMaximum)}</strong>
+            </article>
             <article><span>QA-scored calls</span><strong>{formatCount(report.qaScoredCallCount)}</strong></article>
             <article><span>Unknown sentiment calls</span><strong>{formatCount(report.unknownSentimentCount)}</strong></article>
           </div>
@@ -270,7 +276,9 @@ export function CallSummaryReportPage({
                             <td data-label="Phone">{agent.agentPhone?.trim() || EM_DASH}</td>
                             <td data-label="Total calls">{formatCount(agent.callCount)}</td>
                             <td data-label="QA-scored">{formatCount(agent.qaScoredCallCount)}</td>
-                            <td data-label="Avg. QA">{formatPercent(agent.averageQaScore)}</td>
+                            <td data-label="Avg. QA">
+                              {formatQaScore(agent.averageQaScore, qaScoreMaximum)}
+                            </td>
                             <td data-label="Weakest QA question">
                               {agent.weakestQuestion ? (
                                 <span className="question-cell">

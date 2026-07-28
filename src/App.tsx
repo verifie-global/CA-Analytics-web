@@ -41,6 +41,13 @@ import { CallSummaryReportPage } from "./CallSummaryReportPage";
 import { WorkflowAutomationsPage } from "./WorkflowAutomationsPage";
 import { UserManagementPage } from "./UserManagementPage";
 import { AccountPage } from "./AccountPage";
+import { getConversationDisplayName } from "./conversationDisplay";
+import {
+  DEFAULT_QA_SCORE_MAXIMUM,
+  DEFAULT_QA_SCORING_MODE,
+  formatQaScore,
+  formatQaScoreNumber,
+} from "./qaDisplay";
 import type {
   AppSettings,
   AskEvidence,
@@ -51,8 +58,10 @@ import type {
   CallFilters,
   CallScoreSummary,
   CallSummary,
+  CallUploadResult,
   QaProfile,
   QaScoringSettings,
+  QaScoringSettingsUpdate,
   ScoreMetricSummary,
   SegmentEmotion,
   SpeakerSegment,
@@ -100,7 +109,8 @@ type HeaderMetric =
   | "neutral_calls"
   | "negative_calls"
   | "avg_satisfaction"
-  | "avg_friendliness";
+  | "avg_friendliness"
+  | "avg_qa";
 
 type HeaderGraphicConfig = {
   bars: HeaderMetric[];
@@ -286,9 +296,11 @@ function MultiSelectDropdown({
 function AskEvidenceRow({
   evidence,
   onEvidenceOpen,
+  getConversationTitle,
 }: {
   evidence: AskEvidence;
   onEvidenceOpen?: (conversationId: string) => void;
+  getConversationTitle?: (conversationId: string) => string;
 }) {
   const conversationId = evidence.conversationId?.trim();
 
@@ -301,7 +313,7 @@ function AskEvidenceRow({
             className="ask-evidence-link"
             onClick={() => onEvidenceOpen?.(conversationId)}
           >
-            {conversationId}
+            {getConversationTitle?.(conversationId) ?? conversationId}
           </button>
         ) : (
           <span>Unknown call</span>
@@ -779,6 +791,7 @@ const headerMetricOptions: Array<{ value: HeaderMetric; label: string }> = [
   { value: "negative_calls", label: "Negative sentiment calls" },
   { value: "avg_satisfaction", label: "Average satisfaction" },
   { value: "avg_friendliness", label: "Average friendliness" },
+  { value: "avg_qa", label: "Average QA score" },
 ];
 
 const headerBarClassByMetric = (metric: HeaderMetric) => {
@@ -786,6 +799,7 @@ const headerBarClassByMetric = (metric: HeaderMetric) => {
     case "positive_calls":
     case "completed_calls":
     case "avg_friendliness":
+    case "avg_qa":
       return "hero-bar-positive";
     case "neutral_calls":
     case "in_progress_calls":
@@ -945,6 +959,7 @@ const playbackToneAtTime = (segments: SpeakerSegment[], milliseconds: number) =>
 
 const ConversationPlayback = ({
   audioUrl,
+  audioDownloadFileName,
   audioRef,
   segments,
   durationSeconds,
@@ -953,6 +968,7 @@ const ConversationPlayback = ({
   onPlaybackTimeChange,
 }: {
   audioUrl: string;
+  audioDownloadFileName?: string | null;
   audioRef: { current: HTMLAudioElement | null };
   segments: SpeakerSegment[];
   durationSeconds?: number | null;
@@ -1147,8 +1163,12 @@ const ConversationPlayback = ({
               >
                 {showNativeControls ? "Hide native controls" : "Show native controls"}
               </button>
-              <a className="playback-option-row" href={audioUrl} download>
-                Download audio
+              <a
+                className="playback-option-row"
+                href={audioUrl}
+                download={audioDownloadFileName || true}
+              >
+                Download {audioDownloadFileName?.trim() || "audio"}
               </a>
             </div>
           ) : null}
@@ -1926,65 +1946,90 @@ function App() {
   }, [isAuthorized, settings]);
 
   useEffect(() => {
+    if (!isAuthorized) {
+      setQaScoringSettings(null);
+      setQaScoringSettingsLoading(false);
+      setQaScoringSettingsSaving(false);
+      setQaScoringSettingsError("");
+      setQaScoringSettingsSuccess("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadQaScoringSettings = async () => {
+      setQaScoringSettingsLoading(true);
+      setQaScoringSettingsError("");
+      setQaScoringSettingsSuccess("");
+
+      try {
+        const scoringSettingsResult = await fetchQaScoringSettings(settings);
+        if (!cancelled) {
+          setQaScoringSettings(scoringSettingsResult);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          if (isUnauthorizedError(error)) {
+            handleUnauthorizedSession();
+            return;
+          }
+
+          setQaScoringSettingsError(
+            error instanceof Error
+              ? error.message
+              : "Unable to load QA scoring settings.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setQaScoringSettingsLoading(false);
+        }
+      }
+    };
+
+    void loadQaScoringSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthorized, settings]);
+
+  useEffect(() => {
     if (!isAuthorized || currentRoute !== "qa-profile") {
       return;
     }
 
     let cancelled = false;
 
-    const loadQaSettings = async () => {
+    const loadQaProfile = async () => {
       setQaProfileLoading(true);
-      setQaScoringSettingsLoading(true);
       setQaProfileError("");
       setQaProfileSuccess("");
-      setQaScoringSettingsError("");
-      setQaScoringSettingsSuccess("");
 
       try {
-        const [profileResult, scoringSettingsResult] = await Promise.allSettled([
-          fetchQaProfile(settings),
-          fetchQaScoringSettings(settings),
-        ]);
-
+        const profileResult = await fetchQaProfile(settings);
         if (!cancelled) {
-          const unauthorizedResult = [profileResult, scoringSettingsResult].find(
-            (result) => result.status === "rejected" && isUnauthorizedError(result.reason),
-          );
-
-          if (unauthorizedResult) {
+          setQaProfile(profileResult);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          if (isUnauthorizedError(error)) {
             handleUnauthorizedSession();
             return;
           }
 
-          if (profileResult.status === "fulfilled") {
-            setQaProfile(profileResult.value);
-          } else {
-            setQaProfileError(
-              profileResult.reason instanceof Error
-                ? profileResult.reason.message
-                : "Unable to load QA profile.",
-            );
-          }
-
-          if (scoringSettingsResult.status === "fulfilled") {
-            setQaScoringSettings(scoringSettingsResult.value);
-          } else {
-            setQaScoringSettingsError(
-              scoringSettingsResult.reason instanceof Error
-                ? scoringSettingsResult.reason.message
-                : "Unable to load QA scoring settings.",
-            );
-          }
+          setQaProfileError(
+            error instanceof Error ? error.message : "Unable to load QA profile.",
+          );
         }
       } finally {
         if (!cancelled) {
           setQaProfileLoading(false);
-          setQaScoringSettingsLoading(false);
         }
       }
     };
 
-    void loadQaSettings();
+    void loadQaProfile();
 
     return () => {
       cancelled = true;
@@ -2045,6 +2090,14 @@ function App() {
     [settings],
   );
   const canManageQaScore = hasAdminAccess;
+  const activeQaScoreMaximum =
+    qaScoringSettings?.qaScoreMaximum ??
+    qaProfile?.qaScoreMaximum ??
+    DEFAULT_QA_SCORE_MAXIMUM;
+  const activeQaScoringMode =
+    qaScoringSettings?.qaScoringMode ??
+    qaProfile?.qaScoringMode ??
+    DEFAULT_QA_SCORING_MODE;
 
   const updateCallFilters = (patch: Partial<CallFilters>) => {
     setFilters((current) => ({
@@ -2445,21 +2498,14 @@ function App() {
   };
 
   const handleSaveQaScoringSettings = async (
-    qaScoreMaximum: number,
-    minScorableCallDurationSeconds: number | null,
-    repeatContactAutoPassEnabled: boolean,
+    update: QaScoringSettingsUpdate,
   ) => {
     setQaScoringSettingsSaving(true);
     setQaScoringSettingsError("");
     setQaScoringSettingsSuccess("");
 
     try {
-      const savedSettings = await saveQaScoringSettings(
-        settings,
-        qaScoreMaximum,
-        minScorableCallDurationSeconds,
-        repeatContactAutoPassEnabled,
-      );
+      const savedSettings = await saveQaScoringSettings(settings, update);
       setQaScoringSettings(savedSettings);
       setQaScoringSettingsSuccess("QA scoring settings saved successfully.");
     } catch (error) {
@@ -2521,6 +2567,15 @@ function App() {
             : call,
         ),
       );
+      await refreshCalls(settings, { silent: true });
+      if (nextQa?.score != null) {
+        setStatusMessage(
+          `QA score recalculated: ${formatQaScore(
+            nextQa.score,
+            activeQaScoreMaximum,
+          )}.`,
+        );
+      }
     } catch (error) {
       if (isUnauthorizedError(error)) {
         handleUnauthorizedSession();
@@ -2575,6 +2630,15 @@ function App() {
           : call,
       ),
     );
+    setStatusMessage(
+      updatedQa.score == null
+        ? "QA corrections saved."
+        : `QA corrections saved. New QA score: ${formatQaScore(
+            updatedQa.score,
+            activeQaScoreMaximum,
+          )}.`,
+    );
+    void refreshCalls(settings, { silent: true });
   };
 
   const handleQaApplicabilityChange = async (
@@ -2744,16 +2808,20 @@ function App() {
 
     try {
       const conversationId = generateConversationId();
-      await uploadCall(settings, {
+      const uploadedCall = await uploadCall(settings, {
         conversationId,
         url: "",
         file: recordedAudioFile,
       });
 
-      setStatusMessage(`Upload accepted. ${conversationId} is now queued for analysis.`);
+      setStatusMessage(
+        `Upload accepted. ${getConversationDisplayName(
+          uploadedCall,
+        )} is now queued for analysis.`,
+      );
       closeRecordingModal();
       await refreshCalls();
-      await handleLoadDetail(conversationId);
+      await handleLoadDetail(uploadedCall.conversationId);
     } catch (error) {
       if (isUnauthorizedError(error)) {
         handleUnauthorizedSession();
@@ -2825,7 +2893,7 @@ function App() {
     setStatusMessage("Uploading call and queuing analysis...");
 
     try {
-      const uploadedConversationIds: string[] = [];
+      const uploadedCalls: CallUploadResult[] = [];
 
       if (uploadState.files.length > 0) {
         for (const [index, file] of uploadState.files.entries()) {
@@ -2839,34 +2907,38 @@ function App() {
             setUploadValidationMessage(`Validated local audio at ${sampleRate} Hz.`);
           }
 
-          await uploadCall(settings, {
+          const uploadedCall = await uploadCall(settings, {
             conversationId,
             url: "",
             file,
           });
 
-          uploadedConversationIds.push(conversationId);
+          uploadedCalls.push(uploadedCall);
         }
       } else {
-        await uploadCall(settings, {
+        const uploadedCall = await uploadCall(settings, {
           conversationId: uploadState.conversationId,
           url: uploadState.url,
           file: null,
         });
-        uploadedConversationIds.push(uploadState.conversationId);
+        uploadedCalls.push(uploadedCall);
       }
 
       setStatusMessage(
-        uploadedConversationIds.length === 1
-          ? `Upload accepted. ${uploadedConversationIds[0]} is now queued for analysis.`
-          : `Upload accepted. ${uploadedConversationIds.length} calls are now queued for analysis.`,
+        uploadedCalls.length === 1
+          ? `Upload accepted. ${getConversationDisplayName(
+              uploadedCalls[0],
+            )} is now queued for analysis.`
+          : `Upload accepted. ${uploadedCalls.length} calls are now queued for analysis: ${uploadedCalls
+              .map(getConversationDisplayName)
+              .join("; ")}.`,
       );
       setIsUploadModalOpen(false);
       setUploadState({ conversationId: generateConversationId(), url: "", files: [] });
       setUploadValidationMessage("");
       setUploadErrorMessage("");
       await refreshCalls();
-      await handleLoadDetail(uploadedConversationIds[uploadedConversationIds.length - 1]);
+      await handleLoadDetail(uploadedCalls[uploadedCalls.length - 1].conversationId);
     } catch (error) {
       if (isUnauthorizedError(error)) {
         handleUnauthorizedSession();
@@ -3199,6 +3271,7 @@ function App() {
   const scoreSummaryMetrics: Array<{
     label: string;
     summary?: ScoreMetricSummary | null;
+    isQa?: boolean;
   }> = [
     {
       label: "Customer Satisfaction",
@@ -3211,6 +3284,7 @@ function App() {
     {
       label: "QA Score",
       summary: callScoreSummary?.qaScore,
+      isQa: true,
     },
   ];
   const canLoadNextCallsPage =
@@ -3249,6 +3323,19 @@ function App() {
   const averageFriendlinessScore =
     callScoreSummary?.agentFriendlinessScore?.average ??
     (avgFriendliness ? Number(avgFriendliness) : null);
+  const averageQaScore =
+    callScoreSummary?.qaScore?.average ??
+    (() => {
+      const scoredCalls = calls.filter((call) => typeof call.qaScore === "number");
+      if (scoredCalls.length === 0) {
+        return null;
+      }
+
+      return (
+        scoredCalls.reduce((sum, call) => sum + (call.qaScore ?? 0), 0) /
+        scoredCalls.length
+      );
+    })();
   const completedCount = calls.filter((call) => call.status?.toLowerCase() === "completed").length;
   const failedCount = calls.filter((call) => call.status?.toLowerCase() === "failed").length;
   const inProgressCount = calls.filter((call) => isInProgressStatus(call.status)).length;
@@ -3316,6 +3403,15 @@ function App() {
           ? "N/A"
           : `${formatSummaryNumber(averageFriendlinessScore, 1)}/10`,
       description: "Average friendliness score across filtered calls",
+    },
+    avg_qa: {
+      value: averageQaScore,
+      max: activeQaScoreMaximum,
+      formatted:
+        averageQaScore == null
+          ? "N/A"
+          : formatQaScore(averageQaScore, activeQaScoreMaximum),
+      description: "Average QA score across filtered calls",
     },
   };
   const activeSegmentIndex = detail?.segments.findIndex((segment) => {
@@ -3713,6 +3809,19 @@ function App() {
                             key={`${item.id}-${index}`}
                             evidence={evidence}
                             onEvidenceOpen={handleOpenEvidenceCall}
+                            getConversationTitle={(conversationId) => {
+                              const call =
+                                calls.find(
+                                  (item) =>
+                                    item.conversationId === conversationId,
+                                ) ??
+                                (detail?.conversationId === conversationId
+                                  ? detail
+                                  : null);
+                              return call
+                                ? getConversationDisplayName(call)
+                                : conversationId;
+                            }}
                           />
                         ))}
                       </div>
@@ -3784,7 +3893,9 @@ function App() {
                 const heightPercent =
                   metricData.value == null || metricData.max <= 0
                     ? 24
-                    : 24 + (metricData.value / metricData.max) * 76;
+                    : 24 +
+                      Math.max(0, Math.min(1, metricData.value / metricData.max)) *
+                        76;
 
                 return (
                   <div key={metric} className="hero-bar-col">
@@ -3812,7 +3923,14 @@ function App() {
                 const metricData = metricValues[metric];
                 const optionLabel =
                   headerMetricOptions.find((option) => option.value === metric)?.label ?? metric;
-                const outOfTen = metric === "avg_satisfaction" || metric === "avg_friendliness";
+                const showsMaximum =
+                  metric === "avg_satisfaction" ||
+                  metric === "avg_friendliness" ||
+                  metric === "avg_qa";
+                const maximumLabel =
+                  metric === "avg_qa"
+                    ? formatQaScoreNumber(activeQaScoreMaximum)
+                    : "10";
                 const arrowTone =
                   metric === "avg_satisfaction"
                     ? "trend-blue"
@@ -3824,12 +3942,16 @@ function App() {
                   <div key={metric} className="hero-strip-stat">
                     <div className="hero-strip-label">
                       <span>{optionLabel}</span>
-                      {outOfTen ? <small>overall</small> : null}
+                      {showsMaximum ? <small>overall</small> : null}
                     </div>
                     <div className="hero-strip-value">
-                      <strong>{outOfTen ? metricData.formatted.split("/")[0] : metricData.formatted}</strong>
+                      <strong>
+                        {showsMaximum
+                          ? formatQaScoreNumber(metricData.value)
+                          : metricData.formatted}
+                      </strong>
                       <TrendArrow className={arrowTone} />
-                      {outOfTen ? <small>10</small> : null}
+                      {showsMaximum ? <small>{maximumLabel}</small> : null}
                     </div>
                   </div>
                 );
@@ -3891,6 +4013,7 @@ function App() {
           <CallSummaryReportPage
             settings={settings}
             onUnauthorized={handleUnauthorizedSession}
+            qaScoreMaximum={activeQaScoreMaximum}
           />
         ) : currentRoute === "dashboard" ? (
           <section className="panel">
@@ -3982,16 +4105,14 @@ function App() {
             </select>
             <input
               type="number"
-              min="0"
-              max="100"
+              max={activeQaScoreMaximum}
               value={filters.minQaScore}
               onChange={(event) => updateCallFilters({ minQaScore: event.target.value })}
               placeholder="Min QA score"
             />
             <input
               type="number"
-              min="0"
-              max="100"
+              max={activeQaScoreMaximum}
               value={filters.maxQaScore}
               onChange={(event) => updateCallFilters({ maxQaScore: event.target.value })}
               placeholder="Max QA score"
@@ -4022,7 +4143,14 @@ function App() {
               {scoreSummaryMetrics.map((metric) => (
                 <article key={metric.label}>
                   <span>{metric.label}</span>
-                  <strong>{formatSummaryNumber(metric.summary?.average)}</strong>
+                  <strong>
+                    {metric.isQa
+                      ? formatQaScore(
+                          metric.summary?.average,
+                          activeQaScoreMaximum,
+                        )
+                      : formatSummaryNumber(metric.summary?.average)}
+                  </strong>
                   <small>Cumulative {formatSummaryNumber(metric.summary?.cumulative)}</small>
                   {metric.summary?.missingCount != null ? (
                     <small>Missing {formatSummaryNumber(metric.summary.missingCount, 0)}</small>
@@ -4062,7 +4190,7 @@ function App() {
 
                     {calls.map((call) => {
                       const gridDate = formatGridDate(call.createdUtc);
-                      const displayName = call.conversationName ?? call.conversationId;
+                      const displayName = getConversationDisplayName(call);
 
                       return (
                         <Fragment key={call.conversationId}>
@@ -4106,8 +4234,7 @@ function App() {
                               isApplicable={call.qaIsApplicable}
                               status={call.qaStatus}
                               notApplicableReason={call.qaNotApplicableReason}
-                              earnedPoints={call.qaEarnedPoints}
-                              possiblePoints={call.qaPossiblePoints}
+                              maximumScore={activeQaScoreMaximum}
                               compact
                             />
                             <span className="call-row-language">{call.language ?? "No language"}</span>
@@ -4173,7 +4300,7 @@ function App() {
                 <>
                   <header className="call-detail-header">
                     <p className="eyebrow">Call detail</p>
-                    <h3>{detail.conversationName ?? detail.conversationId}</h3>
+                    <h3>{getConversationDisplayName(detail)}</h3>
                   </header>
 
                   <section className="conversation-summary-card" aria-label="Conversation summarization">
@@ -4249,6 +4376,10 @@ function App() {
 
                   <ConversationPlayback
                     audioUrl={audioUrl}
+                    audioDownloadFileName={
+                      detail.originalAudioFileName ??
+                      getConversationDisplayName(detail)
+                    }
                     audioRef={audioRef}
                     segments={detail.segments}
                     durationSeconds={detail.durationSeconds}
@@ -4672,6 +4803,8 @@ function App() {
                         generatedAtLabel={formatDate(detail.qa?.evaluation?.generatedAtUtc)}
                         initiallyExpanded
                         canManageQaScore={canManageQaScore}
+                        qaScoreMaximum={activeQaScoreMaximum}
+                        qaScoringMode={activeQaScoringMode}
                         onSaveManualCorrection={handleSaveManualQa}
                         onApplicabilityChange={handleQaApplicabilityChange}
                       />
@@ -5020,7 +5153,7 @@ function App() {
                         onChange={() => toggleConversationSelection(call.conversationId)}
                       />
                       <div className="qa-export-copy">
-                        <strong>{call.conversationId}</strong>
+                        <strong>{getConversationDisplayName(call)}</strong>
                         <span>
                           {call.sentiment ?? "unknown"} · score {call.satisfactionScore ?? "-"} · created{" "}
                           {formatDate(call.createdUtc)}

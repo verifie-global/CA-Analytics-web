@@ -1,19 +1,27 @@
-import { formatQaNotApplicableReason, isQaNotApplicable } from "./qaDisplay";
+import {
+  DEFAULT_QA_SCORE_MAXIMUM,
+  formatQaNotApplicableReason,
+  formatQaScore,
+  isQaNotApplicable,
+} from "./qaDisplay";
 
 type QaScoreBadgeProps = {
   score?: number | null;
   isApplicable?: boolean | null;
   status?: string | null;
   notApplicableReason?: string | null;
-  earnedPoints?: number | null;
-  possiblePoints?: number | null;
+  maximumScore?: number;
   compact?: boolean;
 };
 
-const getQaScoreTone = (score?: number | null) => {
+const getQaScoreTone = (
+  score?: number | null,
+  maximumScore = DEFAULT_QA_SCORE_MAXIMUM,
+) => {
   if (score == null) return "muted";
-  if (score >= 85) return "good";
-  if (score >= 65) return "medium";
+  const ratio = maximumScore > 0 ? score / maximumScore : 0;
+  if (ratio >= 0.85) return "good";
+  if (ratio >= 0.65) return "medium";
   return "low";
 };
 
@@ -22,8 +30,7 @@ export function QaScoreBadge({
   isApplicable,
   status,
   notApplicableReason,
-  earnedPoints,
-  possiblePoints,
+  maximumScore = DEFAULT_QA_SCORE_MAXIMUM,
   compact = false,
 }: QaScoreBadgeProps) {
   if (isQaNotApplicable({ isApplicable, status })) {
@@ -52,16 +59,11 @@ export function QaScoreBadge({
     return <span className="qa-badge qa-badge-muted">Not scored</span>;
   }
 
-  const tone = getQaScoreTone(score);
+  const tone = getQaScoreTone(score, maximumScore);
 
   return (
     <span className={`qa-badge qa-badge-${tone} ${compact ? "qa-badge-compact" : ""}`}>
-      <strong>{score.toFixed(2)}%</strong>
-      {earnedPoints != null && possiblePoints != null ? (
-        <small>
-          {earnedPoints}/{possiblePoints}
-        </small>
-      ) : null}
+      <strong>{formatQaScore(score, maximumScore)}</strong>
     </span>
   );
 }

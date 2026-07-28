@@ -3912,6 +3912,7 @@ details.scroll-toggle > summary {
 .qa-settings-grid textarea,
 .qa-question-grid textarea,
 .qa-settings-grid input,
+.qa-settings-grid select,
 .qa-question-grid input {
   color: var(--ink);
   font-size: 0.95rem;
@@ -3931,6 +3932,17 @@ details.scroll-toggle > summary {
 .qa-success-text {
   margin: 0;
   color: var(--green-ink);
+}
+
+.qa-settings-notice {
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--brand) 7%, var(--surface));
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .qa-profile {

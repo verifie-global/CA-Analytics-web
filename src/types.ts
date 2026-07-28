@@ -286,11 +286,17 @@ export type QaProfileDefinition = {
   questions: QaQuestionDefinition[];
 };
 
+export type QaScoringMode =
+  | "weighted_ratio"
+  | "subtract_failed_weights";
+
 export type QaProfile = {
   companyId: number;
   isConfigured: boolean;
   isEnabled: boolean;
   profileName: string;
+  qaScoreMaximum: number;
+  qaScoringMode: QaScoringMode;
   definition: QaProfileDefinition;
   createdAt?: string | null;
   updatedAt?: string | null;
@@ -301,9 +307,23 @@ export type QaScoringSettings = {
   isConfigured: boolean;
   isEnabled: boolean;
   qaScoreMaximum: number;
-  minScorableCallDurationSeconds: number | null;
+  qaScoringMode: QaScoringMode;
+  minScorableCallDurationSeconds?: number | null;
   repeatContactAutoPassEnabled: boolean;
   updatedAt?: string | null;
+};
+
+export type QaScoringSettingsUpdate = {
+  qaScoreMaximum: number;
+  qaScoringMode: QaScoringMode;
+  minScorableCallDurationSeconds: number | null;
+  repeatContactAutoPassEnabled: boolean;
+};
+
+export type CallUploadResult = {
+  conversationId: string;
+  conversationName?: string;
+  originalAudioFileName?: string;
 };
 
 export type QaQuestionResult = {

@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { formatQaNotApplicableReason, isQaNotApplicable } from "./qaDisplay";
+import {
+  calculateQaScore,
+  DEFAULT_QA_SCORE_MAXIMUM,
+  DEFAULT_QA_SCORING_MODE,
+  formatQaNotApplicableReason,
+  isQaNotApplicable,
+} from "./qaDisplay";
 import { QaScoreBadge } from "./QaScoreBadge";
 import { QaApplicabilityControl } from "./QaApplicabilityControl";
-import type { QaQuestionCorrection, QaResult } from "./types";
+import type { QaQuestionCorrection, QaResult, QaScoringMode } from "./types";
 
 type QaEvaluationPanelProps = {
   qa?: QaResult | null;
@@ -13,6 +19,8 @@ type QaEvaluationPanelProps = {
   generatedAtLabel?: string;
   initiallyExpanded?: boolean;
   canManageQaScore: boolean;
+  qaScoreMaximum?: number;
+  qaScoringMode?: QaScoringMode;
   onSaveManualCorrection: (
     reason: string,
     questionResults: QaQuestionCorrection[],
@@ -29,6 +37,8 @@ export function QaEvaluationPanel({
   generatedAtLabel,
   initiallyExpanded = false,
   canManageQaScore,
+  qaScoreMaximum = DEFAULT_QA_SCORE_MAXIMUM,
+  qaScoringMode = DEFAULT_QA_SCORING_MODE,
   onSaveManualCorrection,
   onApplicabilityChange,
 }: QaEvaluationPanelProps) {
@@ -73,17 +83,13 @@ export function QaEvaluationPanel({
 
   const preview = useMemo(() => {
     const questions = evaluation?.questionResults ?? [];
-    const possiblePoints = questions.reduce((sum, question) => sum + question.weight, 0);
-    const earnedPoints = questions.reduce(
-      (sum, question) => sum + question.weight * (drafts[question.id]?.score ?? question.score),
-      0,
-    );
-    return {
-      earnedPoints,
-      possiblePoints,
-      score: possiblePoints > 0 ? (earnedPoints / possiblePoints) * 100 : 0,
-    };
-  }, [drafts, evaluation?.questionResults]);
+    return calculateQaScore(questions, drafts, qaScoreMaximum, qaScoringMode);
+  }, [
+    drafts,
+    evaluation?.questionResults,
+    qaScoreMaximum,
+    qaScoringMode,
+  ]);
 
   const startEditing = () => {
     if (!canManageQaScore) {
@@ -246,16 +252,23 @@ export function QaEvaluationPanel({
                   isApplicable={qa.isApplicable}
                   status={qa.status}
                   notApplicableReason={qa.notApplicableReason}
-                  earnedPoints={isEditing ? preview.earnedPoints : qa.earnedPoints}
-                  possiblePoints={isEditing ? preview.possiblePoints : qa.possiblePoints}
+                  maximumScore={qaScoreMaximum}
                 />
               </article>
               <article className="routing-card">
-                <label>Earned points</label>
+                <label>
+                  {qaScoringMode === "subtract_failed_weights"
+                    ? "Passed-question weight"
+                    : "Earned points"}
+                </label>
                 <strong>{qaNotApplicable ? "N/A" : isEditing ? preview.earnedPoints : qa.earnedPoints ?? "-"}</strong>
               </article>
               <article className="routing-card">
-                <label>Possible points</label>
+                <label>
+                  {qaScoringMode === "subtract_failed_weights"
+                    ? "Total penalty weight"
+                    : "Possible points"}
+                </label>
                 <strong>{qaNotApplicable ? "N/A" : isEditing ? preview.possiblePoints : qa.possiblePoints ?? "-"}</strong>
               </article>
               <article className="routing-card">

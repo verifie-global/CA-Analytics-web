@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { QaQuestionEditor } from "./QaQuestionEditor";
-import type { QaProfile, QaQuestionDefinition, QaScoringSettings } from "./types";
+import {
+  DEFAULT_QA_SCORE_MAXIMUM,
+  DEFAULT_QA_SCORING_MODE,
+} from "./qaDisplay";
+import type {
+  QaProfile,
+  QaQuestionDefinition,
+  QaScoringMode,
+  QaScoringSettings,
+  QaScoringSettingsUpdate,
+} from "./types";
 
 type QaProfilePageProps = {
   profile: QaProfile | null;
@@ -14,11 +24,7 @@ type QaProfilePageProps = {
   qaScoringSettingsErrorMessage: string;
   qaScoringSettingsSuccessMessage: string;
   onSave: (profile: QaProfile) => Promise<void>;
-  onSaveQaScoringSettings: (
-    qaScoreMaximum: number,
-    minScorableCallDurationSeconds: number | null,
-    repeatContactAutoPassEnabled: boolean,
-  ) => Promise<void>;
+  onSaveQaScoringSettings: (update: QaScoringSettingsUpdate) => Promise<void>;
 };
 
 const createQuestionId = () =>
@@ -81,7 +87,11 @@ export function QaProfilePage({
 }: QaProfilePageProps) {
   const [draftProfile, setDraftProfile] = useState<QaProfile | null>(null);
   const [isDirty, setIsDirty] = useState(false);
-  const [qaScoreMaximumDraft, setQaScoreMaximumDraft] = useState("100");
+  const [qaScoreMaximumDraft, setQaScoreMaximumDraft] = useState(
+    String(DEFAULT_QA_SCORE_MAXIMUM),
+  );
+  const [qaScoringModeDraft, setQaScoringModeDraft] =
+    useState<QaScoringMode>(DEFAULT_QA_SCORING_MODE);
   const [durationDraft, setDurationDraft] = useState("");
   const [scoringSettingsDirty, setScoringSettingsDirty] = useState(false);
   const [repeatContactAutoPassEnabledDraft, setRepeatContactAutoPassEnabledDraft] =
@@ -93,14 +103,25 @@ export function QaProfilePage({
   }, [profile]);
 
   useEffect(() => {
-    setQaScoreMaximumDraft(String(qaScoringSettings?.qaScoreMaximum ?? 100));
+    setQaScoreMaximumDraft(
+      String(
+        qaScoringSettings?.qaScoreMaximum ??
+          profile?.qaScoreMaximum ??
+          DEFAULT_QA_SCORE_MAXIMUM,
+      ),
+    );
+    setQaScoringModeDraft(
+      qaScoringSettings?.qaScoringMode ??
+        profile?.qaScoringMode ??
+        DEFAULT_QA_SCORING_MODE,
+    );
     const duration = qaScoringSettings?.minScorableCallDurationSeconds;
     setDurationDraft(duration == null ? "" : String(duration));
     setRepeatContactAutoPassEnabledDraft(
       qaScoringSettings?.repeatContactAutoPassEnabled ?? false,
     );
     setScoringSettingsDirty(false);
-  }, [qaScoringSettings]);
+  }, [profile?.qaScoreMaximum, profile?.qaScoringMode, qaScoringSettings]);
 
   const questionErrors = useMemo(() => {
     return (draftProfile?.definition.questions ?? []).map((question) => ({
@@ -112,11 +133,13 @@ export function QaProfilePage({
   const hasValidationErrors = questionErrors.some((item) => item.title || item.weight);
   const parsedQaScoreMaximum = Number(qaScoreMaximumDraft);
   const qaScoreMaximumValidationError =
+    qaScoreMaximumDraft.trim() === "" ||
     !Number.isFinite(parsedQaScoreMaximum) ||
-    !Number.isInteger(parsedQaScoreMaximum) ||
     parsedQaScoreMaximum <= 0
-      ? "Enter a positive whole-number maximum score."
-      : "";
+      ? "Maximum QA score must be greater than 0."
+      : parsedQaScoreMaximum > 9999.99
+        ? "Maximum QA score cannot exceed 9999.99."
+        : "";
   const trimmedDurationDraft = durationDraft.trim();
   const parsedDuration =
     trimmedDurationDraft === "" ? null : Number(trimmedDurationDraft);
@@ -139,11 +162,12 @@ export function QaProfilePage({
       return;
     }
 
-    await onSaveQaScoringSettings(
-      parsedQaScoreMaximum,
-      parsedDuration,
-      repeatContactAutoPassEnabledDraft,
-    );
+    await onSaveQaScoringSettings({
+      qaScoreMaximum: parsedQaScoreMaximum,
+      qaScoringMode: qaScoringModeDraft,
+      minScorableCallDurationSeconds: parsedDuration,
+      repeatContactAutoPassEnabled: repeatContactAutoPassEnabledDraft,
+    });
     setScoringSettingsDirty(false);
   };
 
@@ -179,7 +203,7 @@ export function QaProfilePage({
       <div className="qa-scoring-settings-block">
         <div className="editor-group-head">
           <div>
-            <h3>Scoring eligibility</h3>
+            <h3>QA scoring</h3>
           </div>
         </div>
 
@@ -188,9 +212,11 @@ export function QaProfilePage({
             <span className="qa-field-label">Maximum QA score</span>
             <input
               type="number"
-              min="1"
-              step="1"
+              min="0.01"
+              max="9999.99"
+              step="0.01"
               value={qaScoreMaximumDraft}
+              aria-label="Maximum QA score"
               onChange={(event) => {
                 setQaScoreMaximumDraft(event.target.value);
                 setScoringSettingsDirty(true);
@@ -200,6 +226,29 @@ export function QaProfilePage({
             />
             <small className="qa-field-helper">
               Sets the maximum score used for company QA evaluations.
+            </small>
+          </label>
+
+          <label className="full-width">
+            <span className="qa-field-label">Scoring method</span>
+            <select
+              value={qaScoringModeDraft}
+              aria-label="Scoring method"
+              onChange={(event) => {
+                setQaScoringModeDraft(event.target.value as QaScoringMode);
+                setScoringSettingsDirty(true);
+              }}
+              disabled={qaScoringSettingsLoading || qaScoringSettingsSaving}
+            >
+              <option value="weighted_ratio">Weighted percentage</option>
+              <option value="subtract_failed_weights">
+                Subtract failed-question weights
+              </option>
+            </select>
+            <small className="qa-field-helper">
+              {qaScoringModeDraft === "subtract_failed_weights"
+                ? "Score = maximum QA score − failed-question weights."
+                : "Score = passed weight ÷ total enabled weight × maximum QA score."}
             </small>
           </label>
 
@@ -256,13 +305,29 @@ export function QaProfilePage({
         {qaScoringSettingsSuccessMessage ? (
           <p className="qa-success-text">{qaScoringSettingsSuccessMessage}</p>
         ) : null}
+        {qaScoringSettingsSuccessMessage ? (
+          <p className="qa-settings-notice" role="status">
+            Existing calls keep their current QA score until recalculated.
+          </p>
+        ) : null}
 
         <div className="modal-actions">
           <button
             type="button"
             className="secondary-button"
             onClick={() => {
-              setQaScoreMaximumDraft(String(qaScoringSettings?.qaScoreMaximum ?? 100));
+              setQaScoreMaximumDraft(
+                String(
+                  qaScoringSettings?.qaScoreMaximum ??
+                    profile?.qaScoreMaximum ??
+                    DEFAULT_QA_SCORE_MAXIMUM,
+                ),
+              );
+              setQaScoringModeDraft(
+                qaScoringSettings?.qaScoringMode ??
+                  profile?.qaScoringMode ??
+                  DEFAULT_QA_SCORING_MODE,
+              );
               const duration = qaScoringSettings?.minScorableCallDurationSeconds;
               setDurationDraft(duration == null ? "" : String(duration));
               setRepeatContactAutoPassEnabledDraft(
@@ -374,6 +439,12 @@ export function QaProfilePage({
             </button>
           </div>
 
+          {qaScoringModeDraft === "subtract_failed_weights" ? (
+            <p className="qa-settings-notice" role="note">
+              Question weights are failure penalties and are subtracted from the maximum score.
+            </p>
+          ) : null}
+
           {draftProfile.definition.questions.map((question, index) => (
             <QaQuestionEditor
               key={question.id || `question-${index}`}
@@ -409,6 +480,11 @@ export function QaProfilePage({
 
         {errorMessage ? <p className="error-text">{errorMessage}</p> : null}
         {successMessage ? <p className="qa-success-text">{successMessage}</p> : null}
+        {successMessage ? (
+          <p className="qa-settings-notice" role="status">
+            Existing calls keep their current QA score until recalculated.
+          </p>
+        ) : null}
 
         <div className="modal-actions">
           <button

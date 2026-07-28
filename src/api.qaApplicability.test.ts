@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchQaScoringSettings, saveQaScoringSettings, updateQaApplicability } from "./api";
+import {
+  fetchQaProfile,
+  fetchQaScoringSettings,
+  saveQaScoringSettings,
+  updateQaApplicability,
+} from "./api";
 
 const settings = {
   baseUrl: "https://api.example.test/",
@@ -139,6 +144,7 @@ describe("QA scoring settings", () => {
             isConfigured: true,
             isEnabled: true,
             qaScoreMaximum: 120,
+            qaScoringMode: "subtract_failed_weights",
             minScorableCallDurationSeconds: null,
             repeatContactAutoPassEnabled: false,
           }),
@@ -150,6 +156,7 @@ describe("QA scoring settings", () => {
     await expect(fetchQaScoringSettings(settings)).resolves.toMatchObject({
       companyId: 123,
       qaScoreMaximum: 120,
+      qaScoringMode: "subtract_failed_weights",
       minScorableCallDurationSeconds: null,
       repeatContactAutoPassEnabled: false,
     });
@@ -164,7 +171,12 @@ describe("QA scoring settings", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const saved = await saveQaScoringSettings(settings, 120, null, false);
+    const saved = await saveQaScoringSettings(settings, {
+      qaScoreMaximum: 120,
+      qaScoringMode: "subtract_failed_weights",
+      minScorableCallDurationSeconds: null,
+      repeatContactAutoPassEnabled: false,
+    });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.example.test/api/companies/123/qa-scoring-settings",
@@ -172,6 +184,7 @@ describe("QA scoring settings", () => {
         method: "PUT",
         body: JSON.stringify({
           qaScoreMaximum: 120,
+          qaScoringMode: "subtract_failed_weights",
           minScorableCallDurationSeconds: null,
           repeatContactAutoPassEnabled: false,
         }),
@@ -179,8 +192,81 @@ describe("QA scoring settings", () => {
     );
     expect(saved).toMatchObject({
       qaScoreMaximum: 120,
+      qaScoringMode: "subtract_failed_weights",
       minScorableCallDurationSeconds: null,
       repeatContactAutoPassEnabled: false,
+    });
+  });
+
+  it("surfaces backend validation messages", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            errors: {
+              qaScoreMaximum: [
+                "The maximum QA score must be less than or equal to 9999.99.",
+              ],
+            },
+          }),
+          {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      ),
+    );
+
+    await expect(
+      saveQaScoringSettings(settings, {
+        qaScoreMaximum: 10000,
+        qaScoringMode: "weighted_ratio",
+        minScorableCallDurationSeconds: null,
+        repeatContactAutoPassEnabled: false,
+      }),
+    ).rejects.toThrow(
+      "The maximum QA score must be less than or equal to 9999.99.",
+    );
+  });
+});
+
+describe("QA profile scoring metadata", () => {
+  it("normalizes the maximum and scoring mode returned with the profile", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            companyId: 123,
+            isConfigured: true,
+            isEnabled: true,
+            profileName: "Calls for AI",
+            qaScoreMaximum: 120,
+            qaScoringMode: "subtract_failed_weights",
+            definition: {
+              questions: [
+                {
+                  id: "greeting",
+                  title: "Greeting",
+                  description: "",
+                  weight: 15,
+                  isEnabled: true,
+                },
+              ],
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(fetchQaProfile(settings)).resolves.toMatchObject({
+      qaScoreMaximum: 120,
+      qaScoringMode: "subtract_failed_weights",
+      definition: {
+        questions: [{ id: "greeting", weight: 15 }],
+      },
     });
   });
 });

@@ -7,6 +7,7 @@ import type {
   CallFilterOption,
   CallFilterOptions,
   CallFilters,
+  CallUploadResult,
   CallsListResult,
   CallScoreSummary,
   CallSummary,
@@ -22,6 +23,8 @@ import type {
   QaQuestionResult,
   QaResult,
   QaScoringSettings,
+  QaScoringSettingsUpdate,
+  QaScoringMode,
   ScoreMetricSummary,
   SpeakerSegment,
   WorkflowDelivery,
@@ -35,6 +38,10 @@ import type {
   CompanyUser,
   CompanyUserInput,
 } from "./types";
+import {
+  DEFAULT_QA_SCORE_MAXIMUM,
+  DEFAULT_QA_SCORING_MODE,
+} from "./qaDisplay";
 
 type RequestError = Error & {
   status?: number;
@@ -63,6 +70,34 @@ const createRequestError = (message: string, status: number): RequestError => {
   return error;
 };
 
+const parseRequestErrorMessage = (text: string, fallback: string) => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  try {
+    const body = JSON.parse(trimmed) as unknown;
+    const record = asRecord(body);
+    const errors = asRecord(record.errors);
+    const validationMessages = Object.values(errors)
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => String(value).trim())
+      .filter(Boolean);
+
+    if (validationMessages.length > 0) {
+      return validationMessages.join(" ");
+    }
+
+    return (
+      readString(record, "message", "detail", "error", "title") ??
+      fallback
+    );
+  } catch {
+    return trimmed;
+  }
+};
+
 async function request<T>(
   settings: AppSettings,
   path: string,
@@ -76,7 +111,10 @@ async function request<T>(
 
   if (!response.ok) {
     const text = await response.text();
-    throw createRequestError(text || `Request failed with status ${response.status}`, response.status);
+    throw createRequestError(
+      parseRequestErrorMessage(text, `Request failed with status ${response.status}`),
+      response.status,
+    );
   }
 
   if (response.status === 204) {
@@ -190,6 +228,16 @@ const readBoolean = (record: Record<string, unknown>, ...keys: string[]) => {
   }
 
   return undefined;
+};
+
+const readQaScoringMode = (
+  record: Record<string, unknown>,
+  ...keys: string[]
+): QaScoringMode | undefined => {
+  const value = readString(record, ...keys);
+  return value === "weighted_ratio" || value === "subtract_failed_weights"
+    ? value
+    : undefined;
 };
 
 const normalizeScores = (value: unknown) =>
@@ -613,7 +661,8 @@ const normalizeQaResult = (value: unknown): QaResult | null => {
 const normalizeQaScoringSettings = (
   value: unknown,
   fallbackCompanyId: string,
-  fallbackQaScoreMaximum = 100,
+  fallbackQaScoreMaximum = DEFAULT_QA_SCORE_MAXIMUM,
+  fallbackQaScoringMode: QaScoringMode = DEFAULT_QA_SCORING_MODE,
   fallbackDuration: number | null = null,
   fallbackRepeatContactAutoPassEnabled = false,
 ): QaScoringSettings => {
@@ -628,6 +677,8 @@ const normalizeQaScoringSettings = (
     isConfigured: readBoolean(record, "isConfigured") ?? false,
     isEnabled: readBoolean(record, "isEnabled") ?? false,
     qaScoreMaximum: readNumber(record, "qaScoreMaximum") ?? fallbackQaScoreMaximum,
+    qaScoringMode:
+      readQaScoringMode(record, "qaScoringMode") ?? fallbackQaScoringMode,
     minScorableCallDurationSeconds:
       minScorableCallDurationSeconds === undefined
         ? fallbackDuration
@@ -1156,6 +1207,10 @@ export async function fetchQaProfile(settings: AppSettings) {
     isConfigured: readBoolean(record, "isConfigured") ?? false,
     isEnabled: readBoolean(record, "isEnabled") ?? false,
     profileName: readString(record, "profileName") ?? "",
+    qaScoreMaximum:
+      readNumber(record, "qaScoreMaximum") ?? DEFAULT_QA_SCORE_MAXIMUM,
+    qaScoringMode:
+      readQaScoringMode(record, "qaScoringMode") ?? DEFAULT_QA_SCORING_MODE,
     definition: normalizeQaProfileDefinition(record.definition),
     createdAt: readString(record, "createdAt") ?? null,
     updatedAt: readString(record, "updatedAt") ?? null,
@@ -1185,6 +1240,10 @@ export async function saveQaProfile(settings: AppSettings, profile: QaProfile) {
     isConfigured: readBoolean(record, "isConfigured") ?? true,
     isEnabled: readBoolean(record, "isEnabled") ?? profile.isEnabled,
     profileName: readString(record, "profileName") ?? profile.profileName,
+    qaScoreMaximum:
+      readNumber(record, "qaScoreMaximum") ?? profile.qaScoreMaximum,
+    qaScoringMode:
+      readQaScoringMode(record, "qaScoringMode") ?? profile.qaScoringMode,
     definition: normalizeQaProfileDefinition(record.definition ?? profile.definition),
     createdAt: readString(record, "createdAt") ?? profile.createdAt ?? null,
     updatedAt: readString(record, "updatedAt") ?? profile.updatedAt ?? null,
@@ -1202,9 +1261,7 @@ export async function fetchQaScoringSettings(settings: AppSettings) {
 
 export async function saveQaScoringSettings(
   settings: AppSettings,
-  qaScoreMaximum: number,
-  minScorableCallDurationSeconds: number | null,
-  repeatContactAutoPassEnabled: boolean,
+  update: QaScoringSettingsUpdate,
 ) {
   const response = await request<unknown>(
     settings,
@@ -1212,20 +1269,17 @@ export async function saveQaScoringSettings(
     {
       method: "PUT",
       headers: jsonHeaders(),
-      body: JSON.stringify({
-        qaScoreMaximum,
-        minScorableCallDurationSeconds,
-        repeatContactAutoPassEnabled,
-      }),
+      body: JSON.stringify(update),
     },
   );
 
   return normalizeQaScoringSettings(
     response,
     settings.companyId,
-    qaScoreMaximum,
-    minScorableCallDurationSeconds,
-    repeatContactAutoPassEnabled,
+    update.qaScoreMaximum,
+    update.qaScoringMode,
+    update.minScorableCallDurationSeconds,
+    update.repeatContactAutoPassEnabled,
   );
 }
 
@@ -1501,7 +1555,7 @@ export async function updateQaApplicability(
 export async function uploadCall(
   settings: AppSettings,
   payload: { conversationId: string; url: string; file: File | null },
-) {
+): Promise<CallUploadResult> {
   const formData = new FormData();
 
   if (payload.url) {
@@ -1523,7 +1577,33 @@ export async function uploadCall(
 
   if (!response.ok) {
     const text = await response.text();
-    throw createRequestError(text || `Upload failed with status ${response.status}`, response.status);
+    throw createRequestError(
+      parseRequestErrorMessage(text, `Upload failed with status ${response.status}`),
+      response.status,
+    );
+  }
+
+  const fallback: CallUploadResult = {
+    conversationId: payload.conversationId,
+    originalAudioFileName: payload.file?.name,
+  };
+  const text = await response.text();
+  if (!text.trim()) {
+    return fallback;
+  }
+
+  try {
+    const body = asRecord(JSON.parse(text) as unknown);
+    const record = asOptionalRecord(body.call) ?? body;
+    return {
+      conversationId:
+        readString(record, "conversationId", "id") ?? payload.conversationId,
+      conversationName: readString(record, "conversationName"),
+      originalAudioFileName:
+        readString(record, "originalAudioFileName") ?? payload.file?.name,
+    };
+  } catch {
+    return fallback;
   }
 }
 

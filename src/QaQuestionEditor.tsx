@@ -41,6 +41,7 @@ export function QaQuestionEditor({
           <input
             type="number"
             min="1"
+            aria-label="Weight"
             value={question.weight}
             onChange={(event) =>
               onChange({ ...question, weight: Number(event.target.value) || 0 })
