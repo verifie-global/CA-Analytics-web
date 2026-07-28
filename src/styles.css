@@ -3754,10 +3754,14 @@ details.scroll-toggle > summary {
 .qa-question-results {
   display: grid;
   gap: 0.8rem;
+  min-width: 0;
 }
 
 .qa-question-result {
   background: #fff;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .qa-question-result.qa-question-changed {
@@ -3770,10 +3774,20 @@ details.scroll-toggle > summary {
 }
 
 .qa-question-result-head {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
   gap: 1rem;
   align-items: flex-start;
+}
+
+.qa-question-result-head > :first-child {
+  min-width: 0;
+}
+
+.qa-question-result-head strong,
+.qa-question-result-head p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .qa-question-result-head p {
@@ -3783,9 +3797,17 @@ details.scroll-toggle > summary {
 
 .qa-question-score {
   display: grid;
+  min-width: 4.5rem;
+  max-width: 100%;
+  justify-self: end;
   justify-items: end;
   gap: 0.35rem;
   text-align: right;
+}
+
+.qa-question-score .bool-badge,
+.qa-question-score small {
+  white-space: nowrap;
 }
 
 .qa-settings-panel,
@@ -5499,6 +5521,19 @@ details.scroll-toggle > summary {
 }
 
 @media (max-width: 720px) {
+  .qa-question-result-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qa-question-score {
+    grid-auto-flow: column;
+    min-width: 0;
+    justify-self: start;
+    justify-items: start;
+    align-items: center;
+    text-align: left;
+  }
+
   .demo-call-shell {
     padding: 0.85rem;
   }
