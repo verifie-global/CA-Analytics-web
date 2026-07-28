@@ -296,6 +296,7 @@ export type QaScoringSettings = {
   companyId: number;
   isConfigured: boolean;
   isEnabled: boolean;
+  qaScoreMaximum: number;
   minScorableCallDurationSeconds: number | null;
   repeatContactAutoPassEnabled: boolean;
   updatedAt?: string | null;

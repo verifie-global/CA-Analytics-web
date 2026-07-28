@@ -15,6 +15,7 @@ type QaProfilePageProps = {
   qaScoringSettingsSuccessMessage: string;
   onSave: (profile: QaProfile) => Promise<void>;
   onSaveQaScoringSettings: (
+    qaScoreMaximum: number,
     minScorableCallDurationSeconds: number | null,
     repeatContactAutoPassEnabled: boolean,
   ) => Promise<void>;
@@ -80,6 +81,7 @@ export function QaProfilePage({
 }: QaProfilePageProps) {
   const [draftProfile, setDraftProfile] = useState<QaProfile | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [qaScoreMaximumDraft, setQaScoreMaximumDraft] = useState("100");
   const [durationDraft, setDurationDraft] = useState("");
   const [scoringSettingsDirty, setScoringSettingsDirty] = useState(false);
   const [repeatContactAutoPassEnabledDraft, setRepeatContactAutoPassEnabledDraft] =
@@ -91,6 +93,7 @@ export function QaProfilePage({
   }, [profile]);
 
   useEffect(() => {
+    setQaScoreMaximumDraft(String(qaScoringSettings?.qaScoreMaximum ?? 100));
     const duration = qaScoringSettings?.minScorableCallDurationSeconds;
     setDurationDraft(duration == null ? "" : String(duration));
     setRepeatContactAutoPassEnabledDraft(
@@ -107,6 +110,13 @@ export function QaProfilePage({
   }, [draftProfile]);
 
   const hasValidationErrors = questionErrors.some((item) => item.title || item.weight);
+  const parsedQaScoreMaximum = Number(qaScoreMaximumDraft);
+  const qaScoreMaximumValidationError =
+    !Number.isFinite(parsedQaScoreMaximum) ||
+    !Number.isInteger(parsedQaScoreMaximum) ||
+    parsedQaScoreMaximum <= 0
+      ? "Enter a positive whole-number maximum score."
+      : "";
   const trimmedDurationDraft = durationDraft.trim();
   const parsedDuration =
     trimmedDurationDraft === "" ? null : Number(trimmedDurationDraft);
@@ -125,11 +135,15 @@ export function QaProfilePage({
   };
 
   const handleSaveQaScoringSettings = async () => {
-    if (durationValidationError) {
+    if (qaScoreMaximumValidationError || durationValidationError) {
       return;
     }
 
-    await onSaveQaScoringSettings(parsedDuration, repeatContactAutoPassEnabledDraft);
+    await onSaveQaScoringSettings(
+      parsedQaScoreMaximum,
+      parsedDuration,
+      repeatContactAutoPassEnabledDraft,
+    );
     setScoringSettingsDirty(false);
   };
 
@@ -170,6 +184,25 @@ export function QaProfilePage({
         </div>
 
         <div className="qa-settings-grid qa-scoring-settings-grid">
+          <label className="full-width">
+            <span className="qa-field-label">Maximum QA score</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={qaScoreMaximumDraft}
+              onChange={(event) => {
+                setQaScoreMaximumDraft(event.target.value);
+                setScoringSettingsDirty(true);
+              }}
+              aria-invalid={Boolean(qaScoreMaximumValidationError)}
+              disabled={qaScoringSettingsLoading || qaScoringSettingsSaving}
+            />
+            <small className="qa-field-helper">
+              Sets the maximum score used for company QA evaluations.
+            </small>
+          </label>
+
           <label className="full-width">
             <span className="qa-field-label">Minimum call duration for QA scoring</span>
             <input
@@ -213,6 +246,9 @@ export function QaProfilePage({
         {qaScoringSettingsLoading ? (
           <p className="qa-settings-status">Loading QA scoring settings...</p>
         ) : null}
+        {qaScoreMaximumValidationError ? (
+          <p className="field-error">{qaScoreMaximumValidationError}</p>
+        ) : null}
         {durationValidationError ? <p className="field-error">{durationValidationError}</p> : null}
         {qaScoringSettingsErrorMessage ? (
           <p className="error-text">{qaScoringSettingsErrorMessage}</p>
@@ -226,6 +262,7 @@ export function QaProfilePage({
             type="button"
             className="secondary-button"
             onClick={() => {
+              setQaScoreMaximumDraft(String(qaScoringSettings?.qaScoreMaximum ?? 100));
               const duration = qaScoringSettings?.minScorableCallDurationSeconds;
               setDurationDraft(duration == null ? "" : String(duration));
               setRepeatContactAutoPassEnabledDraft(
@@ -243,6 +280,7 @@ export function QaProfilePage({
             disabled={
               qaScoringSettingsSaving ||
               qaScoringSettingsLoading ||
+              Boolean(qaScoreMaximumValidationError) ||
               Boolean(durationValidationError)
             }
           >

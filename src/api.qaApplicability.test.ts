@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { updateQaApplicability } from "./api";
+import { fetchQaScoringSettings, saveQaScoringSettings, updateQaApplicability } from "./api";
 
 const settings = {
   baseUrl: "https://api.example.test/",
@@ -125,5 +125,62 @@ describe("updateQaApplicability", () => {
     await expect(
       updateQaApplicability(settings, "missing", true),
     ).rejects.toMatchObject({ status });
+  });
+});
+
+describe("QA scoring settings", () => {
+  it("normalizes the maximum score returned by the settings endpoint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            companyId: 123,
+            isConfigured: true,
+            isEnabled: true,
+            qaScoreMaximum: 120,
+            minScorableCallDurationSeconds: null,
+            repeatContactAutoPassEnabled: false,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(fetchQaScoringSettings(settings)).resolves.toMatchObject({
+      companyId: 123,
+      qaScoreMaximum: 120,
+      minScorableCallDurationSeconds: null,
+      repeatContactAutoPassEnabled: false,
+    });
+  });
+
+  it("includes all editable settings in the PUT payload", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const saved = await saveQaScoringSettings(settings, 120, null, false);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.example.test/api/companies/123/qa-scoring-settings",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          qaScoreMaximum: 120,
+          minScorableCallDurationSeconds: null,
+          repeatContactAutoPassEnabled: false,
+        }),
+      }),
+    );
+    expect(saved).toMatchObject({
+      qaScoreMaximum: 120,
+      minScorableCallDurationSeconds: null,
+      repeatContactAutoPassEnabled: false,
+    });
   });
 });

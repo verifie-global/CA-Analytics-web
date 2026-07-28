@@ -2445,6 +2445,7 @@ function App() {
   };
 
   const handleSaveQaScoringSettings = async (
+    qaScoreMaximum: number,
     minScorableCallDurationSeconds: number | null,
     repeatContactAutoPassEnabled: boolean,
   ) => {
@@ -2455,6 +2456,7 @@ function App() {
     try {
       const savedSettings = await saveQaScoringSettings(
         settings,
+        qaScoreMaximum,
         minScorableCallDurationSeconds,
         repeatContactAutoPassEnabled,
       );

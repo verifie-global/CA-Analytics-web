@@ -609,6 +609,7 @@ const normalizeQaResult = (value: unknown): QaResult | null => {
 const normalizeQaScoringSettings = (
   value: unknown,
   fallbackCompanyId: string,
+  fallbackQaScoreMaximum = 100,
   fallbackDuration: number | null = null,
   fallbackRepeatContactAutoPassEnabled = false,
 ): QaScoringSettings => {
@@ -622,6 +623,7 @@ const normalizeQaScoringSettings = (
     companyId: readNumber(record, "companyId") ?? Number(fallbackCompanyId),
     isConfigured: readBoolean(record, "isConfigured") ?? false,
     isEnabled: readBoolean(record, "isEnabled") ?? false,
+    qaScoreMaximum: readNumber(record, "qaScoreMaximum") ?? fallbackQaScoreMaximum,
     minScorableCallDurationSeconds:
       minScorableCallDurationSeconds === undefined
         ? fallbackDuration
@@ -1196,6 +1198,7 @@ export async function fetchQaScoringSettings(settings: AppSettings) {
 
 export async function saveQaScoringSettings(
   settings: AppSettings,
+  qaScoreMaximum: number,
   minScorableCallDurationSeconds: number | null,
   repeatContactAutoPassEnabled: boolean,
 ) {
@@ -1206,6 +1209,7 @@ export async function saveQaScoringSettings(
       method: "PUT",
       headers: jsonHeaders(),
       body: JSON.stringify({
+        qaScoreMaximum,
         minScorableCallDurationSeconds,
         repeatContactAutoPassEnabled,
       }),
@@ -1215,6 +1219,7 @@ export async function saveQaScoringSettings(
   return normalizeQaScoringSettings(
     response,
     settings.companyId,
+    qaScoreMaximum,
     minScorableCallDurationSeconds,
     repeatContactAutoPassEnabled,
   );
