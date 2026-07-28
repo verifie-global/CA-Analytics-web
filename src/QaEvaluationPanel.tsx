@@ -81,6 +81,26 @@ export function QaEvaluationPanel({
     [drafts, evaluation?.questionResults],
   );
 
+  const orderedQuestionResults = useMemo(
+    () =>
+      (evaluation?.questionResults ?? [])
+        .map((question, originalIndex) => ({
+          question,
+          originalIndex,
+          passed:
+            (isEditing
+              ? drafts[question.id]?.score ?? question.score
+              : question.score) > 0,
+        }))
+        .sort(
+          (left, right) =>
+            Number(left.passed) - Number(right.passed) ||
+            left.originalIndex - right.originalIndex,
+        )
+        .map(({ question }) => question),
+    [drafts, evaluation?.questionResults, isEditing],
+  );
+
   const preview = useMemo(() => {
     const questions = evaluation?.questionResults ?? [];
     return calculateQaScore(questions, drafts, qaScoreMaximum, qaScoringMode);
@@ -332,7 +352,7 @@ export function QaEvaluationPanel({
                 <div className="qa-question-results">
                   <h5>Question results</h5>
                   {evaluation?.questionResults?.length ? (
-                    evaluation.questionResults.map((question) => {
+                    orderedQuestionResults.map((question) => {
                       const draft = drafts[question.id];
                       const shownScore = isEditing ? draft?.score ?? question.score : question.score;
                       const passed = shownScore > 0;
