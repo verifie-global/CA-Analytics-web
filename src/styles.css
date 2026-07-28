@@ -1989,6 +1989,17 @@ textarea:focus {
   gap: 0.55rem;
 }
 
+.call-detail-header .eyebrow {
+  margin-bottom: 0.25rem;
+}
+
+.call-detail-header h3 {
+  margin: 0;
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
 .call-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

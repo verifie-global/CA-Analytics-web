@@ -402,6 +402,8 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
 
   return {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
+    conversationName: readString(record, "conversationName"),
+    originalAudioFileName: readString(record, "originalAudioFileName"),
     status: readString(record, "status") ?? "Unknown",
     agentInfo: normalizePartyInfo(record.agentInfo ?? record.agent, {
       name: readString(record, "agentName"),
@@ -453,6 +455,8 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
 
   return {
     conversationId: readString(record, "conversationId", "id") ?? "unknown",
+    conversationName: readString(record, "conversationName"),
+    originalAudioFileName: readString(record, "originalAudioFileName"),
     status: readString(record, "status") ?? "Unknown",
     companyId: readNumber(record, "companyId") ?? null,
     agentInfo: normalizePartyInfo(record.agentInfo),

@@ -4062,6 +4062,7 @@ function App() {
 
                     {calls.map((call) => {
                       const gridDate = formatGridDate(call.createdUtc);
+                      const displayName = call.conversationName ?? call.conversationId;
 
                       return (
                         <Fragment key={call.conversationId}>
@@ -4073,7 +4074,7 @@ function App() {
                             tabIndex={0}
                           >
                             <span className="call-row-primary">
-                              <span className="call-row-id">{call.conversationId}</span>
+                              <span className="call-row-id">{displayName}</span>
                             </span>
                             <span className="call-row-agent">
                               {getPartySummary(call.agentInfo).primary}
@@ -4170,6 +4171,11 @@ function App() {
                 </div>
               ) : detail ? (
                 <>
+                  <header className="call-detail-header">
+                    <p className="eyebrow">Call detail</p>
+                    <h3>{detail.conversationName ?? detail.conversationId}</h3>
+                  </header>
+
                   <section className="conversation-summary-card" aria-label="Conversation summarization">
                     <dl className="conversation-summary-meta">
                       <div>

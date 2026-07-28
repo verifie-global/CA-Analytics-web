@@ -164,6 +164,8 @@ export type CompanyUserInput = {
 
 export type CallSummary = {
   conversationId: string;
+  conversationName?: string;
+  originalAudioFileName?: string;
   status: string;
   agentInfo?: PartyInfo | null;
   customerInfo?: PartyInfo | null;
@@ -230,6 +232,8 @@ export type PartyInfo = {
 
 export type CallDetail = {
   conversationId: string;
+  conversationName?: string;
+  originalAudioFileName?: string;
   status: string;
   companyId?: number | null;
   agentInfo?: PartyInfo | null;
