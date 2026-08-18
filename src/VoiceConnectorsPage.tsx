@@ -532,7 +532,7 @@ export function VoiceConnectorsPage({ settings, onUnauthorized }: Props) {
   return (
     <section className="panel voice-connectors-page">
       <div className="section-heading voice-connectors-heading">
-        <div><p className="eyebrow">Administration</p><h1>Voice Connectors</h1><p>Configure and monitor the voice providers available to your workspace.</p></div>
+        <div><h1>Voice Connectors</h1><p>Configure and monitor the voice providers available to your workspace.</p></div>
       </div>
 
       {pageError ? <div className="connector-page-error" role="alert"><p>{pageError}</p><button type="button" className="secondary-button" onClick={() => void loadPage()}>Retry</button></div> : null}

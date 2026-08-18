@@ -347,15 +347,6 @@ textarea:focus {
   flex: 0 0 auto;
 }
 
-.nav-section-label {
-  display: block;
-  margin: 1rem 0.85rem 0.2rem;
-  color: var(--muted);
-  font-size: 0.62rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 /* ---------------------------------------------------------- Main col -- */
 
 .app-main {
@@ -4545,7 +4536,6 @@ details.scroll-toggle > summary {
   margin-bottom: 0;
 }
 
-.voice-connectors-heading .eyebrow { margin-bottom: .3rem; }
 .voice-connectors-heading h1 {
   margin: 0;
   font-size: clamp(1.65rem, 3vw, 2.35rem);
@@ -6023,8 +6013,6 @@ details.scroll-toggle > summary {
     flex-wrap: wrap;
     overflow: visible;
   }
-
-  .nav-section-label { display: none; }
 
   .sidebar-foot {
     margin-top: 0;

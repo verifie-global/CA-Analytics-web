@@ -3745,7 +3745,6 @@ function App() {
         <nav className="sidebar-nav">
           {navItems.map((item) => (
             <Fragment key={item.key}>
-              {item.key === "voice" ? <span className="nav-section-label">Administration</span> : null}
               <button
                 type="button"
                 className={`nav-item ${item.active ? "nav-item-active" : ""}`}
