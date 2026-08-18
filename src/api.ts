@@ -37,14 +37,20 @@ import type {
   CompanyAgent,
   CompanyUser,
   CompanyUserInput,
+  VoiceConnectorAccount,
+  VoiceConnectorAuditEvent,
+  VoiceConnectorCatalogItem,
+  VoiceConnectorTestResult,
+  VoiceConnectorUpdate,
 } from "./types";
 import {
   DEFAULT_QA_SCORE_MAXIMUM,
   DEFAULT_QA_SCORING_MODE,
 } from "./qaDisplay";
 
-type RequestError = Error & {
+export type RequestError = Error & {
   status?: number;
+  fieldErrors?: Record<string, string>;
 };
 
 const trimSlash = (value: string) => value.replace(/\/+$/, "");
@@ -64,9 +70,37 @@ const jsonHeaders = (extra?: HeadersInit) => ({
   ...extra,
 });
 
-const createRequestError = (message: string, status: number): RequestError => {
+const parseRequestFieldErrors = (text: string): Record<string, string> => {
+  try {
+    const errors = asRecord(asRecord(JSON.parse(text)).errors);
+    const result: Record<string, string> = {};
+    const visit = (field: string, value: unknown) => {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        Object.entries(value as Record<string, unknown>).forEach(([child, childValue]) =>
+          visit(field ? `${field}.${child}` : child, childValue));
+        return;
+      }
+      const message = (Array.isArray(value) ? value : [value])
+        .map((entry) => String(entry ?? "").trim())
+        .filter(Boolean)
+        .join(" ");
+      if (message) result[field] = message;
+    };
+    Object.entries(errors).forEach(([field, value]) => visit(field, value));
+    return result;
+  } catch {
+    return {};
+  }
+};
+
+const createRequestError = (
+  message: string,
+  status: number,
+  fieldErrors?: Record<string, string>,
+): RequestError => {
   const error = new Error(message) as RequestError;
   error.status = status;
+  if (fieldErrors && Object.keys(fieldErrors).length > 0) error.fieldErrors = fieldErrors;
   return error;
 };
 
@@ -79,11 +113,7 @@ const parseRequestErrorMessage = (text: string, fallback: string) => {
   try {
     const body = JSON.parse(trimmed) as unknown;
     const record = asRecord(body);
-    const errors = asRecord(record.errors);
-    const validationMessages = Object.values(errors)
-      .flatMap((value) => (Array.isArray(value) ? value : [value]))
-      .map((value) => String(value).trim())
-      .filter(Boolean);
+    const validationMessages = Object.values(parseRequestFieldErrors(trimmed));
 
     if (validationMessages.length > 0) {
       return validationMessages.join(" ");
@@ -114,6 +144,7 @@ async function request<T>(
     throw createRequestError(
       parseRequestErrorMessage(text, `Request failed with status ${response.status}`),
       response.status,
+      parseRequestFieldErrors(text),
     );
   }
 
@@ -122,6 +153,74 @@ async function request<T>(
   }
 
   return (await response.json()) as T;
+}
+
+const unwrapArray = (payload: unknown, ...keys: string[]): unknown[] => {
+  if (Array.isArray(payload)) return payload;
+  const record = asRecord(payload);
+  for (const key of keys) {
+    if (Array.isArray(record[key])) return record[key] as unknown[];
+  }
+  const data = record.data;
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === "object") return unwrapArray(data, ...keys);
+  return [];
+};
+
+export async function fetchVoiceConnectorCatalog(
+  settings: AppSettings,
+): Promise<VoiceConnectorCatalogItem[]> {
+  const payload = await request<unknown>(settings, "/api/v1/admin/connectors/catalog");
+  return unwrapArray(payload, "items", "providers", "catalog") as VoiceConnectorCatalogItem[];
+}
+
+export async function fetchVoiceConnectorAccounts(
+  settings: AppSettings,
+): Promise<VoiceConnectorAccount[]> {
+  const payload = await request<unknown>(settings, "/api/v1/admin/connectors/");
+  return unwrapArray(payload, "items", "connectors", "accounts") as VoiceConnectorAccount[];
+}
+
+export function fetchVoiceConnectorAccount(settings: AppSettings, provider: string) {
+  return request<VoiceConnectorAccount>(
+    settings,
+    `/api/v1/admin/connectors/${encodeURIComponent(provider)}`,
+  );
+}
+
+export function updateVoiceConnector(
+  settings: AppSettings,
+  provider: string,
+  input: VoiceConnectorUpdate,
+) {
+  return request<VoiceConnectorAccount>(
+    settings,
+    `/api/v1/admin/connectors/${encodeURIComponent(provider)}`,
+    { method: "PUT", headers: jsonHeaders(), body: JSON.stringify(input) },
+  );
+}
+
+export function testVoiceConnector(settings: AppSettings, provider: string) {
+  return request<VoiceConnectorTestResult>(
+    settings,
+    `/api/v1/admin/connectors/${encodeURIComponent(provider)}/test`,
+    { method: "POST", headers: jsonHeaders() },
+  );
+}
+
+export async function fetchVoiceConnectorAudit(
+  settings: AppSettings,
+  provider: string,
+  limit = 25,
+): Promise<VoiceConnectorAuditEvent[]> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  const payload = await request<unknown>(
+    settings,
+    `/api/v1/admin/connectors/${encodeURIComponent(provider)}/audit`,
+    undefined,
+    query,
+  );
+  return unwrapArray(payload, "items", "events", "audit") as VoiceConnectorAuditEvent[];
 }
 
 export async function fetchCallSummaryReport(

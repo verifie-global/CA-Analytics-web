@@ -41,6 +41,7 @@ import { CallSummaryReportPage } from "./CallSummaryReportPage";
 import { WorkflowAutomationsPage } from "./WorkflowAutomationsPage";
 import { UserManagementPage } from "./UserManagementPage";
 import { AccountPage } from "./AccountPage";
+import { VoiceConnectorsPage } from "./VoiceConnectorsPage";
 import { getConversationDisplayName } from "./conversationDisplay";
 import {
   DEFAULT_QA_SCORE_MAXIMUM,
@@ -72,7 +73,7 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "demo-call" | "account";
+type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "voice-connectors" | "demo-call" | "account";
 type AppNavKey =
   | "dashboard"
   | "reports"
@@ -84,6 +85,7 @@ type AppNavKey =
   | "qa"
   | "workflow"
   | "users"
+  | "voice"
   | "logout";
 
 type KeywordRule = {
@@ -399,6 +401,10 @@ const getRouteFromPath = (pathName: string): AppRoute => {
 
   if (pathName === "/admin/users") {
     return "user-management";
+  }
+
+  if (pathName === "/admin/voice-connectors") {
+    return "voice-connectors";
   }
 
   if (pathName === "/account") {
@@ -1302,6 +1308,9 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
       {name === "users" && (
         <path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM18 8v6m3-3h-6" {...common} />
       )}
+      {name === "voice" && (
+        <path d="M4 9v6M8 6v12M12 3v18M16 7v10M20 10v4" {...common} />
+      )}
       {name === "logout" && (
         <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12m0 0-4-4m4 4-4 4" {...common} />
       )}
@@ -1713,6 +1722,8 @@ function App() {
             ? "/democall"
             : route === "user-management"
               ? "/admin/users"
+            : route === "voice-connectors"
+              ? "/admin/voice-connectors"
             : route === "account"
               ? "/account"
             : route === "reports"
@@ -3708,12 +3719,20 @@ function App() {
       onClick: () => navigateTo("workflow-automations"),
     },
     ...(hasAdminAccess
-      ? [{
-          key: "users" as const,
-          label: "User Management",
-          active: currentRoute === "user-management",
-          onClick: () => navigateTo("user-management" as AppRoute),
-        }]
+      ? [
+          {
+            key: "voice" as const,
+            label: "Voice Connectors",
+            active: currentRoute === "voice-connectors",
+            onClick: () => navigateTo("voice-connectors" as AppRoute),
+          },
+          {
+            key: "users" as const,
+            label: "User Management",
+            active: currentRoute === "user-management",
+            onClick: () => navigateTo("user-management" as AppRoute),
+          },
+        ]
       : []),
   ];
 
@@ -3725,15 +3744,17 @@ function App() {
         </div>
         <nav className="sidebar-nav">
           {navItems.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`nav-item ${item.active ? "nav-item-active" : ""}`}
-              onClick={item.onClick}
-            >
-              <NavIcon name={item.key} />
-              <span>{item.label}</span>
-            </button>
+            <Fragment key={item.key}>
+              {item.key === "voice" ? <span className="nav-section-label">Administration</span> : null}
+              <button
+                type="button"
+                className={`nav-item ${item.active ? "nav-item-active" : ""}`}
+                onClick={item.onClick}
+              >
+                <NavIcon name={item.key} />
+                <span>{item.label}</span>
+              </button>
+            </Fragment>
           ))}
         </nav>
         <div className="sidebar-foot">
@@ -3978,6 +3999,16 @@ function App() {
             </section>
           ) : (
             <AccountPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
+          )
+        ) : currentRoute === "voice-connectors" ? (
+          hasAdminAccess ? (
+            <VoiceConnectorsPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
+          ) : (
+            <section className="panel permission-denied" role="alert">
+              <h1>Permission denied</h1>
+              <p>Administrator access is required to manage voice connectors.</p>
+              <button type="button" onClick={() => navigateTo("dashboard")}>Return to dashboard</button>
+            </section>
           )
         ) : currentRoute === "user-management" ? (
           hasAdminAccess ? (

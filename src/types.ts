@@ -128,6 +128,86 @@ export type AppSettings = {
   userId?: number | string | null;
 };
 
+export type VoiceConnectorFieldType =
+  | "text"
+  | "password"
+  | "url"
+  | "number"
+  | "boolean"
+  | "select";
+
+export type VoiceConnectorReadiness =
+  | "available"
+  | "experimental"
+  | "adapter_required"
+  | string;
+
+export type VoiceConnectorFieldDefinition = {
+  name: string;
+  label: string;
+  type: VoiceConnectorFieldType;
+  required: boolean;
+  secret: boolean;
+  description?: string | null;
+  default_value?: string | number | boolean | null;
+  allowed_values?: Array<string | number> | null;
+  placeholder?: string | null;
+};
+
+export type VoiceConnectorCatalogItem = {
+  provider: string;
+  display_name: string;
+  readiness: VoiceConnectorReadiness;
+  runtime_activation_supported: boolean;
+  description?: string | null;
+  limitation?: string | null;
+  fields: VoiceConnectorFieldDefinition[];
+};
+
+export type VoiceConnectorTestStatus =
+  | "testing"
+  | "connected"
+  | "credentials_rejected"
+  | "unavailable"
+  | "timeout"
+  | "adapter_required"
+  | string;
+
+export type VoiceConnectorTestResult = {
+  status: VoiceConnectorTestStatus;
+  message?: string | null;
+  tested_at?: string | null;
+};
+
+export type VoiceConnectorAccount = {
+  provider: string;
+  display_name: string;
+  enabled: boolean;
+  configuration: Record<string, unknown>;
+  secret_fields: Record<string, boolean>;
+  configuration_version: number;
+  last_test?: VoiceConnectorTestResult | null;
+  updated_at?: string | null;
+};
+
+export type VoiceConnectorUpdate = {
+  display_name: string;
+  enabled: boolean;
+  configuration: Record<string, string | number | boolean>;
+  secrets: Record<string, string>;
+  clear_secrets: string[];
+  expected_version: number;
+};
+
+export type VoiceConnectorAuditEvent = {
+  id?: string | number | null;
+  action: string;
+  actor: string;
+  occurred_at: string;
+  changed_fields: string[];
+  trace_id?: string | null;
+};
+
 export type AuthTokenResponse = {
   accessToken: string;
   tokenType?: string | null;
