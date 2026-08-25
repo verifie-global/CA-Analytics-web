@@ -2,6 +2,7 @@ import { FormEvent, Fragment, useCallback, useEffect, useRef, useState } from "r
 import { fetchCallSummaryReport } from "./api";
 import { DEFAULT_QA_SCORE_MAXIMUM, formatQaScore } from "./qaDisplay";
 import type { AppSettings, CallSummaryReport, QaQuestion } from "./types";
+import { getIntlLocale, useI18n } from "./i18n";
 
 type DateRange = {
   from: string;
@@ -32,10 +33,15 @@ const utcInputToIso = (value: string) => {
 };
 
 const formatPercent = (value: number | null | undefined) =>
-  value == null || !Number.isFinite(value) ? EM_DASH : `${value.toFixed(2)}%`;
+  value == null || !Number.isFinite(value)
+    ? EM_DASH
+    : new Intl.NumberFormat(getIntlLocale(), {
+        style: "percent",
+        maximumFractionDigits: 2,
+      }).format(value / 100);
 
 const formatCount = (value: number) =>
-  new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value);
+  new Intl.NumberFormat(getIntlLocale(), { maximumFractionDigits: 0 }).format(value);
 
 const formatDuration = (value: number | null | undefined) => {
   if (value == null || !Number.isFinite(value) || value < 0) return EM_DASH;
@@ -45,10 +51,17 @@ const formatDuration = (value: number | null | undefined) => {
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
 
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (totalMinutes > 0) return `${totalMinutes}m`;
-  return `${Math.floor(value)}s`;
+  const unit = (amount: number, name: "day" | "hour" | "minute" | "second") =>
+    new Intl.NumberFormat(getIntlLocale(), {
+      style: "unit",
+      unit: name,
+      unitDisplay: "short",
+      maximumFractionDigits: 0,
+    }).format(amount);
+  if (days > 0) return [unit(days, "day"), unit(hours, "hour"), unit(minutes, "minute")].join(" ");
+  if (hours > 0) return [unit(hours, "hour"), unit(minutes, "minute")].join(" ");
+  if (totalMinutes > 0) return unit(totalMinutes, "minute");
+  return unit(Math.floor(value), "second");
 };
 
 const getErrorMessage = (error: unknown) => {
@@ -90,6 +103,7 @@ export function CallSummaryReportPage({
   onUnauthorized: () => void;
   qaScoreMaximum?: number;
 }) {
+  const { enumLabel } = useI18n();
   const [range, setRange] = useState<DateRange>(getInitialRange);
   const [report, setReport] = useState<CallSummaryReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -234,8 +248,8 @@ export function CallSummaryReportPage({
                 const percentage = item?.percentage ?? 0;
                 return (
                   <article key={sentiment} className={`sentiment-report-item sentiment-report-${sentiment}`}>
-                    <div><span>{sentiment}</span><strong>{formatPercent(percentage)}</strong></div>
-                    <div className="sentiment-progress" aria-label={`${sentiment}: ${formatPercent(percentage)}`}>
+                    <div><span>{enumLabel("sentiment", sentiment)}</span><strong>{formatPercent(percentage)}</strong></div>
+                    <div className="sentiment-progress" aria-label={`${enumLabel("sentiment", sentiment)}: ${formatPercent(percentage)}`}>
                       <span style={{ width: `${Math.max(0, Math.min(100, percentage))}%` }} />
                     </div>
                     <small>{formatCount(item?.count ?? 0)} calls</small>

@@ -21,6 +21,8 @@ import {
   fetchCallFilterOptions,
   fetchCalls,
   fetchCompanyUsers,
+  fetchCurrentUser,
+  fetchLocalizationOptions,
   fetchQaProfile,
   fetchQaScoringSettings,
   hydrateAuthIdentity,
@@ -28,6 +30,7 @@ import {
   recalculateQaScore,
   updateQaScore,
   updateQaApplicability,
+  updatePreferredLocale,
   saveQaProfile,
   saveQaScoringSettings,
   uploadCall,
@@ -42,6 +45,12 @@ import { WorkflowAutomationsPage } from "./WorkflowAutomationsPage";
 import { UserManagementPage } from "./UserManagementPage";
 import { AccountPage } from "./AccountPage";
 import { VoiceConnectorsPage } from "./VoiceConnectorsPage";
+import {
+  LanguageSelector,
+  getIntlLocale,
+  persistLocaleOptimistically,
+  useI18n,
+} from "./i18n";
 import { getConversationDisplayName } from "./conversationDisplay";
 import {
   DEFAULT_QA_SCORE_MAXIMUM,
@@ -66,6 +75,7 @@ import type {
   ScoreMetricSummary,
   SegmentEmotion,
   SpeakerSegment,
+  LocaleCode,
 } from "./types";
 
 const STORAGE_KEY = "ca-analytics-settings";
@@ -218,7 +228,7 @@ const formatSummaryNumber = (value?: number | null, maximumFractionDigits = 2) =
     return "-";
   }
 
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(getIntlLocale(), {
     maximumFractionDigits,
   }).format(value);
 };
@@ -229,6 +239,7 @@ function MultiSelectDropdown({
   selectedValues,
   onChange,
 }: MultiSelectDropdownProps) {
+  const { t, formatNumber } = useI18n();
   const [searchValue, setSearchValue] = useState("");
   const selectedSet = new Set(selectedValues);
   const visibleOptions = [
@@ -248,10 +259,10 @@ function MultiSelectDropdown({
     : visibleOptions;
   const summaryText =
     selectedValues.length === 0
-      ? `All ${label.toLowerCase()}`
+      ? `${t("All")} ${label.toLocaleLowerCase(getIntlLocale())}`
       : selectedValues.length === 1
         ? selectedValues[0]
-        : `${selectedValues.length} selected`;
+        : `${formatNumber(selectedValues.length)} ${t("selected")}`;
 
   return (
     <details className="multi-select">
@@ -265,8 +276,8 @@ function MultiSelectDropdown({
           className="multi-select-search"
           value={searchValue}
           onChange={(event) => setSearchValue(event.target.value)}
-          placeholder={`Search ${label.toLowerCase()}`}
-          aria-label={`Search ${label}`}
+          placeholder={`${t("Search")} ${label.toLocaleLowerCase(getIntlLocale())}`}
+          aria-label={`${t("Search")} ${label}`}
         />
         {filteredOptions.length > 0 ? (
           filteredOptions.map((option) => (
@@ -313,6 +324,7 @@ function AskEvidenceRow({
           <button
             type="button"
             className="ask-evidence-link"
+            data-i18n-skip
             onClick={() => onEvidenceOpen?.(conversationId)}
           >
             {getConversationTitle?.(conversationId) ?? conversationId}
@@ -320,11 +332,13 @@ function AskEvidenceRow({
         ) : (
           <span>Unknown call</span>
         )}
-        {evidence.source ? <span>{evidence.source}</span> : null}
-        {evidence.field ? <span>{evidence.field}</span> : null}
+        {evidence.source ? <span data-i18n-skip>{evidence.source}</span> : null}
+        {evidence.field ? <span data-i18n-skip>{evidence.field}</span> : null}
         {evidence.timestampMs != null ? <span>{formatTimestamp(evidence.timestampMs)}</span> : null}
       </div>
-      <p>{evidence.snippet?.trim() || "No snippet available."}</p>
+      <p data-i18n-skip={evidence.snippet?.trim() ? "true" : undefined}>
+        {evidence.snippet?.trim() || "No snippet available."}
+      </p>
     </article>
   );
 }
@@ -339,6 +353,7 @@ const defaultSettings: AppSettings = {
   expiresAtUtc: "",
   userRole: "",
   userId: "",
+  preferredLocale: null,
 };
 
 const formatDateInputValue = (date: Date) =>
@@ -418,7 +433,7 @@ const formatDate = (value?: string | null) => {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getIntlLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
@@ -435,12 +450,12 @@ const formatGridDate = (value?: string | null) => {
   }
 
   return {
-    date: new Intl.DateTimeFormat(undefined, {
+    date: new Intl.DateTimeFormat(getIntlLocale(), {
       month: "short",
       day: "numeric",
       year: "2-digit",
     }).format(date),
-    time: new Intl.DateTimeFormat(undefined, {
+    time: new Intl.DateTimeFormat(getIntlLocale(), {
       hour: "numeric",
       minute: "2-digit",
     }).format(date),
@@ -480,7 +495,10 @@ const formatEmotionLabel = (label: string) => {
 };
 
 const formatPercentage = (score: number) =>
-  `${Math.round(Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0)) * 100)}%`;
+  new Intl.NumberFormat(getIntlLocale(), {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(Math.max(0, Math.min(1, Number.isFinite(score) ? score : 0)));
 
 const asDetailRecord = (value: unknown): Record<string, unknown> | null => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -730,11 +748,6 @@ const isInProgressStatus = (value?: string | null) => {
 };
 
 const isCompletedStatus = (value?: string | null) => value?.toLowerCase() === "completed";
-
-const formatCallDirection = (isInbound?: boolean | null) => {
-  if (isInbound == null) return "Unknown";
-  return isInbound ? "Inbound" : "Outbound";
-};
 
 const getPartySummary = (party?: { name?: string | null; externalId?: string | null; phone?: string | null } | null) => {
   if (!party) {
@@ -1571,6 +1584,14 @@ async function validateAudioFileSampleRate(file: File) {
 }
 
 function App() {
+  const {
+    locale,
+    t,
+    setLocale,
+    configureOptions,
+    applyAuthenticatedLocale,
+    enumLabel,
+  } = useI18n();
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() =>
     getRouteFromPath(window.location.pathname),
   );
@@ -1614,6 +1635,7 @@ function App() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [authChecking, setAuthChecking] = useState(false);
+  const [languageSaving, setLanguageSaving] = useState(false);
   const [authMode, setAuthMode] = useState<"user" | "partner">("user");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -1698,6 +1720,7 @@ function App() {
   const recordingStartedAtRef = useRef<number | null>(null);
   const discardRecordingRef = useRef(false);
   const loadedUrlConversationIdRef = useRef("");
+  const restoredAccessTokenRef = useRef("");
   const [uploadState, setUploadState] = useState({
     conversationId: generateConversationId(),
     url: "",
@@ -1737,6 +1760,20 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
     setDraftSettings(settings);
   }, [settings]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchLocalizationOptions(settings.baseUrl || defaultSettings.baseUrl)
+      .then((nextOptions) => {
+        if (!cancelled) configureOptions(nextOptions);
+      })
+      .catch(() => {
+        // The provider keeps its validated built-in English/Armenian/Russian fallback.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [configureOptions, settings.baseUrl]);
 
   useEffect(() => {
     localStorage.setItem(HEADER_GRAPHIC_STORAGE_KEY, JSON.stringify(headerGraphicConfig));
@@ -1853,53 +1890,88 @@ function App() {
 
   useEffect(() => {
     if (!settings.companyId) {
+      restoredAccessTokenRef.current = "";
       setIsAuthorized(false);
       return;
     }
 
     if (settings.accessToken) {
-      setIsAuthorized(true);
-      return;
+      if (restoredAccessTokenRef.current === settings.accessToken) {
+        setIsAuthorized(true);
+        return;
+      }
+
+      let cancelled = false;
+      const restoreCurrentUser = async () => {
+        setAuthChecking(true);
+        try {
+          if (settings.apiToken) {
+            restoredAccessTokenRef.current = settings.accessToken;
+            applyAuthenticatedLocale(settings.preferredLocale);
+            setIsAuthorized(true);
+            return;
+          }
+          const currentUser = await fetchCurrentUser(settings);
+          if (cancelled) return;
+          const preferredLocale = currentUser.preferredLocale ?? "en";
+          restoredAccessTokenRef.current = settings.accessToken;
+          applyAuthenticatedLocale(preferredLocale);
+          setSettings((current) => ({ ...current, ...currentUser, preferredLocale }));
+          setIsAuthorized(true);
+        } catch (error) {
+          if (cancelled) return;
+          restoredAccessTokenRef.current = "";
+          if (isUnauthorizedError(error)) {
+            handleUnauthorizedSession();
+          } else {
+            setIsAuthorized(false);
+            setErrorMessage(
+              error instanceof Error ? error.message : "Unable to restore your session.",
+            );
+          }
+        } finally {
+          if (!cancelled) setAuthChecking(false);
+        }
+      };
+      void restoreCurrentUser();
+      return () => {
+        cancelled = true;
+      };
     }
 
     if (!settings.apiToken) {
+      restoredAccessTokenRef.current = "";
       setIsAuthorized(false);
       return;
     }
 
     let cancelled = false;
-
     const checkAuthorization = async () => {
       setAuthChecking(true);
-
       try {
         const authorizedSettings = await authorizeSettings(settings);
         if (!cancelled) {
+          restoredAccessTokenRef.current = authorizedSettings.accessToken;
+          applyAuthenticatedLocale(authorizedSettings.preferredLocale);
           setSettings(authorizedSettings);
           setIsAuthorized(true);
           setStatusMessage(
             authorizedSettings.companyName
-              ? `Authorization successful for ${authorizedSettings.companyName}.`
-              : "Authorization successful.",
+              ? t("Authorization successful for {{company}}.", { company: authorizedSettings.companyName })
+              : t("Authorization successful."),
           );
         }
       } catch {
-        if (!cancelled) {
-          setIsAuthorized(false);
-        }
+        if (!cancelled) setIsAuthorized(false);
       } finally {
-        if (!cancelled) {
-          setAuthChecking(false);
-        }
+        if (!cancelled) setAuthChecking(false);
       }
     };
-
     void checkAuthorization();
-
     return () => {
       cancelled = true;
     };
-  }, [settings]);
+  }, [applyAuthenticatedLocale, settings]);
 
   useEffect(() => {
     if (!isAuthorized) {
@@ -2198,8 +2270,13 @@ function App() {
       if (!options?.silent) {
         setStatusMessage(
           result.total > nextCalls.length
-            ? `Loaded ${nextCalls.length} of ${result.total} calls.`
-            : `Loaded ${nextCalls.length} call${nextCalls.length === 1 ? "" : "s"}.`,
+            ? t("Loaded {{shown}} of {{total}} calls.", {
+                shown: formatSummaryNumber(nextCalls.length, 0),
+                total: formatSummaryNumber(result.total, 0),
+              })
+            : t(nextCalls.length === 1 ? "Loaded {{count}} call." : "Loaded {{count}} calls.", {
+                count: formatSummaryNumber(nextCalls.length, 0),
+              }),
         );
       }
 
@@ -2237,13 +2314,18 @@ function App() {
               ...draftSettings,
               accessToken: "",
             });
+      restoredAccessTokenRef.current = authorizedSettings.accessToken;
+      const preferredLocale = authorizedSettings.preferredLocale ?? "en";
+      applyAuthenticatedLocale(preferredLocale, locale);
       setSettings(authorizedSettings);
       setLoginPassword("");
       setIsAuthorized(true);
       setStatusMessage(
         authorizedSettings.companyName
-          ? `Authorization successful for ${authorizedSettings.companyName}. Loading dashboard...`
-          : "Authorization successful. Loading dashboard...",
+          ? t("Authorization successful for {{company}}. Loading dashboard...", {
+              company: authorizedSettings.companyName,
+            })
+          : t("Authorization successful. Loading dashboard..."),
       );
       setTimeout(() => {
         const conversationId = getUrlConversationId();
@@ -2318,6 +2400,7 @@ function App() {
     try {
       return await askCompanyCalls(settings, filters, {
         question,
+        responseLocale: locale,
         maxCalls: options.maxCalls,
         useSemanticSearch: options.useSemanticSearch,
         semanticMaxCalls: 75,
@@ -2337,7 +2420,7 @@ function App() {
     }
 
     try {
-      return await askSingleCall(settings, detail.conversationId, question);
+      return await askSingleCall(settings, detail.conversationId, question, locale);
     } catch (error) {
       if (isUnauthorizedError(error)) {
         handleUnauthorizedSession();
@@ -2375,6 +2458,37 @@ function App() {
       setIsTopbarAskOpen(true);
     } finally {
       setTopbarAskLoading(false);
+    }
+  };
+
+  const handleLanguageChange = async (nextLocale: LocaleCode) => {
+    if (nextLocale === locale || languageSaving) return;
+    const previousLocale = locale;
+
+    if (!isAuthorized || !settings.accessToken || settings.apiToken) {
+      setLocale(nextLocale);
+      return;
+    }
+
+    setLanguageSaving(true);
+    try {
+      const persistedLocale = await persistLocaleOptimistically({
+        previousLocale,
+        nextLocale,
+        applyLocale: setLocale,
+        persist: (candidate) => updatePreferredLocale(settings, candidate),
+      });
+      setSettings((current) => ({ ...current, preferredLocale: persistedLocale }));
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+      } else {
+        setErrorMessage(
+          t("Language preference could not be saved. Your previous language was restored."),
+        );
+      }
+    } finally {
+      setLanguageSaving(false);
     }
   };
 
@@ -2580,12 +2694,9 @@ function App() {
       );
       await refreshCalls(settings, { silent: true });
       if (nextQa?.score != null) {
-        setStatusMessage(
-          `QA score recalculated: ${formatQaScore(
-            nextQa.score,
-            activeQaScoreMaximum,
-          )}.`,
-        );
+        setStatusMessage(t("QA score recalculated: {{score}}.", {
+          score: formatQaScore(nextQa.score, activeQaScoreMaximum),
+        }));
       }
     } catch (error) {
       if (isUnauthorizedError(error)) {
@@ -2643,11 +2754,10 @@ function App() {
     );
     setStatusMessage(
       updatedQa.score == null
-        ? "QA corrections saved."
-        : `QA corrections saved. New QA score: ${formatQaScore(
-            updatedQa.score,
-            activeQaScoreMaximum,
-          )}.`,
+        ? t("QA corrections saved.")
+        : t("QA corrections saved. New QA score: {{score}}.", {
+            score: formatQaScore(updatedQa.score, activeQaScoreMaximum),
+          }),
     );
     void refreshCalls(settings, { silent: true });
   };
@@ -2825,11 +2935,9 @@ function App() {
         file: recordedAudioFile,
       });
 
-      setStatusMessage(
-        `Upload accepted. ${getConversationDisplayName(
-          uploadedCall,
-        )} is now queued for analysis.`,
-      );
+      setStatusMessage(t("Upload accepted. {{call}} is now queued for analysis.", {
+        call: getConversationDisplayName(uploadedCall),
+      }));
       closeRecordingModal();
       await refreshCalls();
       await handleLoadDetail(uploadedCall.conversationId);
@@ -2909,13 +3017,17 @@ function App() {
       if (uploadState.files.length > 0) {
         for (const [index, file] of uploadState.files.entries()) {
           const conversationId = generateConversationId();
-          setStatusMessage(
-            `Uploading ${index + 1} of ${uploadState.files.length}: ${file.name}`,
-          );
+          setStatusMessage(t("Uploading {{current}} of {{total}}: {{file}}", {
+            current: formatSummaryNumber(index + 1, 0),
+            total: formatSummaryNumber(uploadState.files.length, 0),
+            file: file.name,
+          }));
 
           const sampleRate = await validateAudioFileSampleRate(file);
           if (sampleRate != null) {
-            setUploadValidationMessage(`Validated local audio at ${sampleRate} Hz.`);
+            setUploadValidationMessage(t("Validated local audio at {{rate}} Hz.", {
+              rate: formatSummaryNumber(sampleRate, 0),
+            }));
           }
 
           const uploadedCall = await uploadCall(settings, {
@@ -2937,12 +3049,13 @@ function App() {
 
       setStatusMessage(
         uploadedCalls.length === 1
-          ? `Upload accepted. ${getConversationDisplayName(
-              uploadedCalls[0],
-            )} is now queued for analysis.`
-          : `Upload accepted. ${uploadedCalls.length} calls are now queued for analysis: ${uploadedCalls
-              .map(getConversationDisplayName)
-              .join("; ")}.`,
+          ? t("Upload accepted. {{call}} is now queued for analysis.", {
+              call: getConversationDisplayName(uploadedCalls[0]),
+            })
+          : t("Upload accepted. {{count}} calls are now queued for analysis: {{calls}}.", {
+              count: formatSummaryNumber(uploadedCalls.length, 0),
+              calls: uploadedCalls.map(getConversationDisplayName).join("; "),
+            }),
       );
       setIsUploadModalOpen(false);
       setUploadState({ conversationId: generateConversationId(), url: "", files: [] });
@@ -3000,6 +3113,7 @@ function App() {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
 
     localStorage.removeItem(STORAGE_KEY);
+    restoredAccessTokenRef.current = "";
     setSettings(defaultSettings);
     setDraftSettings(defaultSettings);
     setCalls([]);
@@ -3052,6 +3166,7 @@ function App() {
     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
 
     localStorage.removeItem(STORAGE_KEY);
+    restoredAccessTokenRef.current = "";
     setSettings(defaultSettings);
     setDraftSettings(defaultSettings);
     setCalls([]);
@@ -3188,17 +3303,22 @@ function App() {
       let exportedCount = 0;
 
       for (const [index, conversationId] of selectedConversationIds.entries()) {
-        setStatusMessage(
-          `Exporting QA questionnaire ${index + 1} of ${selectedConversationIds.length}: ${conversationId}`,
-        );
+        setStatusMessage(t("Exporting QA questionnaire {{current}} of {{total}}: {{call}}", {
+          current: formatSummaryNumber(index + 1, 0),
+          total: formatSummaryNumber(selectedConversationIds.length, 0),
+          call: conversationId,
+        }));
         const result = await exportQaQuestionnaire(settings, conversationId);
         downloadBlobFile(result.blob, result.fileName);
         exportedCount += 1;
       }
 
-      setStatusMessage(
-        `Downloaded ${exportedCount} QA monitoring questionnaire${exportedCount === 1 ? "" : "s"}.`,
-      );
+      setStatusMessage(t(
+        exportedCount === 1
+          ? "Downloaded {{count}} QA monitoring questionnaire."
+          : "Downloaded {{count}} QA monitoring questionnaires.",
+        { count: formatSummaryNumber(exportedCount, 0) },
+      ));
       setIsQaExportModalOpen(false);
     } catch (error) {
       if (isUnauthorizedError(error)) {
@@ -3222,7 +3342,7 @@ function App() {
       setStatusMessage("Exporting calls CSV with current filters...");
       const result = await exportCallsCsv(settings, filters);
       downloadBlobFile(result.blob, result.fileName);
-      setStatusMessage(`Downloaded ${result.fileName}.`);
+      setStatusMessage(t("Downloaded {{file}}.", { file: result.fileName }));
     } catch (error) {
       if (isUnauthorizedError(error)) {
         handleUnauthorizedSession();
@@ -3302,8 +3422,11 @@ function App() {
     callsTotal == null ? calls.length >= filters.pageSize : filters.page * filters.pageSize < callsTotal;
   const pagerSummary =
     callsTotal == null
-      ? `${calls.length} shown`
-      : `${calls.length} shown of ${callsTotal}`;
+      ? t("{{count}} shown", { count: formatSummaryNumber(calls.length, 0) })
+      : t("{{shown}} shown of {{total}}", {
+          shown: formatSummaryNumber(calls.length, 0),
+          total: formatSummaryNumber(callsTotal, 0),
+        });
   const positiveCount = calls.filter((call) => call.sentiment?.toLowerCase() === "positive").length;
   const neutralCount = calls.filter((call) => call.sentiment?.toLowerCase() === "neutral").length;
   const negativeCount = calls.filter((call) => call.sentiment?.toLowerCase() === "negative").length;
@@ -3521,7 +3644,10 @@ function App() {
     ]
       .filter(Boolean)
       .join(" / ") || customerSummary.primary;
-  const callDirection = formatCallDirection(detail?.isInbound);
+  const callDirection =
+    detail?.isInbound == null
+      ? t("Unknown")
+      : enumLabel("direction", detail.isInbound);
 
   const addHeaderBar = () => {
     setHeaderGraphicConfig((current) => ({
@@ -3582,6 +3708,11 @@ function App() {
     return (
       <div className="app-shell auth-shell">
         <section className="auth-card">
+          <LanguageSelector
+            className="auth-language-selector"
+            onChange={handleLanguageChange}
+            disabled={languageSaving}
+          />
           <div className="auth-brand">
             <EyeLogo />
           </div>
@@ -3809,14 +3940,16 @@ function App() {
                 {topbarAskError ? <p className="ask-error">{topbarAskError}</p> : null}
                 {topbarAskHistory.slice(0, 3).map((item) => (
                   <article key={item.id} className="ask-answer topbar-ask-answer">
-                    <p className="ask-question">{item.question}</p>
-                    <p className="ask-answer-copy">
+                    <p className="ask-question" data-i18n-skip>{item.question}</p>
+                    <p className="ask-answer-copy" data-i18n-skip>
                       {item.response.answer.trim() || "No answer was returned."}
                     </p>
                     {item.response.usedCalls != null || item.response.semanticSearchUsed != null ? (
                       <p className="topbar-ask-meta">
                         {item.response.usedCalls != null
-                          ? `${item.response.usedCalls} calls used`
+                          ? t("{{count}} calls used", {
+                              count: formatSummaryNumber(item.response.usedCalls, 0),
+                            })
                           : "Single call"}
                         {" / "}
                         semantic search {item.response.semanticSearchUsed ? "on" : "off"}
@@ -3851,10 +3984,15 @@ function App() {
               </div>
             ) : null}
           </div>
+          <LanguageSelector
+            className="topbar-language-selector"
+            onChange={handleLanguageChange}
+            disabled={languageSaving}
+          />
           {settings.apiToken ? (
             <div className="topbar-user">
               <div className="topbar-user-text">
-                <strong>{settings.companyName || "Workspace"}</strong>
+                <strong data-i18n-skip={settings.companyName ? "true" : undefined}>{settings.companyName || "Workspace"}</strong>
                 <span>{settings.companyId || settings.baseUrl}</span>
               </div>
               <div className="topbar-avatar" aria-hidden="true">{companyInitials || "CA"}</div>
@@ -3868,7 +4006,7 @@ function App() {
               aria-current={currentRoute === "account" ? "page" : undefined}
             >
               <span className="topbar-user-text">
-                <strong>{settings.companyName || "Workspace"}</strong>
+                <strong data-i18n-skip={settings.companyName ? "true" : undefined}>{settings.companyName || "Workspace"}</strong>
                 <span>{settings.companyId || settings.baseUrl}</span>
               </span>
               <span className="topbar-avatar" aria-hidden="true">{companyInitials || "CA"}</span>
@@ -4148,13 +4286,13 @@ function App() {
               placeholder="Max QA score"
             />
             <MultiSelectDropdown
-              label="Agent phones"
+              label={t("Agent phones")}
               options={agentPhoneOptions}
               selectedValues={agentPhoneValues}
               onChange={(values) => updateMultiFilter("agentPhones", "agentPhone", values)}
             />
             <MultiSelectDropdown
-              label="Customer phones"
+              label={t("Customer phones")}
               options={customerPhoneOptions}
               selectedValues={customerPhoneValues}
               onChange={(values) => updateMultiFilter("customerPhones", "customerPhone", values)}
@@ -4232,23 +4370,23 @@ function App() {
                             tabIndex={0}
                           >
                             <span className="call-row-primary">
-                              <span className="call-row-id">{displayName}</span>
+                              <span className="call-row-id" data-i18n-skip>{displayName}</span>
                             </span>
-                            <span className="call-row-agent">
+                            <span className="call-row-agent" data-i18n-skip>
                               {getPartySummary(call.agentInfo).primary}
                             </span>
                             <span className={`tag ${isInProgressStatus(call.status) ? "tag-progress" : ""}`}>
                               {isInProgressStatus(call.status) ? (
                                 <span className="status-inline">
                                   <span className="status-pulse" />
-                                  {call.status}
+                                  {enumLabel("status", call.status)}
                                 </span>
                               ) : (
-                                call.status
+                                enumLabel("status", call.status)
                               )}
                             </span>
                             <span className={classForSentiment(call.sentiment)}>
-                              {call.sentiment ?? "unknown"}
+                              {enumLabel("sentiment", call.sentiment)}
                             </span>
                             <span>
                               {call.satisfactionScore == null ? (
@@ -4301,7 +4439,11 @@ function App() {
                   Previous
                 </button>
                 <span>
-                  Page {filters.page} - {pagerSummary} - {filters.pageSize} per page
+                  {t("Page {{page}} - {{summary}} - {{size}} per page", {
+                    page: formatSummaryNumber(filters.page, 0),
+                    summary: pagerSummary,
+                    size: formatSummaryNumber(filters.pageSize, 0),
+                  })}
                 </span>
                 <button
                   type="button"
@@ -4337,7 +4479,7 @@ function App() {
                     <dl className="conversation-summary-meta">
                       <div>
                         <dt>Main Topic:</dt>
-                        <dd>{mainTopic || "N/A"}</dd>
+                        <dd data-i18n-skip={mainTopic ? "true" : undefined}>{mainTopic || "N/A"}</dd>
                       </div>
                       <div>
                         <dt>Direction:</dt>
@@ -4355,22 +4497,22 @@ function App() {
                       </div>
                       <div>
                         <dt>Agent:</dt>
-                        <dd>{agentSummary.primary}</dd>
+                        <dd data-i18n-skip>{agentSummary.primary}</dd>
                       </div>
                       <div>
                         <dt>Customer:</dt>
-                        <dd>{customerOverview}</dd>
+                        <dd data-i18n-skip>{customerOverview}</dd>
                       </div>
                       <div>
                         <dt>Related Department:</dt>
-                        <dd>{relatedDepartment ?? "N/A"}</dd>
+                        <dd data-i18n-skip={relatedDepartment ? "true" : undefined}>{relatedDepartment ?? "N/A"}</dd>
                       </div>
                       <div>
                         <dt>Task Urgency:</dt>
                         <dd>
                           {taskUrgency ? (
                             <span className={`urgency-badge urgency-${taskUrgency.toLowerCase()}`}>
-                              {taskUrgency}
+                              {enumLabel("urgency", taskUrgency)}
                             </span>
                           ) : (
                             "N/A"
@@ -4383,7 +4525,7 @@ function App() {
                           {secondaryTopics.length > 0 ? (
                             <span className="summary-topic-list">
                               {secondaryTopics.map((topic, index) => (
-                                <span key={`${topic}-${index}`} className="summary-topic-chip">
+                                <span key={`${topic}-${index}`} className="summary-topic-chip" data-i18n-skip>
                                   {topic}
                                 </span>
                               ))}
@@ -4400,7 +4542,7 @@ function App() {
                         <ConversationSummaryIcon />
                         <h4>Conversation Summarization</h4>
                       </div>
-                      <p>{summary || "No conversation summary available yet."}</p>
+                      {summary ? <p data-i18n-skip>{summary}</p> : <p>No conversation summary available yet.</p>}
                     </div>
                   </section>
 
@@ -4524,7 +4666,7 @@ function App() {
                                       {tips.length > 0 ? (
                                         <ol>
                                           {tips.map((tip, tipIndex) => (
-                                            <li key={`${topic}-${tipIndex}`}>{tip}</li>
+                                            <li key={`${topic}-${tipIndex}`} data-i18n-skip>{tip}</li>
                                           ))}
                                         </ol>
                                       ) : (
@@ -4593,7 +4735,7 @@ function App() {
                                       </span>
                                     ) : null}
                                   </div>
-                                  <p>{segment.text}</p>
+                                  <p data-i18n-skip>{segment.text}</p>
                                   <span className="detail-segment-time">
                                     {formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}
                                   </span>
@@ -4622,9 +4764,11 @@ function App() {
                                       backgroundColor: `${match.rule.color}33`,
                                     }}
                                   >
-                                    <strong>{match.rule.alertLabel || match.rule.phrase}</strong>
-                                    <p>{match.rule.phrase}</p>
-                                    <p>{match.rule.actionText || "No action set."}</p>
+                                    <strong data-i18n-skip>{match.rule.alertLabel || match.rule.phrase}</strong>
+                                    <p data-i18n-skip>{match.rule.phrase}</p>
+                                    {match.rule.actionText
+                                      ? <p data-i18n-skip>{match.rule.actionText}</p>
+                                      : <p>No action set.</p>}
                                   </div>
                                 </article>
                               ))
@@ -4658,17 +4802,19 @@ function App() {
                                     <dl>
                                       <div>
                                         <dt>Topic:</dt>
-                                        <dd>{String(concern.concern ?? `Concern ${index + 1}`)}</dd>
+                                        <dd data-i18n-skip={concern.concern ? "true" : undefined}>{String(concern.concern ?? t("Concern {{number}}", {
+                                          number: formatSummaryNumber(index + 1, 0),
+                                        }))}</dd>
                                       </div>
                                       {concern.customerQuestion ? (
                                         <div>
                                           <dt>Question:</dt>
-                                          <dd>{String(concern.customerQuestion)}</dd>
+                                          <dd data-i18n-skip>{String(concern.customerQuestion)}</dd>
                                         </div>
                                       ) : null}
                                       <div>
                                         <dt>Solution:</dt>
-                                        <dd>{solution}</dd>
+                                        <dd data-i18n-skip>{solution}</dd>
                                       </div>
                                     </dl>
                                   </article>
@@ -4687,7 +4833,7 @@ function App() {
                               coachingAssistance.map((item, index) => (
                                 <article key={`coaching-${index}`} className="coaching-card figma-coaching-card">
                                   <span>[{index + 1}]</span>
-                                  <p>{item}</p>
+                                  <p data-i18n-skip>{item}</p>
                                 </article>
                               ))
                             ) : (
@@ -4708,14 +4854,14 @@ function App() {
                             >
                               <CopyIcon />
                             </button>
-                            {transcript ? transcript : "No original transcription available yet."}
+                            {transcript ? <span data-i18n-skip>{transcript}</span> : "No original transcription available yet."}
                           </div>
                         </DetailAccordion>
 
                         <DetailAccordion title="Redacted Transcription">
                           <div className="scroll-panel prose-block redacted-panel detail-transcript-panel">
                             {redactedTranscript
-                              ? renderRedactedTranscript(redactedTranscript)
+                              ? <span data-i18n-skip>{renderRedactedTranscript(redactedTranscript)}</span>
                               : "No redacted transcription available yet."}
                           </div>
                         </DetailAccordion>
@@ -4734,7 +4880,7 @@ function App() {
                             </article>
                             <article className="routing-card">
                               <label>Sentiment</label>
-                              <strong>{detail.sentiment ?? "-"}</strong>
+                              <strong>{detail.sentiment ? enumLabel("sentiment", detail.sentiment) : "-"}</strong>
                             </article>
                             <article className="routing-card">
                               <label>Satisfaction</label>
@@ -4751,7 +4897,7 @@ function App() {
                             <article className="routing-card">
                               <label>Task urgency</label>
                               <strong className={`urgency-badge ${taskUrgency ? `urgency-${taskUrgency.toLowerCase()}` : ""}`}>
-                                {taskUrgency ?? "N/A"}
+                                {taskUrgency ? enumLabel("urgency", taskUrgency) : "N/A"}
                               </strong>
                             </article>
                             <article className="routing-card">
@@ -4926,7 +5072,7 @@ function App() {
                     {uploadState.files.map((file) => (
                       <li key={`${file.name}-${file.lastModified}`}>
                         <span>{file.name}</span>
-                        <span>{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                        <span>{formatSummaryNumber(file.size / 1024 / 1024, 2)} MB</span>
                       </li>
                     ))}
                   </ul>
@@ -5185,7 +5331,7 @@ function App() {
                       <div className="qa-export-copy">
                         <strong>{getConversationDisplayName(call)}</strong>
                         <span>
-                          {call.sentiment ?? "unknown"} · score {call.satisfactionScore ?? "-"} · created{" "}
+                          {enumLabel("sentiment", call.sentiment)} · score {call.satisfactionScore ?? "-"} · created{" "}
                           {formatDate(call.createdUtc)}
                         </span>
                       </div>
@@ -5216,7 +5362,12 @@ function App() {
                 {qaExportSubmitting
                   ? "Exporting QA questionnaires..."
                   : selectedConversationIds.length > 0
-                    ? `Export ${selectedConversationIds.length} questionnaire${selectedConversationIds.length === 1 ? "" : "s"}`
+                    ? t(
+                        selectedConversationIds.length === 1
+                          ? "Export {{count}} questionnaire"
+                          : "Export {{count}} questionnaires",
+                        { count: formatSummaryNumber(selectedConversationIds.length, 0) },
+                      )
                     : "Export questionnaires"}
               </button>
             </div>

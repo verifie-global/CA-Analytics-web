@@ -42,6 +42,9 @@ import type {
   VoiceConnectorCatalogItem,
   VoiceConnectorTestResult,
   VoiceConnectorUpdate,
+  LocaleCode,
+  UiLocalizationOptionsResponse,
+  UpdateCompanyUserRequest,
 } from "./types";
 import {
   DEFAULT_QA_SCORE_MAXIMUM,
@@ -54,6 +57,12 @@ export type RequestError = Error & {
 };
 
 const trimSlash = (value: string) => value.replace(/\/+$/, "");
+
+const readLocaleCode = (value: unknown): LocaleCode | null => {
+  if (typeof value !== "string") return null;
+  const base = value.trim().toLowerCase().split(/[-_]/)[0];
+  return base === "en" || base === "hy" || base === "ru" ? base : null;
+};
 
 const buildUrl = (settings: AppSettings, path: string, query?: URLSearchParams) => {
   const url = `${trimSlash(settings.baseUrl)}${path}`;
@@ -69,6 +78,49 @@ const jsonHeaders = (extra?: HeadersInit) => ({
   "Content-Type": "application/json",
   ...extra,
 });
+
+const defaultLocalizationOptions: UiLocalizationOptionsResponse = {
+  defaultLocale: "en",
+  supportedLocales: [
+    { code: "en", englishName: "English", nativeName: "English", textDirection: "ltr" },
+    { code: "hy", englishName: "Armenian", nativeName: "Հայերեն", textDirection: "ltr" },
+    { code: "ru", englishName: "Russian", nativeName: "Русский", textDirection: "ltr" },
+  ],
+};
+
+export async function fetchLocalizationOptions(
+  baseUrl: string,
+): Promise<UiLocalizationOptionsResponse> {
+  const response = await fetch(`${trimSlash(baseUrl)}/api/localization/options`);
+  if (!response.ok) {
+    throw createRequestError(
+      `Localization options request failed with status ${response.status}`,
+      response.status,
+    );
+  }
+  const root = asRecord(await response.json());
+  const record = Object.keys(asRecord(root.data)).length ? asRecord(root.data) : root;
+  const supportedLocales = asArray(record.supportedLocales)
+    .map((entry) => {
+      const locale = asRecord(entry);
+      const code = readLocaleCode(locale.code);
+      if (!code) return null;
+      const fallback = defaultLocalizationOptions.supportedLocales.find(
+        (option) => option.code === code,
+      )!;
+      return {
+        code,
+        englishName: readString(locale, "englishName") ?? fallback.englishName,
+        nativeName: readString(locale, "nativeName") ?? fallback.nativeName,
+        textDirection: readString(locale, "textDirection") === "rtl" ? "rtl" as const : "ltr" as const,
+      };
+    })
+    .filter((entry): entry is UiLocalizationOptionsResponse["supportedLocales"][number] => Boolean(entry));
+  return {
+    defaultLocale: readLocaleCode(record.defaultLocale) ?? "en",
+    supportedLocales: supportedLocales.length > 0 ? supportedLocales : defaultLocalizationOptions.supportedLocales,
+  };
+}
 
 const parseRequestFieldErrors = (text: string): Record<string, string> => {
   try {
@@ -1000,6 +1052,7 @@ const normalizeAskResponse = (payload: unknown): AskResponse => {
     usedCalls: readNumber(record, "usedCalls") ?? null,
     scope: readString(record, "scope") ?? null,
     semanticSearchUsed: readBoolean(record, "semanticSearchUsed") ?? null,
+    responseLocale: readLocaleCode(record.responseLocale) ?? "en",
   };
 };
 
@@ -1165,6 +1218,7 @@ export async function askSingleCall(
   settings: AppSettings,
   conversationId: string,
   question: string,
+  responseLocale: LocaleCode = "en",
 ) {
   const response = await request<unknown>(
     settings,
@@ -1172,7 +1226,7 @@ export async function askSingleCall(
     {
       method: "POST",
       headers: jsonHeaders(),
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, responseLocale }),
     },
   );
 
@@ -1187,6 +1241,7 @@ export async function askCompanyCalls(
     maxCalls: number;
     useSemanticSearch: boolean;
     semanticMaxCalls: number;
+    responseLocale?: LocaleCode;
   },
 ) {
   const response = await request<unknown>(
@@ -1197,6 +1252,7 @@ export async function askCompanyCalls(
       headers: jsonHeaders(),
       body: JSON.stringify({
         question: payload.question,
+        responseLocale: payload.responseLocale ?? "en",
         maxCalls: payload.maxCalls,
         useSemanticSearch: payload.useSemanticSearch,
         semanticMaxCalls: payload.semanticMaxCalls,
@@ -1793,6 +1849,8 @@ export async function requestAuthToken(settings: AppSettings): Promise<AuthToken
       readNumber(user, "id", "userId") ??
       readStringLike(user, "id", "userId") ??
       null,
+    preferredLocale:
+      readLocaleCode(record.preferredLocale ?? user.preferredLocale) ?? "en",
   };
 }
 
@@ -1847,7 +1905,48 @@ export async function loginUser(
     companyName: readString(data, "companyName") ?? null,
     userRole: readString(data, "userRole", "role") ?? null,
     userId: readNumber(data, "userId") ?? readStringLike(data, "userId") ?? null,
+    preferredLocale: readLocaleCode(data.preferredLocale) ?? "en",
   });
+}
+
+export async function fetchCurrentUser(settings: AppSettings): Promise<Partial<AppSettings>> {
+  const payload = await request<unknown>(settings, "/api/auth/me");
+  const root = asRecord(payload);
+  const record = Object.keys(asRecord(root.data)).length ? asRecord(root.data) : root;
+  const company = asRecord(record.company);
+  return {
+    companyId: String(
+      readNumber(record, "companyId") ??
+      readStringLike(record, "companyId") ??
+      settings.companyId,
+    ),
+    companyName:
+      readString(record, "companyName") ??
+      readString(company, "name", "companyName") ??
+      settings.companyName ??
+      null,
+    userRole: readString(record, "userRole", "role") ?? settings.userRole ?? null,
+    userId:
+      readNumber(record, "userId", "id") ??
+      readStringLike(record, "userId", "id") ??
+      settings.userId ??
+      null,
+    preferredLocale: readLocaleCode(record.preferredLocale) ?? "en",
+  };
+}
+
+export async function updatePreferredLocale(
+  settings: AppSettings,
+  preferredLocale: LocaleCode,
+): Promise<LocaleCode> {
+  const payload = await request<unknown>(settings, "/api/auth/preferences", {
+    method: "PUT",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ preferredLocale }),
+  });
+  const root = asRecord(payload);
+  const record = Object.keys(asRecord(root.data)).length ? asRecord(root.data) : root;
+  return readLocaleCode(record.preferredLocale) ?? "en";
 }
 
 export async function changePassword(
@@ -1914,6 +2013,7 @@ export const hydrateAuthIdentity = (settings: AppSettings): AppSettings => {
         "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
       ) ??
       null,
+    preferredLocale: readLocaleCode(settings.preferredLocale) ?? settings.preferredLocale ?? null,
   };
 };
 
@@ -1930,6 +2030,7 @@ export async function authorizeSettings(settings: AppSettings): Promise<AppSetti
     expiresAtUtc: auth.expiresAtUtc ?? settings.expiresAtUtc ?? null,
     userRole: auth.userRole ?? settings.userRole ?? null,
     userId: auth.userId ?? settings.userId ?? null,
+    preferredLocale: auth.preferredLocale ?? "en",
   });
 }
 
@@ -1958,6 +2059,7 @@ const normalizeCompanyUser = (value: unknown): CompanyUser => {
     createdUtc: readString(record, "createdUtc", "createdAtUtc", "createdAt") ?? null,
     lastLoginUtc:
       readString(record, "lastLoginUtc", "lastLoginAtUtc", "lastLoginAt") ?? null,
+    preferredLocale: readLocaleCode(record.preferredLocale) ?? "en",
   };
 };
 
@@ -1991,7 +2093,7 @@ export async function createCompanyUser(settings: AppSettings, input: CompanyUse
 export async function updateCompanyUser(
   settings: AppSettings,
   userId: number,
-  input: Pick<CompanyUserInput, "name" | "role">,
+  input: UpdateCompanyUserRequest,
 ) {
   return request<void>(settings, `/api/companies/${settings.companyId}/users/${userId}`, {
     method: "PUT",

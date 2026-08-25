@@ -114,7 +114,33 @@ export type AskResponse = {
   usedCalls?: number | null;
   scope?: string | null;
   semanticSearchUsed?: boolean | null;
+  responseLocale: LocaleCode;
 };
+
+export type LocaleCode = "en" | "hy" | "ru";
+
+export type UiLocaleOption = {
+  code: LocaleCode;
+  englishName: string;
+  nativeName: string;
+  textDirection: "ltr" | "rtl";
+};
+
+export type UiLocalizationOptionsResponse = {
+  defaultLocale: LocaleCode;
+  supportedLocales: UiLocaleOption[];
+};
+
+export type CallDataAskRequest = {
+  question: string;
+  responseLocale: LocaleCode;
+  maxCalls?: number;
+  useSemanticSearch?: boolean;
+  semanticMaxCalls?: number;
+  filters?: Record<string, string | number | string[]>;
+};
+
+export type CallDataAskResponse = AskResponse;
 
 export type AppSettings = {
   baseUrl: string;
@@ -126,6 +152,7 @@ export type AppSettings = {
   expiresAtUtc?: string | null;
   userRole?: string | null;
   userId?: number | string | null;
+  preferredLocale?: LocaleCode | null;
 };
 
 export type VoiceConnectorFieldType =
@@ -216,7 +243,10 @@ export type AuthTokenResponse = {
   companyName?: string | null;
   userRole?: string | null;
   userId?: number | string | null;
+  preferredLocale?: LocaleCode | null;
 };
+
+export type CompanyTokenResponse = AuthTokenResponse;
 
 export type CompanyAgent = {
   id: number;
@@ -233,14 +263,25 @@ export type CompanyUser = {
   assignedAgents: CompanyAgent[];
   createdUtc?: string | null;
   lastLoginUtc?: string | null;
+  preferredLocale: LocaleCode;
 };
+
+export type CompanyUserResponse = CompanyUser;
 
 export type CompanyUserInput = {
   name: string;
   email: string;
   role: "Admin" | "User";
   password?: string;
+  preferredLocale?: LocaleCode;
 };
+
+export type CreateCompanyUserRequest = CompanyUserInput & { password: string };
+
+export type UpdateCompanyUserRequest = Pick<
+  CompanyUserInput,
+  "name" | "role" | "preferredLocale"
+>;
 
 export type CallSummary = {
   conversationId: string;

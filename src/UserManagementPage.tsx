@@ -8,7 +8,8 @@ import {
   updateCompanyUser,
   updateCompanyUserStatus,
 } from "./api";
-import type { AppSettings, CompanyAgent, CompanyUser } from "./types";
+import type { AppSettings, CompanyAgent, CompanyUser, LocaleCode } from "./types";
+import { getIntlLocale, useI18n } from "./i18n";
 
 type Props = {
   settings: AppSettings;
@@ -23,10 +24,12 @@ type Editor = {
   role: "Admin" | "User";
   password: string;
   agentIds: number[];
+  preferredLocale: LocaleCode;
 };
 
-const emptyEditor = (): Editor => ({
+const emptyEditor = (preferredLocale: LocaleCode): Editor => ({
   mode: "create", user: null, name: "", email: "", role: "User", password: "", agentIds: [],
+  preferredLocale,
 });
 
 const formatDate = (value?: string | null) => {
@@ -34,10 +37,11 @@ const formatDate = (value?: string | null) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+    : new Intl.DateTimeFormat(getIntlLocale(), { dateStyle: "medium", timeStyle: "short" }).format(date);
 };
 
 export function UserManagementPage({ settings, onUnauthorized }: Props) {
+  const { locale, options, enumLabel, t } = useI18n();
   const onUnauthorizedRef = useRef(onUnauthorized);
   const [users, setUsers] = useState<CompanyUser[]>([]);
   const [agents, setAgents] = useState<CompanyAgent[]>([]);
@@ -88,6 +92,7 @@ export function UserManagementPage({ settings, onUnauthorized }: Props) {
     setEditor({
       mode: "edit", user, name: user.name, email: user.email, role: user.role, password: "",
       agentIds: user.assignedAgents.map((agent) => agent.id),
+      preferredLocale: user.preferredLocale,
     });
     setAgentSearch("");
   };
@@ -115,6 +120,7 @@ export function UserManagementPage({ settings, onUnauthorized }: Props) {
         const created = await createCompanyUser(settings, {
           name: editor.name.trim(), email: editor.email.trim(), role: editor.role,
           password: editor.password,
+          preferredLocale: editor.preferredLocale,
         });
         let createdId = Number(created.id);
         if (!(createdId > 0) && editor.role === "User") {
@@ -129,12 +135,13 @@ export function UserManagementPage({ settings, onUnauthorized }: Props) {
       } else if (editor.user) {
         await updateCompanyUser(settings, editor.user.id, {
           name: editor.name.trim(), role: editor.role,
+          preferredLocale: editor.preferredLocale,
         });
         if (editor.role === "User") {
           await assignCompanyUserAgents(settings, editor.user.id, editor.agentIds);
         }
       }
-      setSuccess(editor.mode === "create" ? "User created successfully." : "User updated successfully.");
+      setSuccess(t(editor.mode === "create" ? "User created successfully." : "User updated successfully."));
       setEditor(null);
       await load();
     } catch (caught) {
@@ -146,11 +153,11 @@ export function UserManagementPage({ settings, onUnauthorized }: Props) {
 
   const toggleStatus = async (user: CompanyUser) => {
     if (String(user.id) === currentUserId && user.isActive) return;
-    if (user.isActive && !window.confirm(`Deactivate ${user.name || user.email}?`)) return;
+    if (user.isActive && !window.confirm(t("Deactivate {{user}}?", { user: user.name || user.email }))) return;
     setError(""); setSuccess("");
     try {
       await updateCompanyUserStatus(settings, user.id, !user.isActive);
-      setSuccess(`User ${user.isActive ? "deactivated" : "activated"} successfully.`);
+      setSuccess(t(user.isActive ? "User deactivated successfully." : "User activated successfully."));
       await load();
     } catch (caught) { handleError(caught, "Unable to update user status."); }
   };
@@ -175,7 +182,7 @@ export function UserManagementPage({ settings, onUnauthorized }: Props) {
     <section className="panel user-management">
       <div className="section-heading user-management-heading">
         <div><h1>User Management</h1><p>Create users, control access, and assign visible agents.</p></div>
-        <button type="button" onClick={() => setEditor(emptyEditor())}>Create user</button>
+        <button type="button" onClick={() => setEditor(emptyEditor(locale))}>Create user</button>
       </div>
       <div className="assignment-notice" role="note">
         Users with no assigned agents cannot see any call data. Admin users automatically have unrestricted access.
@@ -186,13 +193,14 @@ export function UserManagementPage({ settings, onUnauthorized }: Props) {
         users.length === 0 ? <div className="empty-state"><h3>No users found</h3><p>Create the first user for this company.</p></div> :
         <div className="user-table-wrap">
           <table className="user-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Assigned agents</th><th>Created</th><th>Last login</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Language</th><th>Assigned agents</th><th>Created</th><th>Last login</th><th>Actions</th></tr></thead>
             <tbody>{users.map((user) => {
               const isSelf = String(user.id) === currentUserId;
               return <tr key={user.id}>
-                <td data-label="Name">{user.name || "—"}{isSelf ? <small className="self-label">You</small> : null}</td>
-                <td data-label="Email">{user.email}</td><td data-label="Role">{user.role}</td>
-                <td data-label="Status"><span className={`status-badge ${user.isActive ? "status-active" : "status-inactive"}`}>{user.isActive ? "Active" : "Inactive"}</span></td>
+                <td data-label="Name"><span data-i18n-skip>{user.name || "—"}</span>{isSelf ? <small className="self-label">You</small> : null}</td>
+                <td data-label="Email" data-i18n-skip>{user.email}</td><td data-label="Role">{enumLabel("role", user.role)}</td>
+                <td data-label="Status"><span className={`status-badge ${user.isActive ? "status-active" : "status-inactive"}`}>{enumLabel("status", user.isActive ? "active" : "inactive")}</span></td>
+                <td data-label="Language">{options.supportedLocales.find((option) => option.code === user.preferredLocale)?.nativeName ?? "English"}</td>
                 <td data-label="Assigned agents">{user.role === "Admin" ? "All agents" : user.assignedAgents.length ? user.assignedAgents.map((agent) => agent.name).join(", ") : "None"}</td>
                 <td data-label="Created">{formatDate(user.createdUtc)}</td><td data-label="Last login">{formatDate(user.lastLoginUtc)}</td>
                 <td data-label="Actions"><div className="user-actions">
@@ -212,6 +220,7 @@ export function UserManagementPage({ settings, onUnauthorized }: Props) {
             <label>Name<input value={editor.name} onChange={(e) => setEditor({ ...editor, name: e.target.value })} required /></label>
             <label>Email<input type="email" value={editor.email} onChange={(e) => setEditor({ ...editor, email: e.target.value })} disabled={editor.mode === "edit"} required /></label>
             <label>Role<select value={editor.role} onChange={(e) => setEditor({ ...editor, role: e.target.value as "Admin" | "User" })}><option value="User">User</option><option value="Admin">Admin</option></select></label>
+            <label>Language<select value={editor.preferredLocale} onChange={(e) => setEditor({ ...editor, preferredLocale: e.target.value as LocaleCode })}>{options.supportedLocales.map((option) => <option key={option.code} value={option.code}>{option.nativeName}</option>)}</select></label>
             {editor.mode === "create" ? <label>Password<input type="password" minLength={8} value={editor.password} onChange={(e) => setEditor({ ...editor, password: e.target.value })} required /><small>At least 8 characters</small></label> : null}
             {editor.role === "User" ? <fieldset className="agent-picker full-width"><legend>Assigned agents</legend>
               <input type="search" placeholder="Search agents" aria-label="Search agents" value={agentSearch} onChange={(e) => setAgentSearch(e.target.value)} />

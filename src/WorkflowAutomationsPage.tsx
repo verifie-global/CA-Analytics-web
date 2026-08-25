@@ -15,6 +15,7 @@ import type {
   WorkflowPlatform,
   WorkflowTestResult,
 } from "./types";
+import { getIntlLocale, useI18n } from "./i18n";
 import {
   buildWorkflowDestinationRequest,
   emptyBitrix24Lead,
@@ -105,7 +106,7 @@ const formatDate = (value?: string | null) => {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getIntlLocale(), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
@@ -228,6 +229,7 @@ export function WorkflowAutomationsPage({
   settings,
   onUnauthorized,
 }: WorkflowAutomationsPageProps) {
+  const { enumLabel } = useI18n();
   const [destinations, setDestinations] = useState<WorkflowDestination[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1064,7 +1066,7 @@ export function WorkflowAutomationsPage({
                   <article key={delivery.id || index} className="workflow-delivery-grid">
                     <span>{formatDate(delivery.createdAt)}</span>
                     <span>{formatDate(delivery.deliveredAt)}</span>
-                    <span>{delivery.status}</span>
+                    <span>{enumLabel("status", delivery.status)}</span>
                     <span>{delivery.attemptCount ?? "-"}</span>
                     <span>{delivery.responseStatusCode ?? "-"}</span>
                     <span>{delivery.error || "-"}</span>

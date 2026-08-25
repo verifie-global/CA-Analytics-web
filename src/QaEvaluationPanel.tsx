@@ -9,6 +9,7 @@ import {
 import { QaScoreBadge } from "./QaScoreBadge";
 import { QaApplicabilityControl } from "./QaApplicabilityControl";
 import type { QaQuestionCorrection, QaResult, QaScoringMode } from "./types";
+import { useI18n } from "./i18n";
 
 type QaEvaluationPanelProps = {
   qa?: QaResult | null;
@@ -42,6 +43,7 @@ export function QaEvaluationPanel({
   onSaveManualCorrection,
   onApplicabilityChange,
 }: QaEvaluationPanelProps) {
+  const { enumLabel } = useI18n();
   const evaluation = qa?.evaluation;
   const [isCollapsed, setIsCollapsed] = useState(!initiallyExpanded);
   const qaNotApplicable = isQaNotApplicable(qa);
@@ -293,7 +295,11 @@ export function QaEvaluationPanel({
               </article>
               <article className="routing-card">
                 <label>{qaNotApplicable ? "Reason" : "Resolution status"}</label>
-                <strong>{qaNotApplicable ? notApplicableReason || "N/A" : evaluation?.resolutionStatus ?? "N/A"}</strong>
+                <strong>{qaNotApplicable
+                  ? notApplicableReason || "N/A"
+                  : evaluation?.resolutionStatus
+                    ? enumLabel("status", evaluation.resolutionStatus)
+                    : "N/A"}</strong>
               </article>
             </div>
 
@@ -305,12 +311,12 @@ export function QaEvaluationPanel({
 
             {qaNotApplicable && notApplicableReason ? (
               <p className="qa-profile-label">
-                <strong>QA not applicable:</strong> {notApplicableReason}
+                <strong>QA not applicable:</strong> <span data-i18n-skip>{notApplicableReason}</span>
               </p>
             ) : null}
 
             {!qaNotApplicable && evaluation?.overallComment ? (
-              <div className="scroll-panel prose-block">
+              <div className="scroll-panel prose-block" data-i18n-skip>
                 {evaluation.overallComment}
               </div>
             ) : null}
@@ -323,7 +329,7 @@ export function QaEvaluationPanel({
                     {evaluation?.strengths?.length ? (
                       <div className="token-panel">
                         {evaluation.strengths.map((item, index) => (
-                          <span key={`strength-${index}`} className="token-chip">
+                          <span key={`strength-${index}`} className="token-chip" data-i18n-skip>
                             {item}
                           </span>
                         ))}
@@ -338,7 +344,7 @@ export function QaEvaluationPanel({
                     {evaluation?.improvements?.length ? (
                       <div className="token-panel">
                         {evaluation.improvements.map((item, index) => (
-                          <span key={`improvement-${index}`} className="token-chip">
+                          <span key={`improvement-${index}`} className="token-chip" data-i18n-skip>
                             {item}
                           </span>
                         ))}
@@ -360,8 +366,8 @@ export function QaEvaluationPanel({
                         <article key={question.id || question.title} className={`qa-question-result ${draft && (draft.score !== question.score || draft.reason !== question.reason) ? "qa-question-changed" : ""}`}>
                           <div className="qa-question-result-head">
                             <div>
-                              <strong>{question.title}</strong>
-                              <p>{question.description}</p>
+                              <strong data-i18n-skip>{question.title}</strong>
+                              <p data-i18n-skip>{question.description}</p>
                             </div>
                             <div className="qa-question-score">
                               <span className={`bool-badge ${passed ? "bool-true" : "bool-false"}`}>
@@ -413,7 +419,9 @@ export function QaEvaluationPanel({
                               </label>
                             </div>
                           ) : (
-                            <p><strong>Explanation:</strong> {question.reason || "No explanation provided."}</p>
+                            <p><strong>Explanation:</strong>{" "}{question.reason
+                              ? <span data-i18n-skip>{question.reason}</span>
+                              : "No explanation provided."}</p>
                           )}
                         </article>
                       );

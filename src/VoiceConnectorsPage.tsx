@@ -17,6 +17,7 @@ import type {
   VoiceConnectorTestResult,
   VoiceConnectorUpdate,
 } from "./types";
+import { getIntlLocale, useI18n } from "./i18n";
 
 type Props = {
   settings: AppSettings;
@@ -93,7 +94,7 @@ const formatDateTime = (value?: string | null) => {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+    : new Intl.DateTimeFormat(getIntlLocale(), { dateStyle: "medium", timeStyle: "short" }).format(date);
 };
 
 const getLastTest = (account?: VoiceConnectorAccount | null): VoiceConnectorTestResult | null => {
@@ -270,6 +271,7 @@ function AuditHistory({
 }
 
 export function VoiceConnectorsPage({ settings, onUnauthorized }: Props) {
+  const { enumLabel } = useI18n();
   const onUnauthorizedRef = useRef(onUnauthorized);
   const accountsRef = useRef<VoiceConnectorAccount[]>([]);
   const [catalog, setCatalog] = useState<VoiceConnectorCatalogItem[]>([]);
@@ -569,13 +571,13 @@ export function VoiceConnectorsPage({ settings, onUnauthorized }: Props) {
                     <span className="connector-provider-copy">
                       <strong>{item.display_name}</strong>
                       <span className="provider-card-badges">
-                        <span className={`readiness-badge ${readinessClass(item.readiness)}`}>{formatLabel(item.readiness)}</span>
+                        <span className={`readiness-badge ${readinessClass(item.readiness)}`}>{enumLabel("status", item.readiness)}</span>
                         <span className={`configuration-badge ${listedAccount ? "is-configured" : ""}`}>{listedAccount ? "Configured" : "Not configured"}</span>
                       </span>
                       <span className="provider-card-status">
                         <span>{listedAccount?.enabled ? "Enabled" : "Disabled"}</span>
                         <span aria-hidden="true">·</span>
-                        <span className={lastTest ? testStatusClass(lastTest.status) : ""}>{lastTest ? formatLabel(lastTest.status) : "Not tested"}</span>
+                        <span className={lastTest ? testStatusClass(lastTest.status) : ""}>{lastTest ? enumLabel("status", lastTest.status) : "Not tested"}</span>
                       </span>
                     </span>
                     <span className="provider-card-arrow" aria-hidden="true">›</span>
@@ -592,7 +594,7 @@ export function VoiceConnectorsPage({ settings, onUnauthorized }: Props) {
               <>
                 <header className="connector-detail-header">
                   <div className="connector-title-row"><ProviderMark provider={provider.provider} name={provider.display_name} /><div><h2>{provider.display_name}</h2><p>{provider.description || "Configure this voice provider for your workspace."}</p></div></div>
-                  <span className={`readiness-badge ${readinessClass(provider.readiness)}`}>{formatLabel(provider.readiness)}</span>
+                  <span className={`readiness-badge ${readinessClass(provider.readiness)}`}>{enumLabel("status", provider.readiness)}</span>
                 </header>
 
                 {!provider.runtime_activation_supported ? (
@@ -672,7 +674,7 @@ export function VoiceConnectorsPage({ settings, onUnauthorized }: Props) {
 
                 {testResult ? (
                   <section className={`connection-test-result ${testStatusClass(testResult.status)}`} aria-live="polite">
-                    <div><span className="test-status-dot" aria-hidden="true" /><strong>{formatLabel(testResult.status)}</strong>{testResult.tested_at ? <span>{formatDateTime(testResult.tested_at)}</span> : null}</div>
+                    <div><span className="test-status-dot" aria-hidden="true" /><strong>{enumLabel("status", testResult.status)}</strong>{testResult.tested_at ? <span>{formatDateTime(testResult.tested_at)}</span> : null}</div>
                     <p>{testResult.status === "adapter_required" ? provider.limitation || testResult.message : testResult.message || "The test completed."}</p>
                   </section>
                 ) : null}

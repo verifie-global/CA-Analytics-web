@@ -1,4 +1,5 @@
 import type { QaQuestionResult, QaScoringMode } from "./types";
+import { getIntlLocale } from "./i18n";
 
 export const DEFAULT_QA_SCORE_MAXIMUM = 100;
 export const DEFAULT_QA_SCORING_MODE: QaScoringMode = "weighted_ratio";
@@ -21,7 +22,7 @@ export const formatQaScoreNumber = (value?: number | null) => {
     return "-";
   }
 
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(getIntlLocale(), {
     maximumFractionDigits: 2,
   }).format(value);
 };

@@ -4,6 +4,7 @@ import {
   formatQaScore,
   isQaNotApplicable,
 } from "./qaDisplay";
+import { useI18n } from "./i18n";
 
 type QaScoreBadgeProps = {
   score?: number | null;
@@ -33,16 +34,17 @@ export function QaScoreBadge({
   maximumScore = DEFAULT_QA_SCORE_MAXIMUM,
   compact = false,
 }: QaScoreBadgeProps) {
+  const { t } = useI18n();
   if (isQaNotApplicable({ isApplicable, status })) {
     const reason = formatQaNotApplicableReason(notApplicableReason);
 
     return (
       <span
         className={`qa-badge qa-badge-muted qa-badge-not-applicable ${compact ? "qa-badge-compact" : ""}`}
-        title={reason ? `Reason: ${reason}` : "QA not applicable"}
+        title={reason ? t("Reason: {{reason}}", { reason }) : t("QA not applicable")}
       >
         <strong>{compact ? "Not applicable" : "QA not applicable"}</strong>
-        {reason && !compact ? <small>{reason}</small> : null}
+        {reason && !compact ? <small data-i18n-skip>{reason}</small> : null}
       </span>
     );
   }

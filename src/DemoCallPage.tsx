@@ -15,6 +15,7 @@ import {
   TranscriptMessage,
   TranscriptSegment,
 } from "./realtimeAsrService";
+import { getIntlLocale } from "./i18n";
 
 type DemoTranscriptSegment = TranscriptSegment & {
   id: string;
@@ -445,7 +446,10 @@ const getSegmentDisplayLabel = (segment: TranscriptSegment) =>
 
 const formatPercent = (value?: number) =>
   typeof value === "number" && Number.isFinite(value)
-    ? `${Math.round(clamp01(value) * 100)}%`
+    ? new Intl.NumberFormat(getIntlLocale(), {
+        style: "percent",
+        maximumFractionDigits: 0,
+      }).format(clamp01(value))
     : "";
 
 const createAgentTips = (message: TipsMessage): AgentTipsState => ({
@@ -755,7 +759,7 @@ function LocalFaceAnalyzer({
       context.fillText("ANALYSIS", scoreX + 22, scoreY + 54);
       context.fillText("SCORE", scoreX + 22, scoreY + 76);
       context.font = "62px 'Input Mono', monospace";
-      context.fillText(`${Math.round(emotion.score * 100)}%`, scoreX + 158, scoreY + 72);
+      context.fillText(formatPercent(emotion.score), scoreX + 158, scoreY + 72);
     },
     [],
   );
@@ -1012,7 +1016,7 @@ function LocalFaceAnalyzer({
           <span>FACE ATTRIBUTES</span>
           <strong>{analysis.mood}</strong>
         </div>
-        <strong>{Math.round(analysis.score * 100)}%</strong>
+        <strong>{formatPercent(analysis.score)}</strong>
       </div>
 
       <div className="demo-attribute-grid">
@@ -1478,7 +1482,7 @@ function DemoCallPage() {
                       </strong>
                       {segment.partial ? <span>live</span> : null}
                     </div>
-                    <p>{segment.text}</p>
+                    <p data-i18n-skip>{segment.text}</p>
                     {showDebug ? (
                       <small>
                         {rawSpeaker ? `raw: ${rawSpeaker}` : "raw: unknown"}
@@ -1503,9 +1507,9 @@ function DemoCallPage() {
             <div className="demo-agent-assist">
               <div className="demo-assist-meta">
                 <span>Topic</span>
-                <strong>{agentTips.topic}</strong>
+                <strong data-i18n-skip>{agentTips.topic}</strong>
                 <span>Customer intent</span>
-                <strong>{agentTips.customerIntent}</strong>
+                <strong data-i18n-skip>{agentTips.customerIntent}</strong>
                 {formatPercent(agentTips.roleConfidence ?? undefined) ? (
                   <>
                     <span>Role confidence</span>
@@ -1517,7 +1521,7 @@ function DemoCallPage() {
               <ol className="demo-tips-list">
                 {agentTips.tips.length > 0 ? (
                   agentTips.tips.map((tip, index) => (
-                    <li key={`${agentTips.updatedAt}-${index}`}>{tip}</li>
+                    <li key={`${agentTips.updatedAt}-${index}`} data-i18n-skip>{tip}</li>
                   ))
                 ) : (
                   <li>No tips returned yet.</li>
@@ -1525,7 +1529,7 @@ function DemoCallPage() {
               </ol>
 
               <small className="demo-assist-updated">
-                Updated: {new Date(agentTips.updatedAt).toLocaleTimeString()}
+                Updated: {new Date(agentTips.updatedAt).toLocaleTimeString(getIntlLocale())}
               </small>
 
               {agentTipsHistory.length > 0 ? (
@@ -1534,15 +1538,17 @@ function DemoCallPage() {
                   <div>
                     {agentTipsHistory.map((block) => (
                       <article key={block.updatedAt ?? block.topic}>
-                        <strong>{block.topic || "Unknown topic"}</strong>
+                        {block.topic
+                          ? <strong data-i18n-skip>{block.topic}</strong>
+                          : <strong>Unknown topic</strong>}
                         <span>
                           {block.updatedAt
-                            ? new Date(block.updatedAt).toLocaleTimeString()
+                            ? new Date(block.updatedAt).toLocaleTimeString(getIntlLocale())
                             : "Unknown time"}
                         </span>
                         <ol>
                           {block.tips.map((tip, index) => (
-                            <li key={`${block.updatedAt}-${index}`}>{tip}</li>
+                            <li key={`${block.updatedAt}-${index}`} data-i18n-skip>{tip}</li>
                           ))}
                         </ol>
                       </article>

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { changePassword } from "./api";
 import type { AppSettings } from "./types";
+import { useI18n } from "./i18n";
 
 type Props = { settings: AppSettings; onUnauthorized: () => void };
 type PasswordFieldProps = {
@@ -14,6 +15,7 @@ type PasswordFieldProps = {
 };
 
 function PasswordField(props: PasswordFieldProps) {
+  const { t } = useI18n();
   return (
     <label className="full-width" htmlFor={props.id}>
       {props.label}
@@ -27,9 +29,9 @@ function PasswordField(props: PasswordFieldProps) {
           required
         />
         <button type="button" className="password-visibility-button" onClick={props.onToggle}
-          aria-label={`${props.visible ? "Hide" : "Show"} ${props.label.toLowerCase()}`}
+          aria-label={`${t(props.visible ? "Hide" : "Show")} ${props.label.toLocaleLowerCase()}`}
           aria-pressed={props.visible}>
-          {props.visible ? "Hide" : "Show"}
+          {t(props.visible ? "Hide" : "Show")}
         </button>
       </span>
     </label>
@@ -37,6 +39,7 @@ function PasswordField(props: PasswordFieldProps) {
 }
 
 export function AccountPage({ settings, onUnauthorized }: Props) {
+  const { t } = useI18n();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -106,13 +109,13 @@ export function AccountPage({ settings, onUnauthorized }: Props) {
         {error ? <div className="form-message error-message" role="alert">{error}</div> : null}
         {success ? <div className="form-message success-message" role="status">{success}</div> : null}
         <form className="grid-form password-form" onSubmit={submit}>
-          <PasswordField id="current-password" label="Current password" value={currentPassword}
+          <PasswordField id="current-password" label={t("Current password")} value={currentPassword}
             autoComplete="current-password" visible={Boolean(visible.current)}
             onChange={setCurrentPassword} onToggle={() => toggle("current")} />
-          <PasswordField id="new-password" label="New password" value={newPassword}
+          <PasswordField id="new-password" label={t("New password")} value={newPassword}
             autoComplete="new-password" visible={Boolean(visible.new)}
             onChange={setNewPassword} onToggle={() => toggle("new")} />
-          <PasswordField id="confirm-new-password" label="Confirm new password" value={confirmation}
+          <PasswordField id="confirm-new-password" label={t("Confirm new password")} value={confirmation}
             autoComplete="new-password" visible={Boolean(visible.confirmation)}
             onChange={setConfirmation} onToggle={() => toggle("confirmation")} />
           <div className="password-form-actions full-width">
