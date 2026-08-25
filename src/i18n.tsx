@@ -16,6 +16,12 @@ import type {
 
 export const LOCALE_STORAGE_KEY = "ca-analytics-locale";
 
+const LOCALE_FLAGS: Record<LocaleCode, string> = {
+  en: "🇺🇸",
+  hy: "🇦🇲",
+  ru: "🇷🇺",
+};
+
 export const BUILTIN_LOCALIZATION_OPTIONS: UiLocalizationOptionsResponse = {
   defaultLocale: "en",
   supportedLocales: [
@@ -1146,25 +1152,29 @@ export function LanguageSelector({
 }) {
   const { locale, options, setLocale, t } = useI18n();
   return (
-    <label className={`language-selector ${className}`.trim()}>
-      <span>{t("Language")}</span>
-      <select
-        value={locale}
-        disabled={disabled}
-        aria-label={t("Language")}
-        onChange={(event) => {
-          const next = normalizeLocale(event.target.value);
-          if (!next) return;
-          if (onChange) void onChange(next);
-          else setLocale(next);
-        }}
-      >
-        {options.supportedLocales.map((option) => (
-          <option key={option.code} value={option.code}>
-            {option.nativeName}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div
+      className={`language-selector ${className}`.trim()}
+      role="group"
+      aria-label={t("Language")}
+    >
+      {options.supportedLocales.map((option) => (
+        <button
+          key={option.code}
+          type="button"
+          className={`language-flag ${locale === option.code ? "is-active" : ""}`}
+          disabled={disabled}
+          aria-label={option.nativeName}
+          aria-pressed={locale === option.code}
+          title={option.nativeName}
+          onClick={() => {
+            if (option.code === locale) return;
+            if (onChange) void onChange(option.code);
+            else setLocale(option.code);
+          }}
+        >
+          <span aria-hidden="true">{LOCALE_FLAGS[option.code]}</span>
+        </button>
+      ))}
+    </div>
   );
 }

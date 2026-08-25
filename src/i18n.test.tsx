@@ -86,7 +86,7 @@ describe("I18nProvider", () => {
     const user = userEvent.setup();
     render(<I18nProvider><Fixture /></I18nProvider>);
 
-    await user.selectOptions(screen.getByLabelText("Language"), "hy");
+    await user.click(screen.getByRole("button", { name: "Հայերեն" }));
 
     await waitFor(() => expect(screen.getByRole("heading").textContent).toBe("Հաշիվ"));
     expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBe("hy");
@@ -94,14 +94,15 @@ describe("I18nProvider", () => {
     expect(document.documentElement.dir).toBe("ltr");
     expect(screen.getAllByRole("status").length).toBe(2);
 
-    await user.selectOptions(screen.getByLabelText("Լեզու"), "ru");
+    await user.click(screen.getByRole("button", { name: "Русский" }));
     await waitFor(() => expect(screen.getByRole("heading").textContent).toBe("Аккаунт"));
     expect(document.documentElement.lang).toBe("ru");
   });
 
-  it("renders each locale using its native name without flags", () => {
+  it("renders compact flag buttons with accessible native language names", () => {
     render(<I18nProvider><LanguageSelector /></I18nProvider>);
-    const labels = screen.getAllByRole("option").map((option) => option.textContent);
-    expect(labels).toEqual(["English", "Հայերեն", "Русский"]);
+    expect(screen.getByRole("button", { name: "English" }).textContent).toBe("🇺🇸");
+    expect(screen.getByRole("button", { name: "Հայերեն" }).textContent).toBe("🇦🇲");
+    expect(screen.getByRole("button", { name: "Русский" }).textContent).toBe("🇷🇺");
   });
 });
