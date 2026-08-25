@@ -86,7 +86,8 @@ describe("I18nProvider", () => {
     const user = userEvent.setup();
     render(<I18nProvider><Fixture /></I18nProvider>);
 
-    await user.click(screen.getByRole("button", { name: "Հայերեն" }));
+    await user.click(screen.getByRole("button", { name: /English/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: "Հայերեն" }));
 
     await waitFor(() => expect(screen.getByRole("heading").textContent).toBe("Հաշիվ"));
     expect(localStorage.getItem(LOCALE_STORAGE_KEY)).toBe("hy");
@@ -94,15 +95,24 @@ describe("I18nProvider", () => {
     expect(document.documentElement.dir).toBe("ltr");
     expect(screen.getAllByRole("status").length).toBe(2);
 
-    await user.click(screen.getByRole("button", { name: "Русский" }));
+    await user.click(screen.getByRole("button", { name: /Հայերեն/ }));
+    await user.click(screen.getByRole("menuitemradio", { name: "Русский" }));
     await waitFor(() => expect(screen.getByRole("heading").textContent).toBe("Аккаунт"));
     expect(document.documentElement.lang).toBe("ru");
   });
 
-  it("renders compact flag buttons with accessible native language names", () => {
+  it("renders country flags inside a compact accessible dropdown", async () => {
+    const user = userEvent.setup();
     render(<I18nProvider><LanguageSelector /></I18nProvider>);
-    expect(screen.getByRole("button", { name: "English" }).textContent).toBe("🇺🇸");
-    expect(screen.getByRole("button", { name: "Հայերեն" }).textContent).toBe("🇦🇲");
-    expect(screen.getByRole("button", { name: "Русский" }).textContent).toBe("🇷🇺");
+    const trigger = screen.getByRole("button", { name: /English/ });
+    expect(trigger.querySelector('[data-locale-flag="en"]')).not.toBeNull();
+
+    await user.click(trigger);
+    expect(screen.getByRole("menuitemradio", { name: "English" })
+      .querySelector('[data-locale-flag="en"]')).not.toBeNull();
+    expect(screen.getByRole("menuitemradio", { name: "Հայերեն" })
+      .querySelector('[data-locale-flag="hy"]')).not.toBeNull();
+    expect(screen.getByRole("menuitemradio", { name: "Русский" })
+      .querySelector('[data-locale-flag="ru"]')).not.toBeNull();
   });
 });

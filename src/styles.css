@@ -5853,39 +5853,89 @@ details.scroll-toggle > summary {
 /* ================================================= Localization ====== */
 
 .language-selector {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
+  position: relative;
+  display: inline-block;
   min-width: 0;
 }
 
-.language-flag {
-  display: grid;
-  place-items: center;
-  width: 2.55rem;
-  height: 2.35rem;
-  padding: 0;
-  border: 1px solid transparent;
+.language-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  width: 4.15rem;
+  height: 2.65rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--line);
   border-radius: 0.75rem;
-  background: transparent;
+  background: var(--surface);
   box-shadow: none;
-  font-size: 1.35rem;
-  line-height: 1;
 }
 
-.language-flag:hover {
+.language-dropdown-trigger:hover {
+  border-color: var(--blue);
   background: var(--surface-alt);
   transform: none;
 }
 
-.language-flag.is-active {
-  border-color: var(--blue);
-  background: var(--blue-tint);
-}
-
-.language-flag:focus-visible {
+.language-dropdown-trigger:focus-visible,
+.language-dropdown-option:focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 2px;
+}
+
+.language-flag-icon {
+  display: block;
+  width: 1.75rem;
+  height: 1.1rem;
+  border-radius: 0.12rem;
+  box-shadow: 0 0 0 1px rgb(15 23 42 / 12%);
+}
+
+.language-dropdown-chevron {
+  width: 0.48rem;
+  height: 0.48rem;
+  margin-top: -0.2rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.language-dropdown-menu {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  display: grid;
+  gap: 0.2rem;
+  min-width: 100%;
+  padding: 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.language-dropdown-option {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  background: transparent;
+  box-shadow: none;
+}
+
+.language-dropdown-option:hover {
+  background: var(--surface-alt);
+  transform: none;
+}
+
+.language-dropdown-option.is-active {
+  border-color: var(--blue);
+  background: var(--blue-tint);
 }
 
 .auth-language-selector {

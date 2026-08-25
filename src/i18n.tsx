@@ -16,12 +16,6 @@ import type {
 
 export const LOCALE_STORAGE_KEY = "ca-analytics-locale";
 
-const LOCALE_FLAGS: Record<LocaleCode, string> = {
-  en: "🇺🇸",
-  hy: "🇦🇲",
-  ru: "🇷🇺",
-};
-
 export const BUILTIN_LOCALIZATION_OPTIONS: UiLocalizationOptionsResponse = {
   defaultLocale: "en",
   supportedLocales: [
@@ -1141,6 +1135,55 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 export const useI18n = () => useContext(I18nContext);
 
+function LocaleFlag({ code }: { code: LocaleCode }) {
+  const sharedProps = {
+    className: "language-flag-icon",
+    "data-locale-flag": code,
+    "aria-hidden": true,
+    focusable: "false",
+  } as const;
+
+  if (code === "en") {
+    return (
+      <svg {...sharedProps} viewBox="0 0 30 16" xmlns="http://www.w3.org/2000/svg">
+        <rect width="30" height="16" fill="#fff" />
+        <path
+          d="M0 0h30v1.23H0zm0 2.46h30v1.23H0zm0 2.46h30v1.23H0zm0 2.46h30v1.23H0zm0 2.46h30v1.23H0zm0 2.46h30v1.23H0zm0 2.46h30V16H0z"
+          fill="#b22234"
+        />
+        <rect width="12" height="8.62" fill="#3c3b6e" />
+        <g fill="#fff">
+          <circle cx="2" cy="1.5" r="0.45" /><circle cx="5" cy="1.5" r="0.45" />
+          <circle cx="8" cy="1.5" r="0.45" /><circle cx="11" cy="1.5" r="0.45" />
+          <circle cx="3.5" cy="3.5" r="0.45" /><circle cx="6.5" cy="3.5" r="0.45" />
+          <circle cx="9.5" cy="3.5" r="0.45" /><circle cx="2" cy="5.5" r="0.45" />
+          <circle cx="5" cy="5.5" r="0.45" /><circle cx="8" cy="5.5" r="0.45" />
+          <circle cx="11" cy="5.5" r="0.45" /><circle cx="3.5" cy="7.5" r="0.45" />
+          <circle cx="6.5" cy="7.5" r="0.45" /><circle cx="9.5" cy="7.5" r="0.45" />
+        </g>
+      </svg>
+    );
+  }
+
+  if (code === "hy") {
+    return (
+      <svg {...sharedProps} viewBox="0 0 30 15" xmlns="http://www.w3.org/2000/svg">
+        <path fill="#d90012" d="M0 0h30v5H0z" />
+        <path fill="#0033a0" d="M0 5h30v5H0z" />
+        <path fill="#f2a800" d="M0 10h30v5H0z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg {...sharedProps} viewBox="0 0 30 20" xmlns="http://www.w3.org/2000/svg">
+      <path fill="#fff" d="M0 0h30v6.67H0z" />
+      <path fill="#0039a6" d="M0 6.67h30v6.66H0z" />
+      <path fill="#d52b1e" d="M0 13.33h30V20H0z" />
+    </svg>
+  );
+}
+
 export function LanguageSelector({
   onChange,
   disabled = false,
@@ -1151,30 +1194,73 @@ export function LanguageSelector({
   className?: string;
 }) {
   const { locale, options, setLocale, t } = useI18n();
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const selectedLocale = options.supportedLocales.find((option) => option.code === locale)
+    ?? options.supportedLocales[0];
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!dropdownRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isOpen]);
+
+  if (!selectedLocale) return null;
+
   return (
     <div
+      ref={dropdownRef}
       className={`language-selector ${className}`.trim()}
-      role="group"
-      aria-label={t("Language")}
     >
-      {options.supportedLocales.map((option) => (
-        <button
-          key={option.code}
-          type="button"
-          className={`language-flag ${locale === option.code ? "is-active" : ""}`}
-          disabled={disabled}
-          aria-label={option.nativeName}
-          aria-pressed={locale === option.code}
-          title={option.nativeName}
-          onClick={() => {
-            if (option.code === locale) return;
-            if (onChange) void onChange(option.code);
-            else setLocale(option.code);
-          }}
-        >
-          <span aria-hidden="true">{LOCALE_FLAGS[option.code]}</span>
-        </button>
-      ))}
+      <button
+        type="button"
+        className="language-dropdown-trigger"
+        disabled={disabled}
+        aria-label={`${t("Language")}: ${selectedLocale.nativeName}`}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        title={selectedLocale.nativeName}
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <LocaleFlag code={selectedLocale.code} />
+        <span className="language-dropdown-chevron" aria-hidden="true" />
+      </button>
+
+      {isOpen && (
+        <div className="language-dropdown-menu" role="menu" aria-label={t("Language")}>
+          {options.supportedLocales.map((option) => (
+            <button
+              key={option.code}
+              type="button"
+              role="menuitemradio"
+              className={`language-dropdown-option ${locale === option.code ? "is-active" : ""}`}
+              aria-label={option.nativeName}
+              aria-checked={locale === option.code}
+              title={option.nativeName}
+              onClick={() => {
+                setIsOpen(false);
+                if (option.code === locale) return;
+                if (onChange) void onChange(option.code);
+                else setLocale(option.code);
+              }}
+            >
+              <LocaleFlag code={option.code} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
