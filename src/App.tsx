@@ -3892,6 +3892,11 @@ function App() {
             <NavIcon name="logout" />
             <span>Log out</span>
           </button>
+          <LanguageSelector
+            className="sidebar-language-selector"
+            onChange={handleLanguageChange}
+            disabled={languageSaving}
+          />
         </div>
       </aside>
 
@@ -3984,11 +3989,6 @@ function App() {
               </div>
             ) : null}
           </div>
-          <LanguageSelector
-            className="topbar-language-selector"
-            onChange={handleLanguageChange}
-            disabled={languageSaving}
-          />
           {settings.apiToken ? (
             <div className="topbar-user">
               <div className="topbar-user-text">

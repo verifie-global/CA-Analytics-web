@@ -1231,7 +1231,6 @@ export function LanguageSelector({
         aria-label={`${t("Language")}: ${selectedLocale.nativeName}`}
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        title={selectedLocale.nativeName}
         onClick={() => setIsOpen((open) => !open)}
       >
         <LocaleFlag code={selectedLocale.code} />
@@ -1248,7 +1247,6 @@ export function LanguageSelector({
               className={`language-dropdown-option ${locale === option.code ? "is-active" : ""}`}
               aria-label={option.nativeName}
               aria-checked={locale === option.code}
-              title={option.nativeName}
               onClick={() => {
                 setIsOpen(false);
                 if (option.code === locale) return;
@@ -1257,6 +1255,7 @@ export function LanguageSelector({
               }}
             >
               <LocaleFlag code={option.code} />
+              <span className="language-dropdown-option-name">{option.nativeName}</span>
             </button>
           ))}
         </div>
