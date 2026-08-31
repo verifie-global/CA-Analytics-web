@@ -7,6 +7,7 @@ import type {
   CallFilterOption,
   CallFilterOptions,
   CallFilters,
+  CallUploadPayload,
   CallUploadResult,
   CallsListResult,
   CallScoreSummary,
@@ -604,6 +605,7 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
     conversationName: readString(record, "conversationName"),
     originalAudioFileName: readString(record, "originalAudioFileName"),
     status: readString(record, "status") ?? "Unknown",
+    source: readString(record, "source"),
     agentInfo: normalizePartyInfo(record.agentInfo ?? record.agent, {
       name: readString(record, "agentName"),
       externalId: readString(record, "agentExternalId"),
@@ -657,6 +659,7 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
     conversationName: readString(record, "conversationName"),
     originalAudioFileName: readString(record, "originalAudioFileName"),
     status: readString(record, "status") ?? "Unknown",
+    source: readString(record, "source"),
     companyId: readNumber(record, "companyId") ?? null,
     agentInfo: normalizePartyInfo(record.agentInfo),
     customerInfo: normalizePartyInfo(record.customerInfo),
@@ -1307,7 +1310,7 @@ export async function exportCallsCsv(settings: AppSettings, filters: CallFilters
 export async function fetchCallDetail(settings: AppSettings, conversationId: string) {
   const detailRequest = request<unknown>(
     settings,
-    `/api/companies/${settings.companyId}/calls/${conversationId}`,
+    `/api/companies/${settings.companyId}/calls/${encodeURIComponent(conversationId)}`,
   );
   const demoSessionRequest = conversationId.startsWith("demo-")
     ? request<unknown>(
@@ -1709,20 +1712,78 @@ export async function updateQaApplicability(
 
 export async function uploadCall(
   settings: AppSettings,
-  payload: { conversationId: string; url: string; file: File | null },
+  payload: CallUploadPayload,
 ): Promise<CallUploadResult> {
+  const url = payload.url?.trim() ?? "";
+  const transcript = payload.transcript ?? "";
+
+  if (!payload.conversationId.trim()) {
+    throw createRequestError("Invalid input: conversation ID is required.", 400);
+  }
+
+  if (transcript.length > 250_000) {
+    throw createRequestError(
+      "Invalid input: transcript/chat text cannot exceed 250,000 characters.",
+      400,
+    );
+  }
+
+  const suppliedSourceCount = [Boolean(payload.file), Boolean(url), Boolean(transcript.trim())]
+    .filter(Boolean).length;
+
+  if (suppliedSourceCount !== 1) {
+    throw createRequestError(
+      "Invalid input: provide exactly one audio file, audio URL, or transcript.",
+      400,
+    );
+  }
+
   const formData = new FormData();
 
-  if (payload.url) {
-    formData.set("url", payload.url);
+  if (url) {
+    formData.set("url", url);
   }
 
   if (payload.file) {
     formData.set("audio", payload.file);
   }
 
+  if (transcript.trim()) {
+    formData.set("transcript", transcript);
+  }
+
+  if (payload.language && payload.language !== "auto") {
+    formData.set("language", payload.language);
+  }
+
+  const metadata = payload.metadata;
+  const textMetadata = {
+    agentName: metadata?.agentName,
+    agentExternalId: metadata?.agentExternalId,
+    agentPhone: metadata?.agentPhone,
+    customerName: metadata?.customerName,
+    customerExternalId: metadata?.customerExternalId,
+    customerPhone: metadata?.customerPhone,
+  };
+
+  Object.entries(textMetadata).forEach(([key, value]) => {
+    const normalizedValue = value?.trim();
+    if (normalizedValue) formData.set(key, normalizedValue);
+  });
+
+  if (metadata?.isInbound != null) {
+    formData.set("isInbound", String(metadata.isInbound));
+  }
+
+  if (metadata?.billSeconds != null) {
+    formData.set("billSeconds", String(metadata.billSeconds));
+  }
+
   const response = await fetch(
-    buildUrl(settings, `/api/companies/${settings.companyId}/calls/${payload.conversationId}`),
+    buildUrl(
+      settings,
+      `/api/companies/${settings.companyId}/calls/${encodeURIComponent(payload.conversationId)}`,
+    ),
     {
       method: "POST",
       headers: authHeaders(settings),
@@ -1732,8 +1793,20 @@ export async function uploadCall(
 
   if (!response.ok) {
     const text = await response.text();
+    const serverMessage = parseRequestErrorMessage(
+      text,
+      `Upload failed with status ${response.status}`,
+    );
+    const message =
+      response.status === 400
+        ? `Invalid input: ${serverMessage}`
+        : response.status === 401
+          ? "Authentication expired or is invalid. Please sign in again."
+          : response.status === 409
+            ? "This conversation ID already exists. Generate a new ID and try again."
+            : serverMessage;
     throw createRequestError(
-      parseRequestErrorMessage(text, `Upload failed with status ${response.status}`),
+      message,
       response.status,
     );
   }
@@ -1741,6 +1814,21 @@ export async function uploadCall(
   const fallback: CallUploadResult = {
     conversationId: payload.conversationId,
     originalAudioFileName: payload.file?.name,
+    status: response.status === 202 ? "Queued" : undefined,
+    source: transcript.trim() ? "transcript" : "audio",
+    language: payload.language && payload.language !== "auto" ? payload.language : null,
+    agentInfo: normalizePartyInfo(null, {
+      name: metadata?.agentName,
+      externalId: metadata?.agentExternalId,
+      phone: metadata?.agentPhone,
+    }),
+    customerInfo: normalizePartyInfo(null, {
+      name: metadata?.customerName,
+      externalId: metadata?.customerExternalId,
+      phone: metadata?.customerPhone,
+    }),
+    isInbound: metadata?.isInbound ?? null,
+    billSeconds: metadata?.billSeconds ?? null,
   };
   const text = await response.text();
   if (!text.trim()) {
@@ -1749,13 +1837,60 @@ export async function uploadCall(
 
   try {
     const body = asRecord(JSON.parse(text) as unknown);
-    const record = asOptionalRecord(body.call) ?? body;
+    const record = asOptionalRecord(body.call) ?? asOptionalRecord(body.data) ?? body;
+    const responseMetadata =
+      asOptionalRecord(record.metadata) ?? asOptionalRecord(record.callMetadata) ?? {};
     return {
       conversationId:
         readString(record, "conversationId", "id") ?? payload.conversationId,
+      conversationDbId:
+        readNumber(record, "conversationDbId") ??
+        readString(record, "conversationDbId") ??
+        null,
       conversationName: readString(record, "conversationName"),
       originalAudioFileName:
         readString(record, "originalAudioFileName") ?? payload.file?.name,
+      status: readString(record, "status") ?? fallback.status,
+      source: readString(record, "source") ?? fallback.source,
+      language:
+        readString(record, "language", "detectedLanguage", "selectedLanguage") ??
+        fallback.language,
+      agentInfo: normalizePartyInfo(record.agentInfo ?? responseMetadata.agentInfo, {
+        name:
+          readString(record, "agentName") ??
+          readString(responseMetadata, "agentName") ??
+          metadata?.agentName,
+        externalId:
+          readString(record, "agentExternalId") ??
+          readString(responseMetadata, "agentExternalId") ??
+          metadata?.agentExternalId,
+        phone:
+          readString(record, "agentPhone") ??
+          readString(responseMetadata, "agentPhone") ??
+          metadata?.agentPhone,
+      }),
+      customerInfo: normalizePartyInfo(record.customerInfo ?? responseMetadata.customerInfo, {
+        name:
+          readString(record, "customerName") ??
+          readString(responseMetadata, "customerName") ??
+          metadata?.customerName,
+        externalId:
+          readString(record, "customerExternalId") ??
+          readString(responseMetadata, "customerExternalId") ??
+          metadata?.customerExternalId,
+        phone:
+          readString(record, "customerPhone") ??
+          readString(responseMetadata, "customerPhone") ??
+          metadata?.customerPhone,
+      }),
+      isInbound:
+        readBoolean(record, "isInbound") ??
+        readBoolean(responseMetadata, "isInbound") ??
+        fallback.isInbound,
+      billSeconds:
+        readNumber(record, "billSeconds") ??
+        readNumber(responseMetadata, "billSeconds") ??
+        fallback.billSeconds,
     };
   } catch {
     return fallback;

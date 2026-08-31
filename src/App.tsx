@@ -53,6 +53,12 @@ import {
 } from "./i18n";
 import { getConversationDisplayName } from "./conversationDisplay";
 import {
+  MAX_TRANSCRIPT_LENGTH,
+  createCallUploadDraft,
+  selectCallInputSource,
+  validateCallUploadDraft,
+} from "./callUpload";
+import {
   DEFAULT_QA_SCORE_MAXIMUM,
   DEFAULT_QA_SCORING_MODE,
   formatQaScore,
@@ -160,6 +166,60 @@ type AskHistoryItem = {
   id: string;
   question: string;
   response: AskResponse;
+};
+
+type SubmissionStage =
+  | "idle"
+  | "uploading"
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed";
+
+type SubmissionProgress = {
+  stage: SubmissionStage;
+  conversationId: string;
+  source: string | null;
+  language: string | null;
+  error: string;
+};
+
+const emptySubmissionProgress: SubmissionProgress = {
+  stage: "idle",
+  conversationId: "",
+  source: null,
+  language: null,
+  error: "",
+};
+
+const getSubmissionStage = (status?: string | null): SubmissionStage => {
+  switch (status?.trim().toLowerCase()) {
+    case "queued":
+      return "queued";
+    case "processing":
+    case "inprogress":
+    case "in_progress":
+      return "processing";
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    default:
+      return "queued";
+  }
+};
+
+const getAnalysisLanguageLabel = (language?: string | null) => {
+  switch (language?.trim().toLowerCase()) {
+    case "en":
+      return "English";
+    case "hy":
+      return "Armenian";
+    case "ru":
+      return "Russian";
+    default:
+      return language?.trim() || "Detecting automatically";
+  }
 };
 
 const uniqueTextValues = (values: Array<string | null | undefined>) => {
@@ -1721,11 +1781,12 @@ function App() {
   const discardRecordingRef = useRef(false);
   const loadedUrlConversationIdRef = useRef("");
   const restoredAccessTokenRef = useRef("");
-  const [uploadState, setUploadState] = useState({
-    conversationId: generateConversationId(),
-    url: "",
-    files: [] as File[],
-  });
+  const [uploadState, setUploadState] = useState(() =>
+    createCallUploadDraft(generateConversationId()),
+  );
+  const [submissionProgress, setSubmissionProgress] = useState<SubmissionProgress>(
+    emptySubmissionProgress,
+  );
 
   const isUnauthorizedError = (error: unknown) =>
     Boolean(
@@ -2135,28 +2196,92 @@ function App() {
 
     const hasInProgressConversation = calls.some((call) => isInProgressStatus(call.status));
     const selectedNeedsRefresh = isInProgressStatus(detail?.status);
+    const submissionNeedsRefresh =
+      submissionProgress.stage === "queued" || submissionProgress.stage === "processing";
 
-    if (!hasInProgressConversation && !selectedNeedsRefresh) {
+    if (!hasInProgressConversation && !selectedNeedsRefresh && !submissionNeedsRefresh) {
       return;
     }
 
     const timer = window.setInterval(() => {
       void refreshCalls(settings, { silent: true });
-      if (selectedId) {
-        void handleLoadDetail(selectedId, { silent: true });
+      const conversationIdToPoll = submissionNeedsRefresh
+        ? submissionProgress.conversationId
+        : selectedNeedsRefresh
+          ? selectedId
+          : "";
+      if (conversationIdToPoll) {
+        void handleLoadDetail(conversationIdToPoll, { silent: true });
       }
     }, 5000);
 
     return () => {
       window.clearInterval(timer);
     };
-  }, [isAuthorized, calls, detail?.status, selectedId, settings, filters]);
+  }, [
+    isAuthorized,
+    calls,
+    detail?.status,
+    selectedId,
+    settings,
+    filters,
+    submissionProgress.conversationId,
+    submissionProgress.stage,
+  ]);
+
+  useEffect(() => {
+    if (
+      !detail ||
+      !submissionProgress.conversationId ||
+      detail.conversationId !== submissionProgress.conversationId
+    ) {
+      return;
+    }
+
+    const stage = getSubmissionStage(detail.status);
+    const language = detail.language ?? submissionProgress.language;
+    const source = detail.source ?? submissionProgress.source;
+    const error = stage === "failed" ? detail.error?.trim() || "Analysis failed." : "";
+
+    setSubmissionProgress((current) => {
+      if (
+        current.stage === stage &&
+        current.language === language &&
+        current.source === source &&
+        current.error === error
+      ) {
+        return current;
+      }
+
+      return { ...current, stage, language, source, error };
+    });
+
+    if (stage === "processing") {
+      setStatusMessage(`Analysis is processing for ${detail.conversationId}.`);
+    } else if (stage === "completed") {
+      setStatusMessage(`Analysis completed for ${detail.conversationId}.`);
+    } else if (stage === "failed") {
+      setStatusMessage(`Analysis failed for ${detail.conversationId}.`);
+    }
+  }, [
+    detail?.conversationId,
+    detail?.error,
+    detail?.language,
+    detail?.source,
+    detail?.status,
+    submissionProgress.conversationId,
+    submissionProgress.language,
+    submissionProgress.source,
+  ]);
 
   useEffect(() => {
     if (
       !selectedId ||
       !detail ||
       detail.status !== "Completed" ||
+      detail.source?.toLowerCase() === "transcript" ||
+      (submissionProgress.conversationId === selectedId &&
+        submissionProgress.source === "transcript") ||
       audioUrl ||
       audioLoading ||
       audioRequestedFor === selectedId
@@ -2166,7 +2291,15 @@ function App() {
 
     setAudioRequestedFor(selectedId);
     void handleAudioLoad(selectedId);
-  }, [selectedId, detail, audioUrl, audioLoading, audioRequestedFor]);
+  }, [
+    selectedId,
+    detail,
+    audioUrl,
+    audioLoading,
+    audioRequestedFor,
+    submissionProgress.conversationId,
+    submissionProgress.source,
+  ]);
 
   const canQueryApi = useMemo(
     () => Boolean(settings.baseUrl && settings.companyId && settings.accessToken),
@@ -2816,11 +2949,7 @@ function App() {
   };
 
   const openUploadModal = () => {
-    setUploadState({
-      conversationId: generateConversationId(),
-      url: "",
-      files: [],
-    });
+    setUploadState(createCallUploadDraft(generateConversationId()));
     setUploadValidationMessage("");
     setUploadErrorMessage("");
     setIsUploadModalOpen(true);
@@ -2929,10 +3058,25 @@ function App() {
 
     try {
       const conversationId = generateConversationId();
+      setSubmissionProgress({
+        stage: "uploading",
+        conversationId,
+        source: "audio",
+        language: null,
+        error: "",
+      });
       const uploadedCall = await uploadCall(settings, {
         conversationId,
         url: "",
         file: recordedAudioFile,
+      });
+
+      setSubmissionProgress({
+        stage: getSubmissionStage(uploadedCall.status),
+        conversationId: uploadedCall.conversationId,
+        source: uploadedCall.source ?? "audio",
+        language: uploadedCall.language ?? null,
+        error: "",
       });
 
       setStatusMessage(t("Upload accepted. {{call}} is now queued for analysis.", {
@@ -2995,13 +3139,9 @@ function App() {
   const handleUpload = async (event: FormEvent) => {
     event.preventDefault();
 
-    if (!uploadState.conversationId || (!uploadState.url && uploadState.files.length === 0)) {
-      setUploadErrorMessage("Provide either a presigned URL or one or more local media files.");
-      return;
-    }
-
-    if (uploadState.url && uploadState.files.length > 0) {
-      setUploadErrorMessage("Use either a presigned URL or local media files in a single upload.");
+    const validationError = validateCallUploadDraft(uploadState);
+    if (validationError) {
+      setUploadErrorMessage(validationError);
       return;
     }
 
@@ -3010,13 +3150,36 @@ function App() {
     setUploadErrorMessage("");
     setUploadSubmitting(true);
     setStatusMessage("Uploading call and queuing analysis...");
+    let activeConversationId = uploadState.conversationId;
 
     try {
       const uploadedCalls: CallUploadResult[] = [];
+      const billSeconds = uploadState.billSeconds.trim()
+        ? Number(uploadState.billSeconds)
+        : undefined;
+      const metadata = {
+        agentName: uploadState.agentName,
+        agentExternalId: uploadState.agentExternalId,
+        agentPhone: uploadState.agentPhone,
+        customerName: uploadState.customerName,
+        customerExternalId: uploadState.customerExternalId,
+        customerPhone: uploadState.customerPhone,
+        isInbound:
+          uploadState.isInbound === "" ? undefined : uploadState.isInbound === "true",
+        billSeconds,
+      };
 
-      if (uploadState.files.length > 0) {
+      if (uploadState.source === "audio-file") {
         for (const [index, file] of uploadState.files.entries()) {
           const conversationId = generateConversationId();
+          activeConversationId = conversationId;
+          setSubmissionProgress({
+            stage: "uploading",
+            conversationId,
+            source: "audio",
+            language: null,
+            error: "",
+          });
           setStatusMessage(t("Uploading {{current}} of {{total}}: {{file}}", {
             current: formatSummaryNumber(index + 1, 0),
             total: formatSummaryNumber(uploadState.files.length, 0),
@@ -3034,18 +3197,41 @@ function App() {
             conversationId,
             url: "",
             file,
+            language: uploadState.language,
+            metadata,
           });
 
           uploadedCalls.push(uploadedCall);
         }
       } else {
+        setSubmissionProgress({
+          stage: "uploading",
+          conversationId: uploadState.conversationId,
+          source: uploadState.source === "transcript" ? "transcript" : "audio",
+          language: null,
+          error: "",
+        });
         const uploadedCall = await uploadCall(settings, {
           conversationId: uploadState.conversationId,
-          url: uploadState.url,
+          url: uploadState.source === "audio-url" ? uploadState.url : "",
           file: null,
+          transcript: uploadState.source === "transcript" ? uploadState.transcript : "",
+          language: uploadState.language,
+          metadata,
         });
         uploadedCalls.push(uploadedCall);
       }
+
+      const latestUploadedCall = uploadedCalls[uploadedCalls.length - 1];
+      setSubmissionProgress({
+        stage: getSubmissionStage(latestUploadedCall.status),
+        conversationId: latestUploadedCall.conversationId,
+        source:
+          latestUploadedCall.source ??
+          (uploadState.source === "transcript" ? "transcript" : "audio"),
+        language: latestUploadedCall.language ?? null,
+        error: "",
+      });
 
       setStatusMessage(
         uploadedCalls.length === 1
@@ -3058,18 +3244,25 @@ function App() {
             }),
       );
       setIsUploadModalOpen(false);
-      setUploadState({ conversationId: generateConversationId(), url: "", files: [] });
+      setUploadState(createCallUploadDraft(generateConversationId()));
       setUploadValidationMessage("");
       setUploadErrorMessage("");
       await refreshCalls();
-      await handleLoadDetail(uploadedCalls[uploadedCalls.length - 1].conversationId);
+      await handleLoadDetail(latestUploadedCall.conversationId);
     } catch (error) {
       if (isUnauthorizedError(error)) {
         handleUnauthorizedSession();
         return;
       }
 
-      setUploadErrorMessage(error instanceof Error ? error.message : "Unable to upload the call.");
+      const message = error instanceof Error ? error.message : "Unable to upload the call.";
+      setSubmissionProgress((current) => ({
+        ...current,
+        stage: "failed",
+        conversationId: current.conversationId || activeConversationId,
+        error: message,
+      }));
+      setUploadErrorMessage(message);
     } finally {
       setUploadSubmitting(false);
     }
@@ -3148,11 +3341,8 @@ function App() {
     setTranscriptCache({});
     setCurrentRoute("dashboard");
     setStatusMessage("You have been logged out.");
-    setUploadState({
-      conversationId: generateConversationId(),
-      url: "",
-      files: [],
-    });
+    setUploadState(createCallUploadDraft(generateConversationId()));
+    setSubmissionProgress(emptySubmissionProgress);
   };
 
   const handleUnauthorizedSession = () => {
@@ -3204,11 +3394,8 @@ function App() {
     setCurrentRoute("dashboard");
     setErrorMessage("Your session expired. Please sign in again.");
     setStatusMessage("Authorization required.");
-    setUploadState({
-      conversationId: generateConversationId(),
-      url: "",
-      files: [],
-    });
+    setUploadState(createCallUploadDraft(generateConversationId()));
+    setSubmissionProgress(emptySubmissionProgress);
   };
 
   useEffect(() => {
@@ -4014,6 +4201,48 @@ function App() {
           )}
         </div>
 
+        {submissionProgress.stage !== "idle" ? (
+          <section
+            className={`analysis-progress analysis-progress-${submissionProgress.stage}`}
+            aria-live="polite"
+            aria-label="Call analysis progress"
+          >
+            <div className="analysis-progress-state">
+              <span className="analysis-progress-dot" aria-hidden="true" />
+              <div>
+                <strong>
+                  {submissionProgress.stage === "uploading"
+                    ? "Uploading"
+                    : submissionProgress.stage.charAt(0).toUpperCase() + submissionProgress.stage.slice(1)}
+                </strong>
+                <span data-i18n-skip>{submissionProgress.conversationId}</span>
+              </div>
+            </div>
+            <dl>
+              <div>
+                <dt>Source</dt>
+                <dd>{submissionProgress.source === "transcript" ? "Transcript/chat" : "Audio"}</dd>
+              </div>
+              <div>
+                <dt>Language</dt>
+                <dd>{getAnalysisLanguageLabel(submissionProgress.language)}</dd>
+              </div>
+            </dl>
+            {submissionProgress.error ? (
+              <p className="analysis-progress-error">{submissionProgress.error}</p>
+            ) : null}
+            {submissionProgress.stage === "completed" || submissionProgress.stage === "failed" ? (
+              <button
+                type="button"
+                className="secondary-button small-button"
+                onClick={() => setSubmissionProgress(emptySubmissionProgress)}
+              >
+                Dismiss
+              </button>
+            ) : null}
+          </section>
+        ) : null}
+
         {currentRoute === "dashboard" ? (
           <header className="dashboard-head">
             <div className="dashboard-head-title">
@@ -4546,19 +4775,25 @@ function App() {
                     </div>
                   </section>
 
-                  <ConversationPlayback
-                    audioUrl={audioUrl}
-                    audioDownloadFileName={
-                      detail.originalAudioFileName ??
-                      getConversationDisplayName(detail)
-                    }
-                    audioRef={audioRef}
-                    segments={detail.segments}
-                    durationSeconds={detail.durationSeconds}
-                    playbackTimeSeconds={playbackTimeSeconds}
-                    isPreparing={audioLoading || audioPendingFor === detail.conversationId}
-                    onPlaybackTimeChange={setPlaybackTimeSeconds}
-                  />
+                  {detail.source?.toLowerCase() !== "transcript" &&
+                  !(
+                    submissionProgress.conversationId === detail.conversationId &&
+                    submissionProgress.source === "transcript"
+                  ) ? (
+                    <ConversationPlayback
+                      audioUrl={audioUrl}
+                      audioDownloadFileName={
+                        detail.originalAudioFileName ??
+                        getConversationDisplayName(detail)
+                      }
+                      audioRef={audioRef}
+                      segments={detail.segments}
+                      durationSeconds={detail.durationSeconds}
+                      playbackTimeSeconds={playbackTimeSeconds}
+                      isPreparing={audioLoading || audioPendingFor === detail.conversationId}
+                      onPlaybackTimeChange={setPlaybackTimeSeconds}
+                    />
+                  ) : null}
 
                   {videoStats ? (
                     <section className="detail-section video-analysis-section">
@@ -5014,7 +5249,7 @@ function App() {
 
             <form className="grid-form" onSubmit={handleUpload}>
               <label>
-                Conversation ID for URL upload
+                Conversation ID
                 <input value={uploadState.conversationId} readOnly />
               </label>
 
@@ -5034,38 +5269,97 @@ function App() {
                 </button>
               </label>
 
-              <label className="full-width">
-                Presigned URL
-                <input
-                  value={uploadState.url}
-                  onChange={(event) =>
-                    setUploadState((current) => ({ ...current, url: event.target.value, files: [] }))
-                  }
-                  placeholder="https://storage.example.com/call.wav?signature=..."
-                />
-              </label>
+              <fieldset className="input-source-selector full-width">
+                <legend>Input source</legend>
+                <div className="input-source-options" role="radiogroup" aria-label="Input source">
+                  {([
+                    ["audio-file", "Audio file"],
+                    ["audio-url", "Audio URL"],
+                    ["transcript", "Transcript/chat text"],
+                  ] as const).map(([value, label]) => (
+                    <label key={value} className={uploadState.source === value ? "selected" : ""}>
+                      <input
+                        type="radio"
+                        name="inputSource"
+                        value={value}
+                        checked={uploadState.source === value}
+                        onChange={() => {
+                          setUploadValidationMessage("");
+                          setUploadErrorMessage("");
+                          setUploadState((current) => selectCallInputSource(current, value));
+                        }}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
 
-              <label className="full-width">
-                Local audio or MOV files
-                <input
-                  type="file"
-                  accept="audio/*,.mov,video/quicktime"
-                  multiple
-                  onChange={(event) =>
-                    {
+              {uploadState.source === "audio-url" ? (
+                <label className="full-width">
+                  Audio URL
+                  <input
+                    type="url"
+                    value={uploadState.url}
+                    onChange={(event) => {
+                      setUploadErrorMessage("");
+                      setUploadState((current) => ({ ...current, url: event.target.value }));
+                    }}
+                    placeholder="https://storage.example.com/call.wav?signature=..."
+                    required
+                  />
+                </label>
+              ) : null}
+
+              {uploadState.source === "audio-file" ? (
+                <label className="full-width">
+                  Local audio or MOV files
+                  <input
+                    type="file"
+                    accept="audio/*,.mov,video/quicktime"
+                    multiple
+                    onChange={(event) => {
                       setUploadValidationMessage("");
                       setUploadErrorMessage("");
                       setUploadState((current) => ({
                         ...current,
-                        url: "",
                         files: Array.from(event.target.files ?? []),
                       }));
-                    }
-                  }
-                />
-              </label>
+                    }}
+                  />
+                </label>
+              ) : null}
 
-              {uploadState.files.length > 0 ? (
+              {uploadState.source === "transcript" ? (
+                <div className="transcript-input full-width">
+                  <label htmlFor="call-transcript">Transcript/chat text</label>
+                  <textarea
+                    id="call-transcript"
+                    value={uploadState.transcript}
+                    maxLength={MAX_TRANSCRIPT_LENGTH}
+                    rows={10}
+                    onChange={(event) => {
+                      setUploadErrorMessage("");
+                      setUploadState((current) => ({
+                        ...current,
+                        transcript: event.target.value,
+                      }));
+                    }}
+                    placeholder={"AGENT: Hello, how can I help?\nCUSTOMER: My payment failed.\nI see an error message.\nI will check your account."}
+                    required
+                  />
+                  <div className="transcript-counter" data-i18n-skip>
+                    {formatSummaryNumber(uploadState.transcript.length, 0)} / {formatSummaryNumber(MAX_TRANSCRIPT_LENGTH, 0)} characters
+                  </div>
+                  <div className="transcript-help">
+                    <p>Every non-empty line is one chat message. Speaker labels are optional, and unlabeled messages are inferred independently.</p>
+                    <p>Explicit AGENT/CUSTOMER, Operator/Client, Russian, and Armenian role labels are preserved. Agent and customer names below are also recognized as speaker labels.</p>
+                    <pre data-i18n-skip>{"AGENT: Hello, how can I help?\nCUSTOMER: My payment failed.\nI see an error message.\nI will check your account."}</pre>
+                  </div>
+                </div>
+              ) : null}
+
+              {uploadState.source === "audio-file" && uploadState.files.length > 0 ? (
                 <div className="upload-selection full-width">
                   <strong>{uploadState.files.length} file(s) selected</strong>
                   <ul className="upload-file-list">
@@ -5082,12 +5376,56 @@ function App() {
                 </div>
               ) : null}
 
-              <p className="upload-note full-width">
-                Audio and MOV files are supported. Client-side sample-rate validation is
-                temporarily disabled for local uploads.
-                Presigned URLs are still queued as-is because the browser cannot inspect remote
-                files before upload.
-              </p>
+              <label className="full-width">
+                Analysis language
+                <select
+                  value={uploadState.language}
+                  onChange={(event) =>
+                    setUploadState((current) => ({
+                      ...current,
+                      language: event.target.value as typeof current.language,
+                    }))
+                  }
+                >
+                  <option value="auto">Auto detect</option>
+                  <option value="en">English</option>
+                  <option value="hy">Armenian</option>
+                  <option value="ru">Russian</option>
+                </select>
+              </label>
+
+              <details className="upload-metadata full-width">
+                <summary>Optional call metadata</summary>
+                <div className="upload-metadata-grid">
+                  <label>Agent name<input value={uploadState.agentName} onChange={(event) => setUploadState((current) => ({ ...current, agentName: event.target.value }))} /></label>
+                  <label>Agent external ID<input value={uploadState.agentExternalId} onChange={(event) => setUploadState((current) => ({ ...current, agentExternalId: event.target.value }))} /></label>
+                  <label>Agent phone<input type="tel" value={uploadState.agentPhone} onChange={(event) => setUploadState((current) => ({ ...current, agentPhone: event.target.value }))} /></label>
+                  <label>Customer name<input value={uploadState.customerName} onChange={(event) => setUploadState((current) => ({ ...current, customerName: event.target.value }))} /></label>
+                  <label>Customer external ID<input value={uploadState.customerExternalId} onChange={(event) => setUploadState((current) => ({ ...current, customerExternalId: event.target.value }))} /></label>
+                  <label>Customer phone<input type="tel" value={uploadState.customerPhone} onChange={(event) => setUploadState((current) => ({ ...current, customerPhone: event.target.value }))} /></label>
+                  <label>
+                    Direction
+                    <select value={uploadState.isInbound} onChange={(event) => setUploadState((current) => ({ ...current, isInbound: event.target.value as typeof current.isInbound }))}>
+                      <option value="">Not specified</option>
+                      <option value="true">Inbound</option>
+                      <option value="false">Outbound</option>
+                    </select>
+                  </label>
+                  <label>Bill seconds<input type="number" min="0" step="1" value={uploadState.billSeconds} onChange={(event) => setUploadState((current) => ({ ...current, billSeconds: event.target.value }))} /></label>
+                </div>
+              </details>
+
+              {uploadState.source !== "transcript" ? (
+                <p className="upload-note full-width">
+                  Audio and MOV files are supported. Client-side sample-rate validation is
+                  temporarily disabled for local uploads. Audio URLs are queued as-is because the
+                  browser cannot inspect remote files before upload.
+                </p>
+              ) : (
+                <p className="upload-note full-width">
+                  Auto detect identifies English, Armenian, or Russian. Choose a language above to override detection.
+                </p>
+              )}
 
               {uploadValidationMessage ? (
                 <p className="upload-validation full-width">{uploadValidationMessage}</p>

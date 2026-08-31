@@ -127,10 +127,17 @@ describe("call display metadata", () => {
       "https://api.example.test/api/companies/123/calls/call-42",
       expect.objectContaining({ method: "POST" }),
     );
-    expect(result).toEqual({
+    const [, request] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(request.headers).toEqual({ Authorization: "Bearer jwt-token" });
+    expect((request.body as FormData).get("audio")).toBeInstanceOf(File);
+    expect((request.body as FormData).has("url")).toBe(false);
+    expect((request.body as FormData).has("transcript")).toBe(false);
+    expect(result).toMatchObject({
       conversationId: "call-42",
       conversationName: "call-42",
       originalAudioFileName: "customer-recording.mp3",
+      status: "Queued",
+      source: "audio",
     });
   });
 });

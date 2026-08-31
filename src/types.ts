@@ -288,6 +288,7 @@ export type CallSummary = {
   conversationName?: string;
   originalAudioFileName?: string;
   status: string;
+  source?: string | null;
   agentInfo?: PartyInfo | null;
   customerInfo?: PartyInfo | null;
   sentiment?: Sentiment;
@@ -356,6 +357,7 @@ export type CallDetail = {
   conversationName?: string;
   originalAudioFileName?: string;
   status: string;
+  source?: string | null;
   companyId?: number | null;
   agentInfo?: PartyInfo | null;
   customerInfo?: PartyInfo | null;
@@ -443,8 +445,38 @@ export type QaScoringSettingsUpdate = {
 
 export type CallUploadResult = {
   conversationId: string;
+  conversationDbId?: string | number | null;
   conversationName?: string;
   originalAudioFileName?: string;
+  status?: string;
+  source?: string | null;
+  language?: string | null;
+  agentInfo?: PartyInfo | null;
+  customerInfo?: PartyInfo | null;
+  isInbound?: boolean | null;
+  billSeconds?: number | null;
+};
+
+export type CallUploadLanguage = "auto" | LocaleCode;
+
+export type CallUploadMetadata = {
+  agentName?: string;
+  agentExternalId?: string;
+  agentPhone?: string;
+  customerName?: string;
+  customerExternalId?: string;
+  customerPhone?: string;
+  isInbound?: boolean;
+  billSeconds?: number;
+};
+
+export type CallUploadPayload = {
+  conversationId: string;
+  url?: string;
+  file?: File | null;
+  transcript?: string;
+  language?: CallUploadLanguage;
+  metadata?: CallUploadMetadata;
 };
 
 export type QaQuestionResult = {
