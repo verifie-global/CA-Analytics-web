@@ -74,8 +74,8 @@ describe("Text Connector PoC admin navigation and routing", () => {
     render(<I18nProvider><App /></I18nProvider>);
 
     expect(getRouteFromPath(window.location.pathname)).toBe("text-connector-poc");
-    expect(await screen.findByRole("heading", { name: "Text Connector PoC" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Text Connector PoC" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Text Connector Lab" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Text Connector Lab" })).toBeTruthy();
   });
 
   it("hides the navigation item and denies direct route access to non-admin users", async () => {
@@ -86,7 +86,7 @@ describe("Text Connector PoC admin navigation and routing", () => {
     render(<I18nProvider><App /></I18nProvider>);
 
     expect(await screen.findByRole("heading", { name: "Permission denied" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Text Connector PoC" })).toBeNull();
-    expect(screen.getByText("Administrator access is required to use the Text Connector PoC.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Text Connector Lab" })).toBeNull();
+    expect(screen.getByText("Administrator access is required to use the Text Connector Lab.")).toBeTruthy();
   });
 });

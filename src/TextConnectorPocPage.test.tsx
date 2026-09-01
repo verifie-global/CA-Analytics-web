@@ -41,7 +41,7 @@ const catalog: TextConnectorPocCatalogItem[] = [
     messageEvents: ["message_created", "message_updated"],
     conversationEvents: ["conversation_created", "conversation_status_changed"],
     supportsHistoryApi: false,
-    historyValidationNote: "History API validation is unavailable in this PoC.",
+    historyValidationNote: "History API validation is unavailable in this lab.",
     securityValidationNote: "Validate webhook signing in the live receiver.",
   },
 ];
@@ -317,7 +317,7 @@ describe("TextConnectorPocPage API failures", () => {
     mockApi({ catalogResponses: [json({ message: "Forbidden" }, 403)] });
     renderPage();
     expect(await screen.findByRole("heading", { name: "Permission denied" })).toBeTruthy();
-    expect(screen.getByText("Administrator access is required to use the Text Connector PoC.")).toBeTruthy();
+    expect(screen.getByText("Administrator access is required to use the Text Connector Lab.")).toBeTruthy();
   });
 
   it("handles a missing catalog endpoint and retries successfully", async () => {

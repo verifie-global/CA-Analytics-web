@@ -4051,7 +4051,7 @@ function App() {
       ? [
           {
             key: "text" as const,
-            label: "Text Connector PoC",
+            label: "Text Connector Lab",
             active: currentRoute === "text-connector-poc",
             onClick: () => navigateTo("text-connector-poc" as AppRoute),
           },
@@ -4389,7 +4389,7 @@ function App() {
           ) : (
             <section className="panel permission-denied" role="alert">
               <h1>Permission denied</h1>
-              <p>Administrator access is required to use the Text Connector PoC.</p>
+              <p>Administrator access is required to use the Text Connector Lab.</p>
               <button type="button" onClick={() => navigateTo("dashboard")}>Return to dashboard</button>
             </section>
           )

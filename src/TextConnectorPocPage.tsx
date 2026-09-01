@@ -431,8 +431,8 @@ export function TextConnectorPocPage({ settings, onUnauthorized }: Props) {
       if (!handleAuthorizationError(error)) {
         setPageError(
           errorStatus(error) === 404
-            ? "The Text Connector PoC catalog endpoint was not found. Confirm the backend PoC API is enabled, then retry."
-            : safeErrorMessage(error, "Unable to load the Text Connector PoC catalog."),
+            ? "The Text Connector Lab catalog endpoint was not found. Confirm the backend lab API is enabled, then retry."
+            : safeErrorMessage(error, "Unable to load the Text Connector Lab catalog."),
         );
       }
     } finally {
@@ -533,7 +533,7 @@ export function TextConnectorPocPage({ settings, onUnauthorized }: Props) {
     return (
       <section className="panel permission-denied" role="alert">
         <h1>Permission denied</h1>
-        <p>Administrator access is required to use the Text Connector PoC.</p>
+        <p>Administrator access is required to use the Text Connector Lab.</p>
       </section>
     );
   }
@@ -542,11 +542,11 @@ export function TextConnectorPocPage({ settings, onUnauthorized }: Props) {
     <section className="panel text-connector-page">
       <header className="text-connector-heading">
         <div>
-          <span className="text-kicker">Admin · Proof of concept</span>
-          <h1>Text Connector PoC</h1>
+          <span className="text-kicker">Admin · Connector testing</span>
+          <h1>Text Connector Lab</h1>
           <p>Replay and compare Chat2Desk, Trengo, and Chatwoot webhook payloads against the backend normalizers.</p>
         </div>
-        <span className="text-poc-badge">PoC replay tool</span>
+        <span className="text-poc-badge">Webhook replay tool</span>
       </header>
 
       <div className="text-safety-note" role="note">
@@ -639,7 +639,7 @@ export function TextConnectorPocPage({ settings, onUnauthorized }: Props) {
                 </section>
 
                 <section className="text-checklist-panel" aria-labelledby="validation-checklist-title">
-                  <div className="text-section-heading"><div><span className="text-kicker">Session only</span><h2 id="validation-checklist-title">PoC validation checklist</h2></div></div>
+                  <div className="text-section-heading"><div><span className="text-kicker">Session only</span><h2 id="validation-checklist-title">Validation checklist</h2></div></div>
                   <p>Checklist state stays in memory and is never written to browser storage.</p>
                   <div className="text-checklist">
                     {checklistItems.map((item) => {
