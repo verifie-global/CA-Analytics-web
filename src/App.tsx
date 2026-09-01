@@ -45,6 +45,7 @@ import { WorkflowAutomationsPage } from "./WorkflowAutomationsPage";
 import { UserManagementPage } from "./UserManagementPage";
 import { AccountPage } from "./AccountPage";
 import { VoiceConnectorsPage } from "./VoiceConnectorsPage";
+import { TextConnectorPocPage } from "./TextConnectorPocPage";
 import {
   LanguageSelector,
   getIntlLocale,
@@ -89,7 +90,7 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "voice-connectors" | "demo-call" | "account";
+export type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "voice-connectors" | "text-connector-poc" | "demo-call" | "account";
 type AppNavKey =
   | "dashboard"
   | "reports"
@@ -102,6 +103,7 @@ type AppNavKey =
   | "workflow"
   | "users"
   | "voice"
+  | "text"
   | "logout";
 
 type KeywordRule = {
@@ -457,7 +459,7 @@ const getDefaultFilters = (): CallFilters => {
   };
 };
 
-const getRouteFromPath = (pathName: string): AppRoute => {
+export const getRouteFromPath = (pathName: string): AppRoute => {
   if (pathName === "/democall") {
     return "demo-call";
   }
@@ -480,6 +482,10 @@ const getRouteFromPath = (pathName: string): AppRoute => {
 
   if (pathName === "/admin/voice-connectors") {
     return "voice-connectors";
+  }
+
+  if (pathName === "/admin/text-connectors/poc") {
+    return "text-connector-poc";
   }
 
   if (pathName === "/account") {
@@ -1384,6 +1390,9 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
       {name === "voice" && (
         <path d="M4 9v6M8 6v12M12 3v18M16 7v10M20 10v4" {...common} />
       )}
+      {name === "text" && (
+        <path d="M4 5h16v10H9l-5 4V5Zm4 4h8M8 12h5" {...common} />
+      )}
       {name === "logout" && (
         <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12m0 0-4-4m4 4-4 4" {...common} />
       )}
@@ -1808,6 +1817,8 @@ function App() {
               ? "/admin/users"
             : route === "voice-connectors"
               ? "/admin/voice-connectors"
+            : route === "text-connector-poc"
+              ? "/admin/text-connectors/poc"
             : route === "account"
               ? "/account"
             : route === "reports"
@@ -4039,6 +4050,12 @@ function App() {
     ...(hasAdminAccess
       ? [
           {
+            key: "text" as const,
+            label: "Text Connector PoC",
+            active: currentRoute === "text-connector-poc",
+            onClick: () => navigateTo("text-connector-poc" as AppRoute),
+          },
+          {
             key: "voice" as const,
             label: "Voice Connectors",
             active: currentRoute === "voice-connectors",
@@ -4365,6 +4382,16 @@ function App() {
             </section>
           ) : (
             <AccountPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
+          )
+        ) : currentRoute === "text-connector-poc" ? (
+          hasAdminAccess ? (
+            <TextConnectorPocPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
+          ) : (
+            <section className="panel permission-denied" role="alert">
+              <h1>Permission denied</h1>
+              <p>Administrator access is required to use the Text Connector PoC.</p>
+              <button type="button" onClick={() => navigateTo("dashboard")}>Return to dashboard</button>
+            </section>
           )
         ) : currentRoute === "voice-connectors" ? (
           hasAdminAccess ? (

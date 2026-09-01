@@ -28,6 +28,9 @@ import type {
   QaScoringMode,
   ScoreMetricSummary,
   SpeakerSegment,
+  TextConnectorNormalizeResult,
+  TextConnectorNormalizedEvent,
+  TextConnectorPocCatalogItem,
   WorkflowDelivery,
   WorkflowDestination,
   WorkflowDestinationFilters,
@@ -225,6 +228,100 @@ export async function fetchVoiceConnectorCatalog(
 ): Promise<VoiceConnectorCatalogItem[]> {
   const payload = await request<unknown>(settings, "/api/v1/admin/connectors/catalog");
   return unwrapArray(payload, "items", "providers", "catalog") as VoiceConnectorCatalogItem[];
+}
+
+const readTextArray = (value: unknown) =>
+  asArray(value)
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const nullableText = (record: Record<string, unknown>, ...keys: string[]) =>
+  readStringLike(record, ...keys) ?? null;
+
+const normalizeTextConnectorEvent = (value: unknown): TextConnectorNormalizedEvent => {
+  const record = asRecord(value);
+  return {
+    provider: readString(record, "provider") ?? "unknown",
+    eventId: readStringLike(record, "eventId", "event_id") ?? "",
+    eventType: readString(record, "eventType", "event_type") ?? "unknown",
+    providerEventType: nullableText(record, "providerEventType", "provider_event_type"),
+    externalConversationId: nullableText(
+      record,
+      "externalConversationId",
+      "external_conversation_id",
+    ),
+    externalMessageId: nullableText(record, "externalMessageId", "external_message_id"),
+    channelId: nullableText(record, "channelId", "channel_id"),
+    channel: nullableText(record, "channel"),
+    direction: nullableText(record, "direction"),
+    senderRole: nullableText(record, "senderRole", "sender_role"),
+    senderExternalId: nullableText(record, "senderExternalId", "sender_external_id"),
+    senderName: nullableText(record, "senderName", "sender_name"),
+    occurredAt: nullableText(record, "occurredAt", "occurred_at"),
+    text: nullableText(record, "text"),
+    attachments: asArray(record.attachments)
+      .map((item) => asRecord(item))
+      .filter((item) => Object.keys(item).length > 0),
+    requiresHydration:
+      readBoolean(record, "requiresHydration", "requires_hydration") ?? false,
+    warnings: readTextArray(record.warnings),
+  };
+};
+
+export async function fetchTextConnectorPocCatalog(
+  settings: AppSettings,
+): Promise<TextConnectorPocCatalogItem[]> {
+  const payload = await request<unknown>(
+    settings,
+    "/api/v1/admin/text-connectors/poc/catalog",
+  );
+
+  return unwrapArray(payload, "items", "providers", "catalog").map((value) => {
+    const record = asRecord(value);
+    return {
+      provider: readString(record, "provider") ?? "unknown",
+      displayName:
+        readString(record, "displayName", "display_name") ??
+        readString(record, "provider") ??
+        "Unknown provider",
+      documentationUrl:
+        readString(record, "documentationUrl", "documentation_url") ?? "",
+      messageEvents: readTextArray(record.messageEvents ?? record.message_events),
+      conversationEvents: readTextArray(
+        record.conversationEvents ?? record.conversation_events,
+      ),
+      supportsHistoryApi:
+        readBoolean(record, "supportsHistoryApi", "supports_history_api") ?? false,
+      historyValidationNote:
+        readString(record, "historyValidationNote", "history_validation_note") ?? "",
+      securityValidationNote:
+        readString(record, "securityValidationNote", "security_validation_note") ?? "",
+    };
+  });
+}
+
+export async function normalizeTextConnectorWebhook(
+  settings: AppSettings,
+  provider: string,
+  sourcePayload: unknown,
+): Promise<TextConnectorNormalizeResult> {
+  const payload = await request<unknown>(
+    settings,
+    `/api/v1/admin/text-connectors/poc/${encodeURIComponent(provider)}/normalize`,
+    {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify(sourcePayload),
+    },
+  );
+  const root = asRecord(payload);
+  const record = asOptionalRecord(root.data) ?? root;
+
+  return {
+    normalized: normalizeTextConnectorEvent(record.normalized),
+    sourcePayload: record.sourcePayload ?? record.source_payload ?? sourcePayload,
+  };
 }
 
 export async function fetchVoiceConnectorAccounts(

@@ -479,6 +479,44 @@ export type CallUploadPayload = {
   metadata?: CallUploadMetadata;
 };
 
+export type TextConnectorPocCatalogItem = {
+  provider: string;
+  displayName: string;
+  documentationUrl: string;
+  messageEvents: string[];
+  conversationEvents: string[];
+  supportsHistoryApi: boolean;
+  historyValidationNote: string;
+  securityValidationNote: string;
+};
+
+export type TextConnectorAttachment = Record<string, unknown>;
+
+export type TextConnectorNormalizedEvent = {
+  provider: string;
+  eventId: string;
+  eventType: string;
+  providerEventType: string | null;
+  externalConversationId: string | null;
+  externalMessageId: string | null;
+  channelId: string | null;
+  channel: string | null;
+  direction: string | null;
+  senderRole: string | null;
+  senderExternalId: string | null;
+  senderName: string | null;
+  occurredAt: string | null;
+  text: string | null;
+  attachments: TextConnectorAttachment[];
+  requiresHydration: boolean;
+  warnings: string[];
+};
+
+export type TextConnectorNormalizeResult = {
+  normalized: TextConnectorNormalizedEvent;
+  sourcePayload: unknown;
+};
+
 export type QaQuestionResult = {
   id: string;
   title: string;
