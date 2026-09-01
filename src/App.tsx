@@ -4051,7 +4051,7 @@ function App() {
       ? [
           {
             key: "text" as const,
-            label: "Text Connector Lab",
+            label: "TEXT CONNECTORS",
             active: currentRoute === "text-connector-poc",
             onClick: () => navigateTo("text-connector-poc" as AppRoute),
           },
