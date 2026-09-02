@@ -5308,6 +5308,101 @@ details.scroll-toggle > summary {
 .text-safety-note p { margin: 0; font-size: .8rem; }
 .text-connector-toast { margin: 0; }
 
+.text-account-list-section,
+.text-account-form-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #fff;
+  box-shadow: var(--shadow-card);
+}
+
+.text-account-list-section { padding: clamp(1rem, 2.5vw, 1.45rem); }
+.text-account-form-card > .connector-section-heading { padding: clamp(1rem, 2.5vw, 1.45rem); margin: 0; border-bottom: 1px solid var(--line); }
+.text-account-form-card > .inline-error { margin: 1rem clamp(1rem, 2.5vw, 1.45rem) 0; }
+.text-account-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.text-account-form-actions > span { color: var(--muted); font-size: .72rem; }
+
+.text-account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .9rem;
+}
+
+.text-account-card {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-alt);
+}
+
+.text-account-card > header {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .75rem;
+}
+
+.text-account-card h3 { margin: 0; overflow-wrap: anywhere; font-size: .95rem; }
+.text-account-card header p { margin: .2rem 0 0; color: var(--muted); font-family: var(--font-sans); font-size: .72rem; }
+.text-account-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin: 0; }
+.text-account-card dl > div { padding: .65rem; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.text-account-card dt { color: var(--muted); font-size: .62rem; letter-spacing: .05em; text-transform: uppercase; }
+.text-account-card dd { margin: .25rem 0 0; font-size: .76rem; overflow-wrap: anywhere; }
+.text-account-card .text-account-health { grid-column: 1 / -1; }
+.text-account-health dd { display: flex; align-items: center; gap: .45rem; }
+.health-dot { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #aeb5c0; }
+.health-dot.is-active { background: var(--success); box-shadow: 0 0 0 3px rgba(34, 151, 91, .12); }
+.text-account-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+.text-webhook-setup-dialog { width: min(720px, 100%); }
+.text-webhook-setup-dialog .modal-heading h2 { margin-top: .2rem; }
+.text-key-warning { margin-bottom: 1rem; padding: .8rem 1rem; border: 1px solid #e3c165; border-radius: 10px; background: #fff8df; color: #6f5209; font-size: .8rem; }
+.text-webhook-values { display: grid; gap: .8rem; margin: 0; }
+.text-webhook-values > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem .8rem; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; }
+.text-webhook-values dt { grid-column: 1 / -1; color: var(--muted); font-size: .65rem; letter-spacing: .05em; text-transform: uppercase; }
+.text-webhook-values dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.text-webhook-values code { font-size: .72rem; user-select: all; }
+.text-webhook-dialog-actions { display: flex; justify-content: flex-end; margin-top: 1rem; }
+
+.conversation-source-line { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; margin-top: .35rem; }
+.source-badge { display: inline-flex; align-items: center; width: fit-content; padding: .22rem .5rem; border: 1px solid currentColor; border-radius: 999px; font-size: .62rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.source-badge-voice { background: #eef2f8; color: #536276; }
+.source-badge-text { background: #e8eefb; color: #315a9d; }
+.source-provider-channel { color: var(--muted); font-size: .67rem; font-weight: 500; }
+.call-detail-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.call-detail-heading-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .55rem; }
+.text-finalize-error { margin: .7rem 0 0; }
+.text-chat-panel .detail-segment-card { cursor: default; }
+.text-chat-panel .detail-segment-card:hover { border-color: transparent; }
+.text-chat-panel .role-agent { margin-left: auto; background: #eef4ff; }
+.text-chat-panel .role-customer { margin-left: 0; background: #fff; }
+.text-chat-panel .role-unknown { margin-inline: auto; background: #f5f6f8; }
+
+@media (max-width: 900px) {
+  .text-account-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 780px) {
+  .text-account-form-grid { grid-template-columns: 1fr; }
+  .call-detail-heading-row { align-items: stretch; flex-direction: column; }
+  .call-detail-heading-actions { justify-content: flex-start; }
+}
+
+@media (max-width: 520px) {
+  .text-account-card > header { grid-template-columns: 44px minmax(0, 1fr); }
+  .text-account-card > header .status-badge { grid-column: 2; }
+  .text-account-card dl { grid-template-columns: 1fr; }
+  .text-account-card .text-account-health { grid-column: auto; }
+  .text-account-actions { display: grid; }
+  .text-webhook-values > div { grid-template-columns: 1fr; }
+  .text-webhook-values dt { grid-column: auto; }
+}
+
 .text-catalog-skeleton,
 .text-provider-grid {
   display: grid;

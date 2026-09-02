@@ -23,6 +23,7 @@ import {
   fetchCompanyUsers,
   fetchCurrentUser,
   fetchLocalizationOptions,
+  finalizeTextConnectorConversation,
   fetchQaProfile,
   fetchQaScoringSettings,
   hydrateAuthIdentity,
@@ -484,7 +485,7 @@ export const getRouteFromPath = (pathName: string): AppRoute => {
     return "voice-connectors";
   }
 
-  if (pathName === "/admin/text-connectors/poc") {
+  if (pathName === "/admin/text-connectors" || pathName === "/admin/text-connectors/poc") {
     return "text-connector-poc";
   }
 
@@ -810,10 +811,41 @@ const getFriendlinessLabel = (value?: number | null) => {
 
 const isInProgressStatus = (value?: string | null) => {
   const normalized = value?.toLowerCase();
-  return normalized === "queued" || normalized === "processing" || normalized === "inprogress";
+  return normalized === "collecting" || normalized === "queued" || normalized === "processing" || normalized === "inprogress";
 };
 
 const isCompletedStatus = (value?: string | null) => value?.toLowerCase() === "completed";
+
+const isTextConversation = (conversation?: Pick<CallSummary, "modality" | "source"> | null) =>
+  conversation?.modality?.trim().toLowerCase() === "text" ||
+  (!conversation?.modality && conversation?.source?.trim().toLowerCase() === "transcript");
+
+const getConversationSourceLabel = (conversation?: Pick<CallSummary, "modality" | "source"> | null) =>
+  isTextConversation(conversation) ? "Text" : "Voice";
+
+const getProviderChannelLabel = (
+  conversation?: Pick<CallSummary, "sourceProvider" | "sourceChannel"> | null,
+) => [conversation?.sourceProvider?.trim(), conversation?.sourceChannel?.trim()].filter(Boolean).join(" · ");
+
+const getTextConversationSegments = (detail?: CallDetail | null): SpeakerSegment[] => {
+  if (!detail || !isTextConversation(detail)) return detail?.segments ?? [];
+  if (detail.segments.length > 0) return detail.segments;
+
+  return (detail.transcript ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line): SpeakerSegment => {
+      const match = line.match(/^(CUSTOMER|AGENT)\s*:\s*(.*)$/i);
+      const role = match?.[1]?.toUpperCase() as "CUSTOMER" | "AGENT" | undefined;
+      return {
+        speaker: role ?? "Message",
+        role: role ?? "UNKNOWN",
+        text: match ? match[2].trim() : line,
+      };
+    })
+    .filter((segment) => segment.text);
+};
 
 const getPartySummary = (party?: { name?: string | null; externalId?: string | null; phone?: string | null } | null) => {
   if (!party) {
@@ -1777,6 +1809,8 @@ function App() {
   const [qaScoringSettingsSuccess, setQaScoringSettingsSuccess] = useState("");
   const [qaRecalculating, setQaRecalculating] = useState(false);
   const [qaRecalculateError, setQaRecalculateError] = useState("");
+  const [textFinalizing, setTextFinalizing] = useState(false);
+  const [textFinalizeError, setTextFinalizeError] = useState("");
   const [topbarAskQuestion, setTopbarAskQuestion] = useState("");
   const [topbarAskLoading, setTopbarAskLoading] = useState(false);
   const [topbarAskError, setTopbarAskError] = useState("");
@@ -1818,7 +1852,7 @@ function App() {
             : route === "voice-connectors"
               ? "/admin/voice-connectors"
             : route === "text-connector-poc"
-              ? "/admin/text-connectors/poc"
+              ? "/admin/text-connectors"
             : route === "account"
               ? "/account"
             : route === "reports"
@@ -2290,7 +2324,7 @@ function App() {
       !selectedId ||
       !detail ||
       detail.status !== "Completed" ||
-      detail.source?.toLowerCase() === "transcript" ||
+      isTextConversation(detail) ||
       (submissionProgress.conversationId === selectedId &&
         submissionProgress.source === "transcript") ||
       audioUrl ||
@@ -2499,6 +2533,7 @@ function App() {
     if (!options?.silent) {
       setDetailLoading(true);
       setErrorMessage("");
+      setTextFinalizeError("");
     }
 
     if (!options?.silent && audioUrl) {
@@ -2534,6 +2569,42 @@ function App() {
       if (!options?.silent) {
         setDetailLoading(false);
       }
+    }
+  };
+
+  const handleFinalizeTextConversation = async () => {
+    if (
+      !detail?.conversationId ||
+      !detail.textConnectorAccountId ||
+      detail.status.trim().toLowerCase() !== "collecting" ||
+      textFinalizing
+    ) {
+      return;
+    }
+
+    setTextFinalizing(true);
+    setTextFinalizeError("");
+    try {
+      await finalizeTextConnectorConversation(
+        settings,
+        detail.textConnectorAccountId,
+        detail.conversationId,
+      );
+      setStatusMessage(`Conversation ${detail.conversationId} was finalized and queued for analysis.`);
+      await refreshCalls(settings, { silent: true });
+      await handleLoadDetail(detail.conversationId, { silent: true });
+    } catch (error) {
+      if (isUnauthorizedError(error)) {
+        handleUnauthorizedSession();
+        return;
+      }
+      setTextFinalizeError(
+        error instanceof Error
+          ? error.message
+          : "Unable to finalize this text conversation.",
+      );
+    } finally {
+      setTextFinalizing(false);
     }
   };
 
@@ -3556,6 +3627,9 @@ function App() {
   const transcript = detail?.transcript?.trim();
   const redactedTranscript = detail?.redactedTranscript?.trim();
   const summary = detail?.summary?.trim();
+  const detailIsText = isTextConversation(detail);
+  const detailConversationSegments = getTextConversationSegments(detail);
+  const detailProviderChannel = getProviderChannelLabel(detail);
   const keywordMatches: KeywordMatch[] = useMemo(() => {
     if (!transcript) {
       return [];
@@ -4389,7 +4463,7 @@ function App() {
           ) : (
             <section className="panel permission-denied" role="alert">
               <h1>Permission denied</h1>
-              <p>Administrator access is required to use the Text Connector Lab.</p>
+              <p>Administrator access is required to manage text connectors.</p>
               <button type="button" onClick={() => navigateTo("dashboard")}>Return to dashboard</button>
             </section>
           )
@@ -4511,6 +4585,7 @@ function App() {
               onChange={(event) => updateCallFilters({ status: event.target.value })}
             >
               <option value="">All statuses</option>
+              <option value="Collecting">Collecting</option>
               <option value="Queued">Queued</option>
               <option value="Processing">Processing</option>
               <option value="Completed">Completed</option>
@@ -4627,6 +4702,14 @@ function App() {
                           >
                             <span className="call-row-primary">
                               <span className="call-row-id" data-i18n-skip>{displayName}</span>
+                              <span className="conversation-source-line">
+                                <span className={`source-badge ${isTextConversation(call) ? "source-badge-text" : "source-badge-voice"}`}>
+                                  {getConversationSourceLabel(call)}
+                                </span>
+                                {isTextConversation(call) && getProviderChannelLabel(call) ? (
+                                  <span className="source-provider-channel" data-i18n-skip>{getProviderChannelLabel(call)}</span>
+                                ) : null}
+                              </span>
                             </span>
                             <span className="call-row-agent" data-i18n-skip>
                               {getPartySummary(call.agentInfo).primary}
@@ -4727,8 +4810,29 @@ function App() {
               ) : detail ? (
                 <>
                   <header className="call-detail-header">
-                    <p className="eyebrow">Call detail</p>
-                    <h3>{getConversationDisplayName(detail)}</h3>
+                    <div className="call-detail-heading-row">
+                      <div>
+                        <p className="eyebrow">{detailIsText ? "Conversation detail" : "Call detail"}</p>
+                        <h3>{getConversationDisplayName(detail)}</h3>
+                        <span className="conversation-source-line">
+                          <span className={`source-badge ${detailIsText ? "source-badge-text" : "source-badge-voice"}`}>
+                            {getConversationSourceLabel(detail)}
+                          </span>
+                          {detailProviderChannel ? <span className="source-provider-channel" data-i18n-skip>{detailProviderChannel}</span> : null}
+                        </span>
+                      </div>
+                      <div className="call-detail-heading-actions">
+                        <span className={`tag ${isInProgressStatus(detail.status) ? "tag-progress" : ""}`}>
+                          {enumLabel("status", detail.status)}
+                        </span>
+                        {hasAdminAccess && detailIsText && detail.status.trim().toLowerCase() === "collecting" && detail.textConnectorAccountId ? (
+                          <button type="button" onClick={() => void handleFinalizeTextConversation()} disabled={textFinalizing}>
+                            {textFinalizing ? "Finalizing…" : "Finalize and analyze"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {textFinalizeError ? <p className="error-text text-finalize-error" role="alert">{textFinalizeError}</p> : null}
                   </header>
 
                   <section className="conversation-summary-card" aria-label="Conversation summarization">
@@ -4802,7 +4906,7 @@ function App() {
                     </div>
                   </section>
 
-                  {detail.source?.toLowerCase() !== "transcript" &&
+                  {!detailIsText &&
                   !(
                     submissionProgress.conversationId === detail.conversationId &&
                     submissionProgress.source === "transcript"
@@ -4947,28 +5051,30 @@ function App() {
                   ) : null}
 
                   <div className="detail-panels figma-detail-panels">
-                    <section className="detail-section emotion-timeline-section">
-                      <h4>Emotional Timeline</h4>
-                      <div className="scroll-panel emotion-timeline-panel">
-                        <EmotionalTimeline
-                          segments={detail.segments}
-                          durationSeconds={detail.durationSeconds}
-                          playbackTimeSeconds={playbackTimeSeconds}
-                          onSeek={handleSeekToSegment}
-                        />
-                      </div>
-                    </section>
+                    {!detailIsText ? (
+                      <section className="detail-section emotion-timeline-section">
+                        <h4>Emotional Timeline</h4>
+                        <div className="scroll-panel emotion-timeline-panel">
+                          <EmotionalTimeline
+                            segments={detail.segments}
+                            durationSeconds={detail.durationSeconds}
+                            playbackTimeSeconds={playbackTimeSeconds}
+                            onSeek={handleSeekToSegment}
+                          />
+                        </div>
+                      </section>
+                    ) : null}
 
                     <div className="detail-lower-grid">
                       <section className="detail-section diarization-section">
-                        <h4>Diarization</h4>
-                        <div ref={diarizationContainerRef} className="scroll-panel chat-panel figma-chat-panel">
-                          {detail.segments.length === 0 ? (
-                            <p>No speaker segments available.</p>
+                        <h4>{detailIsText ? "Conversation" : "Diarization"}</h4>
+                        <div ref={diarizationContainerRef} className={`scroll-panel chat-panel figma-chat-panel ${detailIsText ? "text-chat-panel" : ""}`}>
+                          {detailConversationSegments.length === 0 ? (
+                            <p>{detailIsText ? "No messages available yet." : "No speaker segments available."}</p>
                           ) : (
-                            detail.segments.map((segment, index) => {
+                            detailConversationSegments.map((segment, index) => {
                               const confidence =
-                                typeof segment.emotion?.confidence === "number"
+                                !detailIsText && typeof segment.emotion?.confidence === "number"
                                   ? formatPercentage(segment.emotion.confidence)
                                   : "";
                               const emotionClass = hasDisplayEmotion(segment.emotion)
@@ -4984,10 +5090,10 @@ function App() {
                               return (
                                 <article
                                   data-segment-index={index}
-                                  aria-current={activeSegmentIndex === index ? "true" : undefined}
+                                  aria-current={!detailIsText && activeSegmentIndex === index ? "true" : undefined}
                                   key={`${segment.speaker}-${index}`}
-                                  className={`segment-card detail-segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()} ${activeSegmentIndex === index ? "segment-active" : ""}`}
-                                  onClick={() => handleSeekToSegment(segment.startMs)}
+                                  className={`segment-card detail-segment-card role-${(segment.role ?? "UNKNOWN").toLowerCase()} ${!detailIsText && activeSegmentIndex === index ? "segment-active" : ""}`}
+                                  onClick={detailIsText ? undefined : () => handleSeekToSegment(segment.startMs)}
                                 >
                                   <div className="detail-segment-head">
                                     <strong>{roleLabel}</strong>
@@ -4998,9 +5104,11 @@ function App() {
                                     ) : null}
                                   </div>
                                   <p data-i18n-skip>{segment.text}</p>
-                                  <span className="detail-segment-time">
-                                    {formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}
-                                  </span>
+                                  {!detailIsText ? (
+                                    <span className="detail-segment-time">
+                                      {formatTimestamp(segment.startMs)}-{formatTimestamp(segment.endMs)}
+                                    </span>
+                                  ) : null}
                                 </article>
                               );
                             })

@@ -289,6 +289,14 @@ export type CallSummary = {
   originalAudioFileName?: string;
   status: string;
   source?: string | null;
+  modality?: "voice" | "text" | string | null;
+  textConnectorAccountId?: string | null;
+  sourceProvider?: string | null;
+  sourceChannel?: string | null;
+  externalSourceConversationId?: string | null;
+  textLastMessageAt?: string | null;
+  textFinalizedAt?: string | null;
+  textFinalizationReason?: string | null;
   agentInfo?: PartyInfo | null;
   customerInfo?: PartyInfo | null;
   sentiment?: Sentiment;
@@ -358,6 +366,14 @@ export type CallDetail = {
   originalAudioFileName?: string;
   status: string;
   source?: string | null;
+  modality?: "voice" | "text" | string | null;
+  textConnectorAccountId?: string | null;
+  sourceProvider?: string | null;
+  sourceChannel?: string | null;
+  externalSourceConversationId?: string | null;
+  textLastMessageAt?: string | null;
+  textFinalizedAt?: string | null;
+  textFinalizationReason?: string | null;
   companyId?: number | null;
   agentInfo?: PartyInfo | null;
   customerInfo?: PartyInfo | null;
@@ -488,6 +504,39 @@ export type TextConnectorPocCatalogItem = {
   supportsHistoryApi: boolean;
   historyValidationNote: string;
   securityValidationNote: string;
+};
+
+export type TextConnectorAccount = {
+  accountId: string;
+  provider: string;
+  displayName: string;
+  idleTimeoutMinutes: number;
+  enabled: boolean;
+  version: number;
+  lastReceivedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  webhookUrl?: string | null;
+};
+
+export type CreateTextConnectorAccountInput = {
+  provider: string;
+  displayName: string;
+  idleTimeoutMinutes: number;
+  enabled: boolean;
+};
+
+export type UpdateTextConnectorAccountInput = {
+  displayName: string;
+  idleTimeoutMinutes: number;
+  enabled: boolean;
+  expectedVersion: number;
+};
+
+export type TextConnectorWebhookSetup = {
+  account: TextConnectorAccount;
+  webhookUrl: string;
+  webhookKey: string;
 };
 
 export type TextConnectorAttachment = Record<string, unknown>;

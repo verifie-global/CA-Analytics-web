@@ -51,6 +51,12 @@ describe("call display metadata", () => {
                 conversationName: "Customer renewal call",
                 originalAudioFileName: "renewal.wav",
                 status: "Completed",
+                modality: "text",
+                textConnectorAccountId: "connector-1",
+                sourceProvider: "chat2desk",
+                sourceChannel: "Telegram",
+                externalSourceConversationId: "external-99",
+                textLastMessageAt: "2026-09-01T10:00:00Z",
               },
             ],
             page: 1,
@@ -68,6 +74,11 @@ describe("call display metadata", () => {
       conversationId: "call-123",
       conversationName: "Customer renewal call",
       originalAudioFileName: "renewal.wav",
+      modality: "text",
+      textConnectorAccountId: "connector-1",
+      sourceProvider: "chat2desk",
+      sourceChannel: "Telegram",
+      externalSourceConversationId: "external-99",
     });
   });
 
@@ -79,6 +90,9 @@ describe("call display metadata", () => {
           conversationName: "Billing follow-up",
           originalAudioFileName: "billing-follow-up.mp3",
           status: "Completed",
+          modality: "text",
+          textFinalizedAt: "2026-09-01T10:05:00Z",
+          textFinalizationReason: "manual",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -99,6 +113,9 @@ describe("call display metadata", () => {
       conversationId: "call-456",
       conversationName: "Billing follow-up",
       originalAudioFileName: "billing-follow-up.mp3",
+      modality: "text",
+      textFinalizedAt: "2026-09-01T10:05:00Z",
+      textFinalizationReason: "manual",
     });
   });
 

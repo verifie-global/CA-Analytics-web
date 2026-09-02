@@ -35,6 +35,9 @@ const mockAppApi = (denyAdminProbe = false) => {
     if (url.endsWith("/api/v1/admin/text-connectors/poc/catalog")) {
       return json(connectorCatalog);
     }
+    if (url.endsWith("/api/v1/admin/text-connectors/accounts")) {
+      return json({ items: [] });
+    }
     if (url.endsWith("/api/companies/42/users")) {
       return denyAdminProbe ? json({ message: "Forbidden" }, 403) : json({ items: [] });
     }
@@ -65,28 +68,28 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Text Connector PoC admin navigation and routing", () => {
+describe("Text connector admin navigation and routing", () => {
   it("maps the direct admin URL and shows the navigation item to administrators", async () => {
     saveSession("Admin");
     mockAppApi();
-    window.history.replaceState({}, "", "/admin/text-connectors/poc");
+    window.history.replaceState({}, "", "/admin/text-connectors");
 
     render(<I18nProvider><App /></I18nProvider>);
 
     expect(getRouteFromPath(window.location.pathname)).toBe("text-connector-poc");
-    expect(await screen.findByRole("heading", { name: "Text Connector Lab" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Text Connectors" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "TEXT CONNECTORS" })).toBeTruthy();
   });
 
   it("hides the navigation item and denies direct route access to non-admin users", async () => {
     saveSession("User");
     mockAppApi(true);
-    window.history.replaceState({}, "", "/admin/text-connectors/poc");
+    window.history.replaceState({}, "", "/admin/text-connectors");
 
     render(<I18nProvider><App /></I18nProvider>);
 
     expect(await screen.findByRole("heading", { name: "Permission denied" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "TEXT CONNECTORS" })).toBeNull();
-    expect(screen.getByText("Administrator access is required to use the Text Connector Lab.")).toBeTruthy();
+    expect(screen.getByText("Administrator access is required to manage text connectors.")).toBeTruthy();
   });
 });

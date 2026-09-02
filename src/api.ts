@@ -31,6 +31,10 @@ import type {
   TextConnectorNormalizeResult,
   TextConnectorNormalizedEvent,
   TextConnectorPocCatalogItem,
+  TextConnectorAccount,
+  CreateTextConnectorAccountInput,
+  UpdateTextConnectorAccountInput,
+  TextConnectorWebhookSetup,
   WorkflowDelivery,
   WorkflowDestination,
   WorkflowDestinationFilters,
@@ -322,6 +326,109 @@ export async function normalizeTextConnectorWebhook(
     normalized: normalizeTextConnectorEvent(record.normalized),
     sourcePayload: record.sourcePayload ?? record.source_payload ?? sourcePayload,
   };
+}
+
+const normalizeTextConnectorAccount = (value: unknown): TextConnectorAccount => {
+  const record = asRecord(value);
+  const idleTimeoutMinutes =
+    readNumber(record, "idleTimeoutMinutes", "idle_timeout_minutes", "idleTimeout") ?? 0;
+
+  return {
+    accountId: readStringLike(record, "accountId", "account_id", "id") ?? "",
+    provider: readString(record, "provider") ?? "unknown",
+    displayName:
+      readString(record, "displayName", "display_name", "name") ?? "Unnamed account",
+    idleTimeoutMinutes,
+    enabled: readBoolean(record, "enabled", "isEnabled", "is_enabled") ?? false,
+    version:
+      readNumber(record, "version", "configurationVersion", "configuration_version") ?? 0,
+    lastReceivedAt: nullableText(record, "lastReceivedAt", "last_received_at"),
+    createdAt: nullableText(record, "createdAt", "created_at"),
+    updatedAt: nullableText(record, "updatedAt", "updated_at"),
+    webhookUrl: nullableText(record, "webhookUrl", "webhook_url"),
+  };
+};
+
+const normalizeTextConnectorWebhookSetup = (payload: unknown): TextConnectorWebhookSetup => {
+  const root = asRecord(payload);
+  const data = asOptionalRecord(root.data) ?? root;
+  const setup = asOptionalRecord(data.webhookSetup ?? data.webhook_setup) ?? data;
+  const accountRecord =
+    asOptionalRecord(data.account ?? data.connectorAccount ?? data.connector_account) ?? data;
+  const account = normalizeTextConnectorAccount(accountRecord);
+
+  return {
+    account,
+    webhookUrl:
+      readString(setup, "webhookUrl", "webhook_url", "url") ??
+      account.webhookUrl ??
+      "",
+    webhookKey:
+      readString(setup, "webhookKey", "webhook_key", "key", "secret") ?? "",
+  };
+};
+
+export async function fetchTextConnectorAccounts(
+  settings: AppSettings,
+): Promise<TextConnectorAccount[]> {
+  const payload = await request<unknown>(
+    settings,
+    "/api/v1/admin/text-connectors/accounts",
+  );
+  return unwrapArray(payload, "items", "accounts", "connectors").map(
+    normalizeTextConnectorAccount,
+  );
+}
+
+export async function createTextConnectorAccount(
+  settings: AppSettings,
+  input: CreateTextConnectorAccountInput,
+): Promise<TextConnectorWebhookSetup> {
+  const payload = await request<unknown>(
+    settings,
+    "/api/v1/admin/text-connectors/accounts",
+    { method: "POST", headers: jsonHeaders(), body: JSON.stringify(input) },
+  );
+  return normalizeTextConnectorWebhookSetup(payload);
+}
+
+export async function updateTextConnectorAccount(
+  settings: AppSettings,
+  accountId: string,
+  input: UpdateTextConnectorAccountInput,
+): Promise<TextConnectorAccount> {
+  const payload = await request<unknown>(
+    settings,
+    `/api/v1/admin/text-connectors/accounts/${encodeURIComponent(accountId)}`,
+    { method: "PUT", headers: jsonHeaders(), body: JSON.stringify(input) },
+  );
+  const root = asRecord(payload);
+  const data = asOptionalRecord(root.data) ?? root;
+  return normalizeTextConnectorAccount(data.account ?? data);
+}
+
+export async function rotateTextConnectorWebhookKey(
+  settings: AppSettings,
+  accountId: string,
+): Promise<TextConnectorWebhookSetup> {
+  const payload = await request<unknown>(
+    settings,
+    `/api/v1/admin/text-connectors/accounts/${encodeURIComponent(accountId)}/rotate-webhook-key`,
+    { method: "POST" },
+  );
+  return normalizeTextConnectorWebhookSetup(payload);
+}
+
+export async function finalizeTextConnectorConversation(
+  settings: AppSettings,
+  accountId: string,
+  conversationId: string,
+): Promise<void> {
+  await request<unknown>(
+    settings,
+    `/api/v1/admin/text-connectors/accounts/${encodeURIComponent(accountId)}/conversations/${encodeURIComponent(conversationId)}/finalize`,
+    { method: "POST" },
+  );
 }
 
 export async function fetchVoiceConnectorAccounts(
@@ -703,6 +810,26 @@ const normalizeCallSummary = (item: unknown): CallSummary => {
     originalAudioFileName: readString(record, "originalAudioFileName"),
     status: readString(record, "status") ?? "Unknown",
     source: readString(record, "source"),
+    modality: readString(record, "modality"),
+    textConnectorAccountId: nullableText(
+      record,
+      "textConnectorAccountId",
+      "text_connector_account_id",
+    ),
+    sourceProvider: nullableText(record, "sourceProvider", "source_provider"),
+    sourceChannel: nullableText(record, "sourceChannel", "source_channel"),
+    externalSourceConversationId: nullableText(
+      record,
+      "externalSourceConversationId",
+      "external_source_conversation_id",
+    ),
+    textLastMessageAt: nullableText(record, "textLastMessageAt", "text_last_message_at"),
+    textFinalizedAt: nullableText(record, "textFinalizedAt", "text_finalized_at"),
+    textFinalizationReason: nullableText(
+      record,
+      "textFinalizationReason",
+      "text_finalization_reason",
+    ),
     agentInfo: normalizePartyInfo(record.agentInfo ?? record.agent, {
       name: readString(record, "agentName"),
       externalId: readString(record, "agentExternalId"),
@@ -757,6 +884,26 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
     originalAudioFileName: readString(record, "originalAudioFileName"),
     status: readString(record, "status") ?? "Unknown",
     source: readString(record, "source"),
+    modality: readString(record, "modality"),
+    textConnectorAccountId: nullableText(
+      record,
+      "textConnectorAccountId",
+      "text_connector_account_id",
+    ),
+    sourceProvider: nullableText(record, "sourceProvider", "source_provider"),
+    sourceChannel: nullableText(record, "sourceChannel", "source_channel"),
+    externalSourceConversationId: nullableText(
+      record,
+      "externalSourceConversationId",
+      "external_source_conversation_id",
+    ),
+    textLastMessageAt: nullableText(record, "textLastMessageAt", "text_last_message_at"),
+    textFinalizedAt: nullableText(record, "textFinalizedAt", "text_finalized_at"),
+    textFinalizationReason: nullableText(
+      record,
+      "textFinalizationReason",
+      "text_finalization_reason",
+    ),
     companyId: readNumber(record, "companyId") ?? null,
     agentInfo: normalizePartyInfo(record.agentInfo),
     customerInfo: normalizePartyInfo(record.customerInfo),
