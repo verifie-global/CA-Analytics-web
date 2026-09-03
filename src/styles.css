@@ -5099,6 +5099,12 @@ details.scroll-toggle > summary {
   max-width: 820px;
 }
 
+.qa-settings-page-stack {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
 .stt-settings-form {
   display: grid;
   gap: 1rem;

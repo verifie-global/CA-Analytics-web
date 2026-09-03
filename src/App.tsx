@@ -97,7 +97,7 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-export type AppRoute = "dashboard" | "reports" | "qa-profile" | "stt-settings" | "workflow-automations" | "user-management" | "voice-connectors" | "text-connector-poc" | "demo-call" | "account";
+export type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "voice-connectors" | "text-connector-poc" | "demo-call" | "account";
 type AppNavKey =
   | "dashboard"
   | "reports"
@@ -107,7 +107,6 @@ type AppNavKey =
   | "grid"
   | "demo"
   | "qa"
-  | "stt"
   | "workflow"
   | "users"
   | "voice"
@@ -477,7 +476,7 @@ export const getRouteFromPath = (pathName: string): AppRoute => {
   }
 
   if (pathName === "/admin/stt-settings") {
-    return "stt-settings";
+    return "qa-profile";
   }
 
   if (pathName === "/settings/workflow-automations") {
@@ -1421,12 +1420,6 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
           {...common}
         />
       )}
-      {name === "stt" && (
-        <path
-          d="M4 9v6M8 6v12M12 3v18M16 7v10M20 10v4M5 21h14"
-          {...common}
-        />
-      )}
       {name === "workflow" && (
         <path
           d="M5 7h5m4 0h5M5 17h5m4 0h5M10 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM10 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM12 9v6"
@@ -1868,8 +1861,6 @@ function App() {
     const nextPath =
       route === "qa-profile"
         ? "/settings/qa-profile"
-        : route === "stt-settings"
-          ? "/admin/stt-settings"
         : route === "workflow-automations"
           ? "/settings/workflow-automations"
           : route === "demo-call"
@@ -4241,12 +4232,6 @@ function App() {
     ...(hasAdminAccess
       ? [
           {
-            key: "stt" as const,
-            label: "STT Settings",
-            active: currentRoute === "stt-settings",
-            onClick: () => navigateTo("stt-settings" as AppRoute),
-          },
-          {
             key: "text" as const,
             label: "TEXT CONNECTORS",
             active: currentRoute === "text-connector-poc",
@@ -4580,30 +4565,6 @@ function App() {
           ) : (
             <AccountPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
           )
-        ) : currentRoute === "stt-settings" ? (
-          hasAdminAccess ? (
-            <SttSettingsPage
-              companyId={settings.companyId}
-              isAdministrator={hasAdminAccess}
-              value={companySttSettings}
-              loading={companySttSettingsLoading}
-              saving={companySttSettingsSaving}
-              errorMessage={companySttSettingsError}
-              successMessage={companySttSettingsSuccess}
-              onSave={handleSaveCompanySttSettings}
-            />
-          ) : (
-            <SttSettingsPage
-              companyId={settings.companyId}
-              isAdministrator={false}
-              value={null}
-              loading={false}
-              saving={false}
-              errorMessage=""
-              successMessage=""
-              onSave={handleSaveCompanySttSettings}
-            />
-          )
         ) : currentRoute === "text-connector-poc" ? (
           hasAdminAccess ? (
             <TextConnectorPocPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
@@ -4638,20 +4599,34 @@ function App() {
             </section>
           )
         ) : currentRoute === "qa-profile" ? (
-          <QaProfilePage
-            profile={qaProfile}
-            qaScoringSettings={qaScoringSettings}
-            loading={qaProfileLoading}
-            saving={qaProfileSaving}
-            qaScoringSettingsLoading={qaScoringSettingsLoading}
-            qaScoringSettingsSaving={qaScoringSettingsSaving}
-            errorMessage={qaProfileError}
-            successMessage={qaProfileSuccess}
-            qaScoringSettingsErrorMessage={qaScoringSettingsError}
-            qaScoringSettingsSuccessMessage={qaScoringSettingsSuccess}
-            onSave={handleSaveQaProfile}
-            onSaveQaScoringSettings={handleSaveQaScoringSettings}
-          />
+          <div className="qa-settings-page-stack">
+            <QaProfilePage
+              profile={qaProfile}
+              qaScoringSettings={qaScoringSettings}
+              loading={qaProfileLoading}
+              saving={qaProfileSaving}
+              qaScoringSettingsLoading={qaScoringSettingsLoading}
+              qaScoringSettingsSaving={qaScoringSettingsSaving}
+              errorMessage={qaProfileError}
+              successMessage={qaProfileSuccess}
+              qaScoringSettingsErrorMessage={qaScoringSettingsError}
+              qaScoringSettingsSuccessMessage={qaScoringSettingsSuccess}
+              onSave={handleSaveQaProfile}
+              onSaveQaScoringSettings={handleSaveQaScoringSettings}
+            />
+            {hasAdminAccess ? (
+              <SttSettingsPage
+                companyId={settings.companyId}
+                isAdministrator
+                value={companySttSettings}
+                loading={companySttSettingsLoading}
+                saving={companySttSettingsSaving}
+                errorMessage={companySttSettingsError}
+                successMessage={companySttSettingsSuccess}
+                onSave={handleSaveCompanySttSettings}
+              />
+            ) : null}
+          </div>
         ) : currentRoute === "workflow-automations" ? (
           <WorkflowAutomationsPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
         ) : currentRoute === "reports" ? (
