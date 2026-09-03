@@ -79,6 +79,29 @@ describe("STT settings page", () => {
     }));
   });
 
+  it("toggles audio enhancement when the visible switch is clicked", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <SttSettingsPage
+        companyId="7"
+        isAdministrator
+        value={{ ...settings, enableAudioEnhancement: true }}
+        loading={false}
+        saving={false}
+        errorMessage=""
+        successMessage=""
+        onSave={vi.fn(async () => undefined)}
+      />,
+    );
+    const toggle = screen.getByRole("switch", { name: "Automatic audio enhancement" }) as HTMLInputElement;
+    const visibleTrack = container.querySelector(".switch-control > span[aria-hidden='true']");
+
+    expect(toggle.checked).toBe(true);
+    expect(visibleTrack).not.toBeNull();
+    await user.click(visibleTrack!);
+    expect(toggle.checked).toBe(false);
+  });
+
   it("does not expose settings to non-administrators", () => {
     renderPage({ isAdministrator: false });
     expect(screen.getByRole("alert").textContent).toContain("Administrator access is required");

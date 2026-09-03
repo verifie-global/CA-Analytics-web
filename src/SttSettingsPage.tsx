@@ -125,11 +125,12 @@ export function SttSettingsPage({
                 original audio is always used.
               </small>
             </div>
-            <span className="switch-control">
+            <label className="switch-control">
               <input
                 id="stt-audio-enhancement"
                 type="checkbox"
                 role="switch"
+                aria-label="Automatic audio enhancement"
                 checked={enableAudioEnhancement}
                 disabled={loading || saving}
                 onChange={(event) => {
@@ -141,7 +142,7 @@ export function SttSettingsPage({
               <span className="sr-only">
                 {enableAudioEnhancement ? "Enabled" : "Disabled"}
               </span>
-            </span>
+            </label>
           </div>
 
           {loading ? <p className="stt-settings-status">Refreshing settings…</p> : null}
