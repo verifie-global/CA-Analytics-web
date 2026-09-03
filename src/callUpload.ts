@@ -1,4 +1,4 @@
-import type { CallUploadLanguage } from "./types";
+import type { CallEnhancementMode, CallUploadLanguage } from "./types";
 
 export const MAX_TRANSCRIPT_LENGTH = 250_000;
 
@@ -11,6 +11,7 @@ export type CallUploadDraft = {
   files: File[];
   transcript: string;
   language: CallUploadLanguage;
+  enhancement: CallEnhancementMode;
   agentName: string;
   agentExternalId: string;
   agentPhone: string;
@@ -21,13 +22,17 @@ export type CallUploadDraft = {
   billSeconds: string;
 };
 
-export const createCallUploadDraft = (conversationId: string): CallUploadDraft => ({
+export const createCallUploadDraft = (
+  conversationId: string,
+  defaults: { language?: string; enhancement?: CallEnhancementMode } = {},
+): CallUploadDraft => ({
   conversationId,
   source: "audio-file",
   url: "",
   files: [],
   transcript: "",
-  language: "auto",
+  language: defaults.language?.trim() ?? "",
+  enhancement: defaults.enhancement ?? "",
   agentName: "",
   agentExternalId: "",
   agentPhone: "",

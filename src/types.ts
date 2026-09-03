@@ -155,6 +155,56 @@ export type AppSettings = {
   preferredLocale?: LocaleCode | null;
 };
 
+export type CompanySttSettings = {
+  companyId: number | string;
+  defaultLanguage: string;
+  enableAudioEnhancement: boolean;
+};
+
+export type CompanySttSettingsUpdate = Pick<
+  CompanySttSettings,
+  "defaultLanguage" | "enableAudioEnhancement"
+>;
+
+export type SttRoutingMetadata = {
+  requestedLanguage?: string | null;
+  selectedEngine?: string | null;
+  fallbackUsed?: boolean | null;
+  fallbackReason?: string[] | null;
+};
+
+export type DnsmosMetrics = {
+  sig?: number | null;
+  bak?: number | null;
+  ovrl?: number | null;
+};
+
+export type SttAudioSampleMetadata = {
+  dnsmos?: DnsmosMetrics | null;
+};
+
+export type SttSidonMetadata = {
+  enabled?: boolean | null;
+  attempted?: boolean | null;
+  used?: boolean | null;
+  device?: string | null;
+  processingTimeSec?: number | null;
+};
+
+export type SttAudioQualityMetadata = {
+  requestedMode?: string | null;
+  selectedAudio?: string | null;
+  decision?: string | null;
+  sidon?: SttSidonMetadata | null;
+  raw?: SttAudioSampleMetadata | null;
+  enhanced?: SttAudioSampleMetadata | null;
+};
+
+export type SttMetadata = {
+  routing?: SttRoutingMetadata | null;
+  audioQuality?: SttAudioQualityMetadata | null;
+};
+
 export type VoiceConnectorFieldType =
   | "text"
   | "password"
@@ -398,6 +448,7 @@ export type CallDetail = {
   videoAnalysis?: Record<string, unknown> | null;
   roleMapping?: Record<string, unknown> | null;
   agentTipsHistory?: unknown[] | null;
+  stt?: SttMetadata | null;
   raw: Record<string, unknown>;
 };
 
@@ -473,7 +524,11 @@ export type CallUploadResult = {
   billSeconds?: number | null;
 };
 
-export type CallUploadLanguage = "auto" | LocaleCode;
+// The UI offers the common languages, while the API remains forward-compatible
+// with other BCP-47/language codes supported by the backend.
+export type CallUploadLanguage = string;
+
+export type CallEnhancementMode = "off" | "auto" | "sidon" | "force-sidon" | string;
 
 export type CallUploadMetadata = {
   agentName?: string;
@@ -492,7 +547,22 @@ export type CallUploadPayload = {
   file?: File | null;
   transcript?: string;
   language?: CallUploadLanguage;
+  enhancement?: CallEnhancementMode;
   metadata?: CallUploadMetadata;
+};
+
+export type StandaloneSttOptions = {
+  language?: string;
+  enhancement?: CallEnhancementMode;
+};
+
+export type StandaloneSttResponse = {
+  language?: string | null;
+  transcript: string;
+  durationSeconds?: number | null;
+  segments: SpeakerSegment[];
+  routing?: SttRoutingMetadata | null;
+  audioQuality?: SttAudioQualityMetadata | null;
 };
 
 export type TextConnectorPocCatalogItem = {

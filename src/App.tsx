@@ -21,6 +21,7 @@ import {
   fetchCallFilterOptions,
   fetchCalls,
   fetchCompanyUsers,
+  fetchCompanySttSettings,
   fetchCurrentUser,
   fetchLocalizationOptions,
   finalizeTextConnectorConversation,
@@ -34,6 +35,7 @@ import {
   updatePreferredLocale,
   saveQaProfile,
   saveQaScoringSettings,
+  saveCompanySttSettings,
   uploadCall,
 } from "./api";
 import satisfaiEye from "./assets/satisfai-eye.svg";
@@ -47,6 +49,8 @@ import { UserManagementPage } from "./UserManagementPage";
 import { AccountPage } from "./AccountPage";
 import { VoiceConnectorsPage } from "./VoiceConnectorsPage";
 import { TextConnectorPocPage } from "./TextConnectorPocPage";
+import { SttDiagnostics } from "./SttDiagnostics";
+import { SttSettingsPage } from "./SttSettingsPage";
 import {
   LanguageSelector,
   getIntlLocale,
@@ -77,6 +81,8 @@ import type {
   CallScoreSummary,
   CallSummary,
   CallUploadResult,
+  CompanySttSettings,
+  CompanySttSettingsUpdate,
   QaProfile,
   QaScoringSettings,
   QaScoringSettingsUpdate,
@@ -91,7 +97,7 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-export type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "voice-connectors" | "text-connector-poc" | "demo-call" | "account";
+export type AppRoute = "dashboard" | "reports" | "qa-profile" | "stt-settings" | "workflow-automations" | "user-management" | "voice-connectors" | "text-connector-poc" | "demo-call" | "account";
 type AppNavKey =
   | "dashboard"
   | "reports"
@@ -101,6 +107,7 @@ type AppNavKey =
   | "grid"
   | "demo"
   | "qa"
+  | "stt"
   | "workflow"
   | "users"
   | "voice"
@@ -467,6 +474,10 @@ export const getRouteFromPath = (pathName: string): AppRoute => {
 
   if (pathName === "/settings/qa-profile") {
     return "qa-profile";
+  }
+
+  if (pathName === "/admin/stt-settings") {
+    return "stt-settings";
   }
 
   if (pathName === "/settings/workflow-automations") {
@@ -1410,6 +1421,12 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
           {...common}
         />
       )}
+      {name === "stt" && (
+        <path
+          d="M4 9v6M8 6v12M12 3v18M16 7v10M20 10v4M5 21h14"
+          {...common}
+        />
+      )}
       {name === "workflow" && (
         <path
           d="M5 7h5m4 0h5M5 17h5m4 0h5M10 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM10 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM12 9v6"
@@ -1807,6 +1824,11 @@ function App() {
   const [qaScoringSettingsSaving, setQaScoringSettingsSaving] = useState(false);
   const [qaScoringSettingsError, setQaScoringSettingsError] = useState("");
   const [qaScoringSettingsSuccess, setQaScoringSettingsSuccess] = useState("");
+  const [companySttSettings, setCompanySttSettings] = useState<CompanySttSettings | null>(null);
+  const [companySttSettingsLoading, setCompanySttSettingsLoading] = useState(false);
+  const [companySttSettingsSaving, setCompanySttSettingsSaving] = useState(false);
+  const [companySttSettingsError, setCompanySttSettingsError] = useState("");
+  const [companySttSettingsSuccess, setCompanySttSettingsSuccess] = useState("");
   const [qaRecalculating, setQaRecalculating] = useState(false);
   const [qaRecalculateError, setQaRecalculateError] = useState("");
   const [textFinalizing, setTextFinalizing] = useState(false);
@@ -1831,6 +1853,9 @@ function App() {
     emptySubmissionProgress,
   );
 
+  const createDefaultUploadDraft = () =>
+    createCallUploadDraft(generateConversationId());
+
   const isUnauthorizedError = (error: unknown) =>
     Boolean(
       error &&
@@ -1843,6 +1868,8 @@ function App() {
     const nextPath =
       route === "qa-profile"
         ? "/settings/qa-profile"
+        : route === "stt-settings"
+          ? "/admin/stt-settings"
         : route === "workflow-automations"
           ? "/settings/workflow-automations"
           : route === "demo-call"
@@ -3031,7 +3058,7 @@ function App() {
   };
 
   const openUploadModal = () => {
-    setUploadState(createCallUploadDraft(generateConversationId()));
+    setUploadState(createDefaultUploadDraft());
     setUploadValidationMessage("");
     setUploadErrorMessage("");
     setIsUploadModalOpen(true);
@@ -3280,6 +3307,7 @@ function App() {
             url: "",
             file,
             language: uploadState.language,
+            enhancement: uploadState.enhancement,
             metadata,
           });
 
@@ -3299,6 +3327,7 @@ function App() {
           file: null,
           transcript: uploadState.source === "transcript" ? uploadState.transcript : "",
           language: uploadState.language,
+          enhancement: uploadState.enhancement,
           metadata,
         });
         uploadedCalls.push(uploadedCall);
@@ -3326,7 +3355,7 @@ function App() {
             }),
       );
       setIsUploadModalOpen(false);
-      setUploadState(createCallUploadDraft(generateConversationId()));
+      setUploadState(createDefaultUploadDraft());
       setUploadValidationMessage("");
       setUploadErrorMessage("");
       await refreshCalls();
@@ -3418,6 +3447,11 @@ function App() {
     setQaProfileSaving(false);
     setQaProfileError("");
     setQaProfileSuccess("");
+    setCompanySttSettings(null);
+    setCompanySttSettingsLoading(false);
+    setCompanySttSettingsSaving(false);
+    setCompanySttSettingsError("");
+    setCompanySttSettingsSuccess("");
     setQaRecalculating(false);
     setQaRecalculateError("");
     setTranscriptCache({});
@@ -3468,6 +3502,11 @@ function App() {
     setQaProfileSaving(false);
     setQaProfileError("");
     setQaProfileSuccess("");
+    setCompanySttSettings(null);
+    setCompanySttSettingsLoading(false);
+    setCompanySttSettingsSaving(false);
+    setCompanySttSettingsError("");
+    setCompanySttSettingsSuccess("");
     setQaRecalculating(false);
     setQaRecalculateError("");
     setUploadValidationMessage("");
@@ -3512,6 +3551,84 @@ function App() {
       cancelled = true;
     };
   }, [isAuthorized, settings]);
+
+  useEffect(() => {
+    if (!isAuthorized || !hasAdminAccess) {
+      setCompanySttSettings(null);
+      setCompanySttSettingsLoading(false);
+      setCompanySttSettingsSaving(false);
+      setCompanySttSettingsError("");
+      setCompanySttSettingsSuccess("");
+      return;
+    }
+
+    let cancelled = false;
+    const loadSttSettings = async () => {
+      setCompanySttSettingsLoading(true);
+      setCompanySttSettingsError("");
+      setCompanySttSettingsSuccess("");
+
+      try {
+        const result = await fetchCompanySttSettings(settings);
+        if (!cancelled) setCompanySttSettings(result);
+      } catch (error) {
+        if (cancelled) return;
+        const status =
+          error && typeof error === "object" && "status" in error
+            ? (error as { status?: number }).status
+            : undefined;
+        if (status === 401) {
+          handleUnauthorizedSession();
+          return;
+        }
+        setCompanySttSettingsError(
+          status === 403
+            ? "Your account is not allowed to manage STT settings."
+            : error instanceof Error
+              ? error.message
+              : "Unable to load STT settings.",
+        );
+      } finally {
+        if (!cancelled) setCompanySttSettingsLoading(false);
+      }
+    };
+
+    void loadSttSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasAdminAccess, isAuthorized, settings]);
+
+  const handleSaveCompanySttSettings = async (update: CompanySttSettingsUpdate) => {
+    setCompanySttSettingsSaving(true);
+    setCompanySttSettingsError("");
+    setCompanySttSettingsSuccess("");
+
+    try {
+      const result = await saveCompanySttSettings(settings, update);
+      setCompanySttSettings(result);
+      setCompanySttSettingsSuccess("STT settings saved successfully.");
+    } catch (error) {
+      const status =
+        error && typeof error === "object" && "status" in error
+          ? (error as { status?: number }).status
+          : undefined;
+      if (status === 401) {
+        handleUnauthorizedSession();
+      } else {
+        setCompanySttSettingsError(
+          status === 403
+            ? "Your account is not allowed to manage STT settings."
+            : error instanceof Error
+              ? error.message
+              : "Unable to save STT settings.",
+        );
+      }
+      throw error;
+    } finally {
+      setCompanySttSettingsSaving(false);
+    }
+  };
 
   const addKeywordRule = () => {
     setKeywordRules((current) => [...current, defaultKeywordRule()]);
@@ -4124,6 +4241,12 @@ function App() {
     ...(hasAdminAccess
       ? [
           {
+            key: "stt" as const,
+            label: "STT Settings",
+            active: currentRoute === "stt-settings",
+            onClick: () => navigateTo("stt-settings" as AppRoute),
+          },
+          {
             key: "text" as const,
             label: "TEXT CONNECTORS",
             active: currentRoute === "text-connector-poc",
@@ -4456,6 +4579,30 @@ function App() {
             </section>
           ) : (
             <AccountPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
+          )
+        ) : currentRoute === "stt-settings" ? (
+          hasAdminAccess ? (
+            <SttSettingsPage
+              companyId={settings.companyId}
+              isAdministrator={hasAdminAccess}
+              value={companySttSettings}
+              loading={companySttSettingsLoading}
+              saving={companySttSettingsSaving}
+              errorMessage={companySttSettingsError}
+              successMessage={companySttSettingsSuccess}
+              onSave={handleSaveCompanySttSettings}
+            />
+          ) : (
+            <SttSettingsPage
+              companyId={settings.companyId}
+              isAdministrator={false}
+              value={null}
+              loading={false}
+              saving={false}
+              errorMessage=""
+              successMessage=""
+              onSave={handleSaveCompanySttSettings}
+            />
           )
         ) : currentRoute === "text-connector-poc" ? (
           hasAdminAccess ? (
@@ -4925,6 +5072,8 @@ function App() {
                       onPlaybackTimeChange={setPlaybackTimeSeconds}
                     />
                   ) : null}
+
+                  <SttDiagnostics stt={detail.stt} />
 
                   {videoStats ? (
                     <section className="detail-section video-analysis-section">
@@ -5511,23 +5660,72 @@ function App() {
                 </div>
               ) : null}
 
-              <label className="full-width">
-                Analysis language
-                <select
-                  value={uploadState.language}
-                  onChange={(event) =>
-                    setUploadState((current) => ({
-                      ...current,
-                      language: event.target.value as typeof current.language,
-                    }))
-                  }
-                >
-                  <option value="auto">Auto detect</option>
-                  <option value="en">English</option>
-                  <option value="hy">Armenian</option>
-                  <option value="ru">Russian</option>
-                </select>
-              </label>
+              <details className="upload-metadata upload-stt-options full-width">
+                <summary>Advanced transcription controls</summary>
+                <div className="upload-metadata-grid">
+                  <label className={uploadState.source === "transcript" ? "full-width" : ""}>
+                    Language
+                    <select
+                      value={uploadState.language}
+                      onChange={(event) =>
+                        setUploadState((current) => ({
+                          ...current,
+                          language: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">
+                        {companySttSettings
+                          ? `Company default (${getAnalysisLanguageLabel(companySttSettings.defaultLanguage)})`
+                          : "Company default"}
+                      </option>
+                      {uploadState.language && !["auto", "en", "hy", "ru"].includes(uploadState.language) ? (
+                        <option value={uploadState.language}>{uploadState.language.toUpperCase()} (company default)</option>
+                      ) : null}
+                      <option value="auto">Automatic / multilingual (recommended)</option>
+                      <option value="hy">Armenian</option>
+                      <option value="ru">Russian</option>
+                      <option value="en">English</option>
+                    </select>
+                    <small>
+                      {companySttSettings
+                        ? `Company default: ${getAnalysisLanguageLabel(companySttSettings.defaultLanguage)}.`
+                        : "Automatic mode lets the backend choose the language."}
+                    </small>
+                  </label>
+
+                  {uploadState.source !== "transcript" ? (
+                    <label>
+                      Audio enhancement
+                      <select
+                        value={uploadState.enhancement}
+                        onChange={(event) =>
+                          setUploadState((current) => ({
+                            ...current,
+                            enhancement: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">
+                          {companySttSettings
+                            ? `Company default (${companySttSettings.enableAudioEnhancement ? "automatic" : "off"})`
+                            : "Company default"}
+                        </option>
+                        <option value="auto">Automatic (recommended)</option>
+                        <option value="off">Off — always use original audio</option>
+                        <optgroup label="Advanced / testing">
+                          <option value="sidon">Try enhanced audio</option>
+                          <option value="force-sidon">Force enhanced audio (testing only)</option>
+                        </optgroup>
+                      </select>
+                      <small>
+                        Enhancement can improve poor-quality audio. “Force enhanced audio” is for
+                        testing and should not normally be used in production.
+                      </small>
+                    </label>
+                  ) : null}
+                </div>
+              </details>
 
               <details className="upload-metadata full-width">
                 <summary>Optional call metadata</summary>
@@ -5558,7 +5756,7 @@ function App() {
                 </p>
               ) : (
                 <p className="upload-note full-width">
-                  Auto detect identifies English, Armenian, or Russian. Choose a language above to override detection.
+                  The company transcription language is used unless you explicitly choose an override above.
                 </p>
               )}
 

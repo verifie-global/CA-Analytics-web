@@ -56,7 +56,6 @@ describe("call analysis submission", () => {
     const result = await uploadCall(settings, {
       conversationId: "chat/payment 42",
       transcript,
-      language: "auto",
       metadata: {
         agentName: "Maya",
         customerName: "Aram",
@@ -145,8 +144,51 @@ describe("call analysis submission", () => {
     expect(form.get("url")).toBe("https://media.example.test/call.mp3");
     expect(form.has("audio")).toBe(false);
     expect(form.has("transcript")).toBe(false);
-    expect(form.has("language")).toBe(false);
+    expect(form.get("language")).toBe("auto");
     expect(result).toMatchObject({ source: "audio", language: "hy" });
+  });
+
+  it("submits explicit language and enhancement options for audio", async () => {
+    const fetchMock = vi.fn(async () => acceptedResponse({ status: "Queued" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await uploadCall(settings, {
+      conversationId: "chat/payment 42",
+      file: new File(["audio"], "call.wav", { type: "audio/wav" }),
+      language: "hy",
+      enhancement: "sidon",
+    });
+
+    const form = getSubmittedForm(fetchMock);
+    expect(form.get("language")).toBe("hy");
+    expect(form.get("enhancement")).toBe("sidon");
+  });
+
+  it("never submits enhancement for transcripts and only sends an explicit transcript language", async () => {
+    const fetchMock = vi.fn(async () => acceptedResponse({ status: "Queued" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await uploadCall(settings, {
+      conversationId: "chat/payment 42",
+      transcript: "Բարև",
+      language: "auto",
+      enhancement: "force-sidon",
+    });
+
+    let form = getSubmittedForm(fetchMock);
+    expect(form.get("language")).toBe("auto");
+    expect(form.has("enhancement")).toBe(false);
+
+    fetchMock.mockClear();
+    await uploadCall(settings, {
+      conversationId: "chat/payment 42",
+      transcript: "Բարև",
+      language: "hy",
+      enhancement: "sidon",
+    });
+    form = getSubmittedForm(fetchMock);
+    expect(form.get("language")).toBe("hy");
+    expect(form.has("enhancement")).toBe(false);
   });
 
   it("rejects zero, multiple, and oversized transcript sources before fetching", async () => {

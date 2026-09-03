@@ -7,6 +7,13 @@ import {
 } from "./callUpload";
 
 describe("call upload form validation", () => {
+  it("defaults optional STT overrides to the company policy", () => {
+    expect(createCallUploadDraft("call-1")).toMatchObject({
+      language: "",
+      enhancement: "",
+    });
+  });
+
   it("accepts unlabeled transcript messages", () => {
     const draft = {
       ...createCallUploadDraft("chat-1"),

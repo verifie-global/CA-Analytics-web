@@ -9,6 +9,8 @@ import type {
   CallFilters,
   CallUploadPayload,
   CallUploadResult,
+  CompanySttSettings,
+  CompanySttSettingsUpdate,
   CallsListResult,
   CallScoreSummary,
   CallSummary,
@@ -28,6 +30,13 @@ import type {
   QaScoringMode,
   ScoreMetricSummary,
   SpeakerSegment,
+  StandaloneSttOptions,
+  StandaloneSttResponse,
+  SttAudioQualityMetadata,
+  SttAudioSampleMetadata,
+  SttMetadata,
+  SttRoutingMetadata,
+  SttSidonMetadata,
   TextConnectorNormalizeResult,
   TextConnectorNormalizedEvent,
   TextConnectorPocCatalogItem,
@@ -671,6 +680,79 @@ const normalizePartyInfo = (value: unknown, fallback?: Partial<PartyInfo>): Part
   };
 };
 
+const normalizeSttRouting = (value: unknown): SttRoutingMetadata | null => {
+  const record = asOptionalRecord(value);
+  if (!record) return null;
+
+  const fallbackReasonValue = record.fallbackReason ?? record.fallback_reason;
+  const fallbackReason = Array.isArray(fallbackReasonValue)
+    ? fallbackReasonValue.map(String).filter(Boolean)
+    : null;
+
+  return {
+    requestedLanguage:
+      readString(record, "requestedLanguage", "requested_language") ?? null,
+    selectedEngine: readString(record, "selectedEngine", "selected_engine") ?? null,
+    fallbackUsed: readBoolean(record, "fallbackUsed", "fallback_used") ?? null,
+    fallbackReason,
+  };
+};
+
+const normalizeDnsmos = (value: unknown) => {
+  const record = asOptionalRecord(value);
+  if (!record) return null;
+
+  return {
+    sig: readNumber(record, "sig", "SIG") ?? null,
+    bak: readNumber(record, "bak", "BAK") ?? null,
+    ovrl: readNumber(record, "ovrl", "OVRL") ?? null,
+  };
+};
+
+const normalizeSttAudioSample = (value: unknown): SttAudioSampleMetadata | null => {
+  const record = asOptionalRecord(value);
+  if (!record) return null;
+  return { dnsmos: normalizeDnsmos(record.dnsmos) };
+};
+
+const normalizeSttSidon = (value: unknown): SttSidonMetadata | null => {
+  const record = asOptionalRecord(value);
+  if (!record) return null;
+
+  return {
+    enabled: readBoolean(record, "enabled") ?? null,
+    attempted: readBoolean(record, "attempted") ?? null,
+    used: readBoolean(record, "used") ?? null,
+    device: readString(record, "device") ?? null,
+    processingTimeSec:
+      readNumber(record, "processingTimeSec", "processing_time_sec") ?? null,
+  };
+};
+
+const normalizeSttAudioQuality = (value: unknown): SttAudioQualityMetadata | null => {
+  const record = asOptionalRecord(value);
+  if (!record) return null;
+
+  return {
+    requestedMode: readString(record, "requestedMode", "requested_mode") ?? null,
+    selectedAudio: readString(record, "selectedAudio", "selected_audio") ?? null,
+    decision: readString(record, "decision") ?? null,
+    sidon: normalizeSttSidon(record.sidon),
+    raw: normalizeSttAudioSample(record.raw),
+    enhanced: normalizeSttAudioSample(record.enhanced),
+  };
+};
+
+const normalizeSttMetadata = (value: unknown): SttMetadata | null => {
+  const record = asOptionalRecord(value);
+  if (!record) return null;
+
+  return {
+    routing: normalizeSttRouting(record.routing),
+    audioQuality: normalizeSttAudioQuality(record.audioQuality ?? record.audio_quality),
+  };
+};
+
 const normalizeScoreMetricSummary = (value: unknown): ScoreMetricSummary | null => {
   const record = asRecord(value);
   const cumulative = readNumber(record, "cumulative");
@@ -949,6 +1031,7 @@ const normalizeCallDetail = (item: unknown): CallDetail => {
         : Array.isArray(rawAnalysis.agentTipsHistory)
           ? rawAnalysis.agentTipsHistory
           : null,
+    stt: normalizeSttMetadata(record.stt ?? rawAnalysis.stt),
     raw: record,
   };
 };
@@ -1685,6 +1768,56 @@ export async function saveQaScoringSettings(
   );
 }
 
+const normalizeCompanySttSettings = (
+  payload: unknown,
+  fallbackCompanyId: string,
+  fallback?: CompanySttSettingsUpdate,
+): CompanySttSettings => {
+  const root = asRecord(payload);
+  const record = asOptionalRecord(root.data) ?? root;
+
+  return {
+    companyId:
+      readNumber(record, "companyId") ??
+      readStringLike(record, "companyId") ??
+      fallbackCompanyId,
+    defaultLanguage:
+      readString(record, "defaultLanguage", "default_language") ??
+      fallback?.defaultLanguage ??
+      "auto",
+    enableAudioEnhancement:
+      readBoolean(record, "enableAudioEnhancement", "enable_audio_enhancement") ??
+      fallback?.enableAudioEnhancement ??
+      true,
+  };
+};
+
+export async function fetchCompanySttSettings(
+  settings: AppSettings,
+): Promise<CompanySttSettings> {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/stt-settings`,
+  );
+  return normalizeCompanySttSettings(response, settings.companyId);
+}
+
+export async function saveCompanySttSettings(
+  settings: AppSettings,
+  update: CompanySttSettingsUpdate,
+): Promise<CompanySttSettings> {
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/stt-settings`,
+    {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify(update),
+    },
+  );
+  return normalizeCompanySttSettings(response, settings.companyId, update);
+}
+
 export async function fetchWorkflowDestinations(settings: AppSettings) {
   const response = await request<unknown>(
     settings,
@@ -1996,8 +2129,14 @@ export async function uploadCall(
     formData.set("transcript", transcript);
   }
 
-  if (payload.language && payload.language !== "auto") {
+  const isTranscriptOnly = Boolean(transcript.trim());
+
+  if (payload.language) {
     formData.set("language", payload.language);
+  }
+
+  if (!isTranscriptOnly && payload.enhancement) {
+    formData.set("enhancement", payload.enhancement);
   }
 
   const metadata = payload.metadata;
@@ -2140,6 +2279,40 @@ export async function uploadCall(
     return fallback;
   }
 }
+
+export async function requestStandaloneStt(
+  settings: AppSettings,
+  audio: Blob,
+  options: StandaloneSttOptions = {},
+): Promise<StandaloneSttResponse> {
+  const formData = new FormData();
+  formData.set("audio", audio);
+  const query = new URLSearchParams();
+  if (options.language) query.set("language", options.language);
+  if (options.enhancement) query.set("enhancement", options.enhancement);
+
+  const response = await request<unknown>(
+    settings,
+    `/api/companies/${settings.companyId}/stt`,
+    { method: "POST", body: formData },
+    query.size > 0 ? query : undefined,
+  );
+  const root = asRecord(response);
+  const record = asOptionalRecord(root.data) ?? root;
+
+  return {
+    language: readString(record, "language") ?? null,
+    transcript: readString(record, "transcript") ?? "",
+    durationSeconds:
+      readNumber(record, "durationSeconds", "duration_seconds") ?? null,
+    segments: toSegments(record.segments),
+    routing: normalizeSttRouting(record.routing),
+    audioQuality: normalizeSttAudioQuality(record.audioQuality ?? record.audio_quality),
+  };
+}
+
+// A concise alias for callers that already use “transcribe” terminology.
+export const transcribeAudio = requestStandaloneStt;
 
 export async function fetchAudioBlob(settings: AppSettings, conversationId: string) {
   const response = await fetch(
