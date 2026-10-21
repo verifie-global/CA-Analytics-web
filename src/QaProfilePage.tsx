@@ -244,10 +244,15 @@ export function QaProfilePage({
               <option value="subtract_failed_weights">
                 Subtract failed-question weights
               </option>
+              {qaScoringModeDraft === "section_weighted_ratio" || draftProfile.definition.sections?.length ? (
+                <option value="section_weighted_ratio">Weighted sections</option>
+              ) : null}
             </select>
             <small className="qa-field-helper">
               {qaScoringModeDraft === "subtract_failed_weights"
                 ? "Score = maximum QA score − failed-question weights."
+                : qaScoringModeDraft === "section_weighted_ratio"
+                  ? "Each section keeps its configured share of the score. Not applicable questions are excluded within their section."
                 : "Score = passed weight ÷ total enabled weight × maximum QA score."}
             </small>
           </label>

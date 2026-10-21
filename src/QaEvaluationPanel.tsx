@@ -4,6 +4,7 @@ import {
   DEFAULT_QA_SCORE_MAXIMUM,
   DEFAULT_QA_SCORING_MODE,
   formatQaNotApplicableReason,
+  formatQaScoreNumber,
   isQaNotApplicable,
 } from "./qaDisplay";
 import { QaScoreBadge } from "./QaScoreBadge";
@@ -45,13 +46,17 @@ export function QaEvaluationPanel({
 }: QaEvaluationPanelProps) {
   const { enumLabel } = useI18n();
   const evaluation = qa?.evaluation;
+  // Corrections use the scoring snapshot saved with this evaluation on the server.
+  const scoreMaximum = evaluation ? evaluation.scoreMaximum ?? DEFAULT_QA_SCORE_MAXIMUM : qaScoreMaximum;
+  const scoringMode = evaluation ? evaluation.scoringMode ?? DEFAULT_QA_SCORING_MODE : qaScoringMode;
+  const usesSectionScoring = scoringMode === "section_weighted_ratio";
   const [isCollapsed, setIsCollapsed] = useState(!initiallyExpanded);
   const qaNotApplicable = isQaNotApplicable(qa);
   const isUnscored = !qa || qa.score == null;
   const canRecalculate = canManageQaScore && (isCompleted || isUnscored);
   const notApplicableReason = formatQaNotApplicableReason(qa?.notApplicableReason);
   const [isEditing, setIsEditing] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, { score: 0 | 1; reason: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { score: 0 | 1; isApplicable: boolean; reason: string }>>({});
   const [correctionReason, setCorrectionReason] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
@@ -75,12 +80,18 @@ export function QaEvaluationPanel({
     () =>
       (evaluation?.questionResults ?? []).flatMap<QaQuestionCorrection>((question) => {
         const draft = drafts[question.id];
-        if (!draft || (draft.score === question.score && draft.reason === question.reason)) {
+        if (!draft || (draft.score === question.score && draft.reason === question.reason &&
+          (!usesSectionScoring || draft.isApplicable === (question.isApplicable ?? true)))) {
           return [];
         }
-        return [{ id: question.id, score: draft.score, reason: draft.reason }];
+        return [{
+          id: question.id,
+          score: draft.score,
+          reason: draft.reason,
+          ...(usesSectionScoring ? { isApplicable: draft.isApplicable } : {}),
+        }];
       }),
-    [drafts, evaluation?.questionResults],
+    [drafts, evaluation?.questionResults, usesSectionScoring],
   );
 
   const orderedQuestionResults = useMemo(
@@ -89,28 +100,32 @@ export function QaEvaluationPanel({
         .map((question, originalIndex) => ({
           question,
           originalIndex,
-          passed:
-            (isEditing
-              ? drafts[question.id]?.score ?? question.score
-              : question.score) > 0,
+          resultOrder: usesSectionScoring && !(isEditing
+            ? drafts[question.id]?.isApplicable ?? question.isApplicable ?? true
+            : question.isApplicable ?? true)
+            ? 2
+            : Number((isEditing
+                ? drafts[question.id]?.score ?? question.score
+                : question.score) > 0),
         }))
         .sort(
           (left, right) =>
-            Number(left.passed) - Number(right.passed) ||
+            left.resultOrder - right.resultOrder ||
             left.originalIndex - right.originalIndex,
         )
         .map(({ question }) => question),
-    [drafts, evaluation?.questionResults, isEditing],
+    [drafts, evaluation?.questionResults, isEditing, usesSectionScoring],
   );
 
   const preview = useMemo(() => {
     const questions = evaluation?.questionResults ?? [];
-    return calculateQaScore(questions, drafts, qaScoreMaximum, qaScoringMode);
+    return calculateQaScore(questions, drafts, scoreMaximum, scoringMode, evaluation?.sections);
   }, [
     drafts,
     evaluation?.questionResults,
-    qaScoreMaximum,
-    qaScoringMode,
+    evaluation?.sections,
+    scoreMaximum,
+    scoringMode,
   ]);
 
   const startEditing = () => {
@@ -123,7 +138,11 @@ export function QaEvaluationPanel({
       Object.fromEntries(
         (evaluation?.questionResults ?? []).map((question) => [
           question.id,
-          { score: question.score > 0 ? 1 : 0, reason: question.reason },
+          {
+            score: question.score > 0 ? 1 : 0,
+            isApplicable: question.isApplicable ?? true,
+            reason: question.reason,
+          },
         ]),
       ),
     );
@@ -274,24 +293,24 @@ export function QaEvaluationPanel({
                   isApplicable={qa.isApplicable}
                   status={qa.status}
                   notApplicableReason={qa.notApplicableReason}
-                  maximumScore={qaScoreMaximum}
+                  maximumScore={scoreMaximum}
                 />
               </article>
               <article className="routing-card">
                 <label>
-                  {qaScoringMode === "subtract_failed_weights"
+                  {scoringMode === "subtract_failed_weights"
                     ? "Passed-question weight"
                     : "Earned points"}
                 </label>
-                <strong>{qaNotApplicable ? "N/A" : isEditing ? preview.earnedPoints : qa.earnedPoints ?? "-"}</strong>
+                <strong>{qaNotApplicable ? "N/A" : formatQaScoreNumber(isEditing ? preview.earnedPoints : qa.earnedPoints)}</strong>
               </article>
               <article className="routing-card">
                 <label>
-                  {qaScoringMode === "subtract_failed_weights"
+                  {scoringMode === "subtract_failed_weights"
                     ? "Total penalty weight"
                     : "Possible points"}
                 </label>
-                <strong>{qaNotApplicable ? "N/A" : isEditing ? preview.possiblePoints : qa.possiblePoints ?? "-"}</strong>
+                <strong>{qaNotApplicable ? "N/A" : formatQaScoreNumber(isEditing ? preview.possiblePoints : qa.possiblePoints)}</strong>
               </article>
               <article className="routing-card">
                 <label>{qaNotApplicable ? "Reason" : "Resolution status"}</label>
@@ -302,6 +321,10 @@ export function QaEvaluationPanel({
                     : "N/A"}</strong>
               </article>
             </div>
+
+            {isEditing && usesSectionScoring && preview.score == null ? (
+              <p className="qa-panel-copy">A QA score requires at least one applicable question in every section.</p>
+            ) : null}
 
             {!qaNotApplicable && evaluation?.profileName ? (
               <p className="qa-profile-label">
@@ -361,17 +384,20 @@ export function QaEvaluationPanel({
                     orderedQuestionResults.map((question) => {
                       const draft = drafts[question.id];
                       const shownScore = isEditing ? draft?.score ?? question.score : question.score;
+                      const applicable = !usesSectionScoring || (isEditing
+                        ? draft?.isApplicable ?? question.isApplicable ?? true
+                        : question.isApplicable ?? true);
                       const passed = shownScore > 0;
                       return (
-                        <article key={question.id || question.title} className={`qa-question-result ${draft && (draft.score !== question.score || draft.reason !== question.reason) ? "qa-question-changed" : ""}`}>
+                        <article key={question.id || question.title} className={`qa-question-result ${draft && (draft.score !== question.score || draft.reason !== question.reason || (usesSectionScoring && draft.isApplicable !== (question.isApplicable ?? true))) ? "qa-question-changed" : ""}`}>
                           <div className="qa-question-result-head">
                             <div>
                               <strong data-i18n-skip>{question.title}</strong>
                               <p data-i18n-skip>{question.description}</p>
                             </div>
                             <div className="qa-question-score">
-                              <span className={`bool-badge ${passed ? "bool-true" : "bool-false"}`}>
-                                {passed ? "Pass" : "Fail"}
+                              <span className={`bool-badge ${!applicable ? "qa-badge-muted" : passed ? "bool-true" : "bool-false"}`}>
+                                {!applicable ? "N/A" : passed ? "Pass" : "Fail"}
                               </span>
                               <small>Weight {question.weight}</small>
                             </div>
@@ -379,8 +405,8 @@ export function QaEvaluationPanel({
                           {question.isManuallyCorrected || question.originalScore != null ? (
                             <p className="qa-manual-indicator">
                               Manually corrected
-                              {question.originalScore != null
-                                ? ` · Original automatic score: ${question.originalScore > 0 ? "Passed" : "Failed"}`
+                              {question.originalIsApplicable === false || question.originalScore != null
+                                ? ` · Original automatic score: ${question.originalIsApplicable === false ? "N/A" : (question.originalScore ?? 0) > 0 ? "Passed" : "Failed"}`
                                 : ""}
                             </p>
                           ) : null}
@@ -389,19 +415,21 @@ export function QaEvaluationPanel({
                               <label>
                                 Result
                                 <select
-                                  value={draft.score}
+                                  value={usesSectionScoring && !draft.isApplicable ? "not_applicable" : draft.score}
                                   onChange={(event) =>
                                     setDrafts((current) => ({
                                       ...current,
                                       [question.id]: {
                                         ...current[question.id],
-                                        score: Number(event.target.value) as 0 | 1,
+                                        score: event.target.value === "1" ? 1 : 0,
+                                        isApplicable: event.target.value !== "not_applicable",
                                       },
                                     }))
                                   }
                                 >
                                   <option value={0}>0 — Failed</option>
                                   <option value={1}>1 — Passed</option>
+                                  {usesSectionScoring ? <option value="not_applicable">N/A — Not applicable</option> : null}
                                 </select>
                               </label>
                               <label>

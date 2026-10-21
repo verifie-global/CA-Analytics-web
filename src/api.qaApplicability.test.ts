@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  fetchCallDetail,
   fetchQaProfile,
   fetchQaScoringSettings,
+  saveQaProfile,
   saveQaScoringSettings,
   updateQaApplicability,
+  updateQaScore,
 } from "./api";
+import { createSectionQaResult } from "./qaSectionScoring.testFixtures";
 
 const settings = {
   baseUrl: "https://api.example.test/",
@@ -15,6 +19,44 @@ const settings = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("section QA evaluation metadata", () => {
+  it("preserves stored scoring settings, section weights, and question applicability in call details", async () => {
+    const qa = createSectionQaResult();
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ conversationId: "section-call", qa }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    )));
+
+    const detail = await fetchCallDetail(settings, "section-call");
+
+    expect(detail.qa).toMatchObject(qa);
+    expect(detail.qa?.evaluation?.questionResults.filter((question) => question.isApplicable === false)).toHaveLength(7);
+  });
+
+  it("retains exclusion flags in manual corrections and the returned evaluation", async () => {
+    const qa = createSectionQaResult();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(
+      JSON.stringify({ qa }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const corrections = [{
+      id: "a4",
+      score: 0 as const,
+      isApplicable: false,
+      reason: "No transfer was requested.",
+    }];
+
+    const updated = await updateQaScore(settings, "section-call", "Clarified the exclusion.", corrections);
+
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+      reason: "Clarified the exclusion.",
+      questionResults: corrections,
+    });
+    expect(updated).toMatchObject(qa);
+  });
 });
 
 describe("updateQaApplicability", () => {
@@ -232,6 +274,48 @@ describe("QA scoring settings", () => {
 });
 
 describe("QA profile scoring metadata", () => {
+  it("preserves section definitions and question assignments through fetch and save", async () => {
+    const evaluation = createSectionQaResult().evaluation!;
+    const definition = {
+      sections: evaluation.sections,
+      questions: evaluation.questionResults.map((question) => ({
+        id: question.id,
+        sectionId: question.sectionId,
+        title: question.title,
+        description: question.description,
+        weight: question.weight,
+        isEnabled: true,
+      })),
+    };
+    const response = {
+      companyId: 123,
+      isConfigured: true,
+      isEnabled: true,
+      profileName: "Section QA",
+      qaScoreMaximum: 100,
+      qaScoringMode: "section_weighted_ratio",
+      definition,
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(
+      JSON.stringify(response),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const profile = await fetchQaProfile(settings);
+    expect(profile).toMatchObject(response);
+
+    const saved = await saveQaProfile(settings, profile);
+
+    expect(fetchMock.mock.calls[1][1]?.method).toBe("PUT");
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toMatchObject({
+      isEnabled: true,
+      profileName: "Section QA",
+      definition,
+    });
+    expect(saved).toMatchObject(response);
+  });
+
   it("normalizes the maximum and scoring mode returned with the profile", async () => {
     vi.stubGlobal(
       "fetch",

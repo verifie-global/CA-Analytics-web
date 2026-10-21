@@ -454,6 +454,7 @@ export type CallDetail = {
 
 export type QaQuestionDefinition = {
   id: string;
+  sectionId?: string;
   title: string;
   description: string;
   weight: number;
@@ -461,6 +462,7 @@ export type QaQuestionDefinition = {
 };
 
 export type QaProfileDefinition = {
+  sections?: QaSectionDefinition[];
   businessContext: string;
   mainGoalOfCallEvaluation: string;
   businessPriorities: string[];
@@ -478,7 +480,14 @@ export type QaProfileDefinition = {
 
 export type QaScoringMode =
   | "weighted_ratio"
-  | "subtract_failed_weights";
+  | "subtract_failed_weights"
+  | "section_weighted_ratio";
+
+export type QaSectionDefinition = {
+  id: string;
+  title: string;
+  weight: number;
+};
 
 export type QaProfile = {
   companyId: number;
@@ -638,6 +647,8 @@ export type TextConnectorNormalizeResult = {
 
 export type QaQuestionResult = {
   id: string;
+  sectionId?: string;
+  isApplicable?: boolean;
   title: string;
   description: string;
   weight: number;
@@ -645,10 +656,14 @@ export type QaQuestionResult = {
   reason: string;
   isManuallyCorrected?: boolean;
   originalScore?: number | null;
+  originalIsApplicable?: boolean;
 };
 
 export type QaEvaluation = {
   profileName?: string | null;
+  scoreMaximum?: number;
+  scoringMode?: QaScoringMode;
+  sections?: QaSectionDefinition[];
   overallComment?: string | null;
   strengths: string[];
   improvements: string[];
@@ -677,6 +692,7 @@ export type QaResult = {
 export type QaQuestionCorrection = {
   id: string;
   score: 0 | 1;
+  isApplicable?: boolean;
   reason: string;
 };
 

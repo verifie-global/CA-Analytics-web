@@ -1,4 +1,4 @@
-import type { QaQuestionResult, QaScoringMode } from "./types";
+import type { QaQuestionResult, QaScoringMode, QaSectionDefinition } from "./types";
 import { getIntlLocale } from "./i18n";
 
 export const DEFAULT_QA_SCORE_MAXIMUM = 100;
@@ -37,10 +37,49 @@ export const formatQaScore = (
 
 export const calculateQaScore = (
   questions: QaQuestionResult[],
-  drafts: Record<string, { score: 0 | 1 }>,
+  drafts: Record<string, { score: 0 | 1; isApplicable?: boolean }>,
   maximum: number,
   mode: QaScoringMode,
+  sections: QaSectionDefinition[] = [],
 ) => {
+  if (mode === "section_weighted_ratio") {
+    const possiblePoints = sections.reduce((sum, section) => sum + section.weight, 0);
+    let earnedPoints = 0;
+    const sectionIds = new Set(sections.map((section) => section.id.toLowerCase()));
+    let isComplete = sections.length > 0 && maximum > 0 &&
+      sectionIds.size === sections.length &&
+      sections.every((section) => section.id.trim() && section.weight > 0) &&
+      questions.every((question) => question.sectionId && sectionIds.has(question.sectionId.toLowerCase()));
+
+    for (const section of sections) {
+      const applicableQuestions = questions.filter((question) =>
+        question.sectionId?.toLowerCase() === section.id.toLowerCase() &&
+        (drafts[question.id]?.isApplicable ?? question.isApplicable ?? true),
+      );
+      const applicableWeight = applicableQuestions.reduce((sum, question) => sum + question.weight, 0);
+      const earnedWeight = applicableQuestions.reduce(
+        (sum, question) => sum + question.weight * (drafts[question.id]?.score ?? question.score),
+        0,
+      );
+      if (applicableWeight > 0) {
+        earnedPoints += section.weight * earnedWeight / applicableWeight;
+      } else {
+        isComplete = false;
+      }
+    }
+
+    const score = earnedPoints / possiblePoints * maximum;
+    return {
+      earnedPoints,
+      possiblePoints,
+      // Keep the original section weights when a section has no applicable answers.
+      // The backend leaves such evaluations unscored until every section is complete.
+      score: isComplete && possiblePoints > 0
+        ? Math.round((score + Math.abs(score) * Number.EPSILON) * 100) / 100
+        : null,
+    };
+  }
+
   const possiblePoints = questions.reduce((sum, question) => sum + question.weight, 0);
   const earnedPoints = questions.reduce(
     (sum, question) => sum + question.weight * (drafts[question.id]?.score ?? question.score),

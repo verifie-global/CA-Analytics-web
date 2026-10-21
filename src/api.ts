@@ -600,7 +600,7 @@ const readQaScoringMode = (
   ...keys: string[]
 ): QaScoringMode | undefined => {
   const value = readString(record, ...keys);
-  return value === "weighted_ratio" || value === "subtract_failed_weights"
+  return value === "weighted_ratio" || value === "subtract_failed_weights" || value === "section_weighted_ratio"
     ? value
     : undefined;
 };
@@ -1040,6 +1040,7 @@ const normalizeQaQuestionDefinition = (item: unknown): QaQuestionDefinition => {
   const record = asRecord(item);
   return {
     id: readString(record, "id") ?? "",
+    sectionId: readString(record, "sectionId"),
     title: readString(record, "title") ?? "",
     description: readString(record, "description") ?? "",
     weight: readNumber(record, "weight") ?? 0,
@@ -1047,9 +1048,19 @@ const normalizeQaQuestionDefinition = (item: unknown): QaQuestionDefinition => {
   };
 };
 
+const normalizeQaSection = (item: unknown) => {
+  const record = asRecord(item);
+  return {
+    id: readString(record, "id") ?? "",
+    title: readString(record, "title") ?? "",
+    weight: readNumber(record, "weight") ?? 0,
+  };
+};
+
 const normalizeQaProfileDefinition = (value: unknown): QaProfileDefinition => {
   const record = asRecord(value);
   return {
+    sections: Array.isArray(record.sections) ? record.sections.map(normalizeQaSection) : undefined,
     businessContext: readString(record, "businessContext") ?? "",
     mainGoalOfCallEvaluation: readString(record, "mainGoalOfCallEvaluation") ?? "",
     businessPriorities: asArray(record.businessPriorities).map((item) => String(item)).filter(Boolean),
@@ -1075,6 +1086,8 @@ const normalizeQaQuestionResult = (item: unknown): QaQuestionResult => {
     null;
   return {
     id: readString(record, "id") ?? "",
+    sectionId: readString(record, "sectionId"),
+    isApplicable: readBoolean(record, "isApplicable") ?? true,
     title: readString(record, "title") ?? "",
     description: readString(record, "description") ?? "",
     weight: readNumber(record, "weight") ?? 0,
@@ -1090,6 +1103,7 @@ const normalizeQaQuestionResult = (item: unknown): QaQuestionResult => {
       ) ??
       Object.keys(correction).length > 0,
     originalScore,
+    originalIsApplicable: readBoolean(record, "originalIsApplicable", "automaticIsApplicable"),
   };
 };
 
@@ -1101,6 +1115,9 @@ const normalizeQaEvaluation = (value: unknown): QaEvaluation | null => {
 
   return {
     profileName: readString(record, "profileName") ?? null,
+    scoreMaximum: readNumber(record, "scoreMaximum"),
+    scoringMode: readQaScoringMode(record, "scoringMode"),
+    sections: asArray(record.sections).map(normalizeQaSection),
     overallComment: readString(record, "overallComment") ?? null,
     strengths: asArray(record.strengths).map((item) => String(item)).filter(Boolean),
     improvements: asArray(record.improvements).map((item) => String(item)).filter(Boolean),
