@@ -155,15 +155,19 @@ export type AppSettings = {
   preferredLocale?: LocaleCode | null;
 };
 
+export type SttProvider = "custom" | "gcp" | "openai";
+
 export type CompanySttSettings = {
   companyId: number | string;
+  provider: SttProvider;
+  model: string | null;
   defaultLanguage: string;
   enableAudioEnhancement: boolean;
 };
 
 export type CompanySttSettingsUpdate = Pick<
   CompanySttSettings,
-  "defaultLanguage" | "enableAudioEnhancement"
+  "provider" | "model" | "defaultLanguage" | "enableAudioEnhancement"
 >;
 
 export type SttRoutingMetadata = {

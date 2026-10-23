@@ -1798,6 +1798,12 @@ const normalizeCompanySttSettings = (
       readNumber(record, "companyId") ??
       readStringLike(record, "companyId") ??
       fallbackCompanyId,
+    provider:
+      record.provider === "gcp" || record.provider === "openai" || record.provider === "custom"
+        ? record.provider
+        : fallback?.provider ?? "custom",
+    // The API returns the effective model. Preserve it without guessing inheritance.
+    model: record.model === null ? null : readString(record, "model") ?? null,
     defaultLanguage:
       readString(record, "defaultLanguage", "default_language") ??
       fallback?.defaultLanguage ??

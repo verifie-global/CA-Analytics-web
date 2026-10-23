@@ -21,7 +21,6 @@ import {
   fetchCallFilterOptions,
   fetchCalls,
   fetchCompanyUsers,
-  fetchCompanySttSettings,
   fetchCurrentUser,
   fetchLocalizationOptions,
   finalizeTextConnectorConversation,
@@ -35,7 +34,6 @@ import {
   updatePreferredLocale,
   saveQaProfile,
   saveQaScoringSettings,
-  saveCompanySttSettings,
   uploadCall,
 } from "./api";
 import satisfaiEye from "./assets/satisfai-eye.svg";
@@ -51,6 +49,7 @@ import { VoiceConnectorsPage } from "./VoiceConnectorsPage";
 import { TextConnectorPocPage } from "./TextConnectorPocPage";
 import { SttDiagnostics } from "./SttDiagnostics";
 import { SttSettingsPage } from "./SttSettingsPage";
+import { useCompanySttSettings } from "./useCompanySttSettings";
 import {
   LanguageSelector,
   getIntlLocale,
@@ -81,8 +80,6 @@ import type {
   CallScoreSummary,
   CallSummary,
   CallUploadResult,
-  CompanySttSettings,
-  CompanySttSettingsUpdate,
   QaProfile,
   QaScoringSettings,
   QaScoringSettingsUpdate,
@@ -1817,11 +1814,6 @@ function App() {
   const [qaScoringSettingsSaving, setQaScoringSettingsSaving] = useState(false);
   const [qaScoringSettingsError, setQaScoringSettingsError] = useState("");
   const [qaScoringSettingsSuccess, setQaScoringSettingsSuccess] = useState("");
-  const [companySttSettings, setCompanySttSettings] = useState<CompanySttSettings | null>(null);
-  const [companySttSettingsLoading, setCompanySttSettingsLoading] = useState(false);
-  const [companySttSettingsSaving, setCompanySttSettingsSaving] = useState(false);
-  const [companySttSettingsError, setCompanySttSettingsError] = useState("");
-  const [companySttSettingsSuccess, setCompanySttSettingsSuccess] = useState("");
   const [qaRecalculating, setQaRecalculating] = useState(false);
   const [qaRecalculateError, setQaRecalculateError] = useState("");
   const [textFinalizing, setTextFinalizing] = useState(false);
@@ -3438,11 +3430,6 @@ function App() {
     setQaProfileSaving(false);
     setQaProfileError("");
     setQaProfileSuccess("");
-    setCompanySttSettings(null);
-    setCompanySttSettingsLoading(false);
-    setCompanySttSettingsSaving(false);
-    setCompanySttSettingsError("");
-    setCompanySttSettingsSuccess("");
     setQaRecalculating(false);
     setQaRecalculateError("");
     setTranscriptCache({});
@@ -3493,11 +3480,6 @@ function App() {
     setQaProfileSaving(false);
     setQaProfileError("");
     setQaProfileSuccess("");
-    setCompanySttSettings(null);
-    setCompanySttSettingsLoading(false);
-    setCompanySttSettingsSaving(false);
-    setCompanySttSettingsError("");
-    setCompanySttSettingsSuccess("");
     setQaRecalculating(false);
     setQaRecalculateError("");
     setUploadValidationMessage("");
@@ -3543,83 +3525,20 @@ function App() {
     };
   }, [isAuthorized, settings]);
 
-  useEffect(() => {
-    if (!isAuthorized || !hasAdminAccess) {
-      setCompanySttSettings(null);
-      setCompanySttSettingsLoading(false);
-      setCompanySttSettingsSaving(false);
-      setCompanySttSettingsError("");
-      setCompanySttSettingsSuccess("");
-      return;
-    }
-
-    let cancelled = false;
-    const loadSttSettings = async () => {
-      setCompanySttSettingsLoading(true);
-      setCompanySttSettingsError("");
-      setCompanySttSettingsSuccess("");
-
-      try {
-        const result = await fetchCompanySttSettings(settings);
-        if (!cancelled) setCompanySttSettings(result);
-      } catch (error) {
-        if (cancelled) return;
-        const status =
-          error && typeof error === "object" && "status" in error
-            ? (error as { status?: number }).status
-            : undefined;
-        if (status === 401) {
-          handleUnauthorizedSession();
-          return;
-        }
-        setCompanySttSettingsError(
-          status === 403
-            ? "Your account is not allowed to manage STT settings."
-            : error instanceof Error
-              ? error.message
-              : "Unable to load STT settings.",
-        );
-      } finally {
-        if (!cancelled) setCompanySttSettingsLoading(false);
-      }
-    };
-
-    void loadSttSettings();
-    return () => {
-      cancelled = true;
-    };
-  }, [hasAdminAccess, isAuthorized, settings]);
-
-  const handleSaveCompanySttSettings = async (update: CompanySttSettingsUpdate) => {
-    setCompanySttSettingsSaving(true);
-    setCompanySttSettingsError("");
-    setCompanySttSettingsSuccess("");
-
-    try {
-      const result = await saveCompanySttSettings(settings, update);
-      setCompanySttSettings(result);
-      setCompanySttSettingsSuccess("STT settings saved successfully.");
-    } catch (error) {
-      const status =
-        error && typeof error === "object" && "status" in error
-          ? (error as { status?: number }).status
-          : undefined;
-      if (status === 401) {
-        handleUnauthorizedSession();
-      } else {
-        setCompanySttSettingsError(
-          status === 403
-            ? "Your account is not allowed to manage STT settings."
-            : error instanceof Error
-              ? error.message
-              : "Unable to save STT settings.",
-        );
-      }
-      throw error;
-    } finally {
-      setCompanySttSettingsSaving(false);
-    }
-  };
+  const {
+    value: companySttSettings,
+    loading: companySttSettingsLoading,
+    saving: companySttSettingsSaving,
+    forbidden: companySttSettingsForbidden,
+    errorMessage: companySttSettingsError,
+    successMessage: companySttSettingsSuccess,
+    save: handleSaveCompanySttSettings,
+  } = useCompanySttSettings(
+    settings,
+    isAuthorized && hasAdminAccess,
+    currentRoute === "qa-profile",
+    handleUnauthorizedSession,
+  );
 
   const addKeywordRule = () => {
     setKeywordRules((current) => [...current, defaultKeywordRule()]);
@@ -4616,8 +4535,9 @@ function App() {
             />
             {hasAdminAccess ? (
               <SttSettingsPage
+                key={`${settings.baseUrl}/${settings.companyId}/${settings.accessToken}`}
                 companyId={settings.companyId}
-                isAdministrator
+                isAdministrator={!companySttSettingsForbidden}
                 value={companySttSettings}
                 loading={companySttSettingsLoading}
                 saving={companySttSettingsSaving}

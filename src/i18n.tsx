@@ -26,6 +26,38 @@ export const BUILTIN_LOCALIZATION_OPTIONS: UiLocalizationOptionsResponse = {
 };
 
 const messages = {
+  "STT Settings": { hy: "Խոսքի ճանաչման կարգավորումներ", ru: "Настройки распознавания речи" },
+  "Choose how new audio is transcribed and prepared for analysis.": { hy: "Ընտրեք՝ ինչպես վերծանել նոր ձայնագրությունները և պատրաստել վերլուծության համար։", ru: "Выберите способ расшифровки новых записей и подготовки к анализу." },
+  "Transcription provider": { hy: "Խոսքի ճանաչման մատակարար", ru: "Провайдер распознавания речи" },
+  "SatisfAI STT service": { hy: "SatisfAI խոսքի ճանաչման ծառայություն", ru: "Сервис распознавания речи SatisfAI" },
+  "Transcription model": { hy: "Խոսքի ճանաչման մոդել", ru: "Модель распознавания речи" },
+  "Use provider default": { hy: "Օգտագործել մատակարարի լռելյայն մոդելը", ru: "Использовать модель провайдера по умолчанию" },
+  "{{model}} (recommended)": { hy: "{{model}} (առաջարկվող)", ru: "{{model}} (рекомендуется)" },
+  "{{model}} (legacy)": { hy: "{{model}} (նախորդ սերնդի)", ru: "{{model}} (устаревшая)" },
+  "{{model}} (current)": { hy: "{{model}} (ընթացիկ)", ru: "{{model}} (текущая)" },
+  "{{language}} (current)": { hy: "{{language}} (ընթացիկ)", ru: "{{language}} (текущий)" },
+  "This selection applies to new uploaded recordings and imported calls.": { hy: "Այս ընտրությունը կիրառվում է նոր վերբեռնված ձայնագրությունների և ներմուծված զանգերի համար։", ru: "Этот выбор применяется к новым загруженным записям и импортированным звонкам." },
+  "Optional. Leave blank to use the provider default. Up to 64 letters, digits, ., _, /, or -; start with a letter or digit.": { hy: "Ըստ ցանկության։ Դատարկ թողնելիս կիրառվում է մատակարարի լռելյայն մոդելը։ Առավելագույնը 64 տառ, թիվ, ., _, / կամ -․ առաջին նիշը՝ տառ կամ թիվ։", ru: "Необязательно. Оставьте пустым для модели провайдера по умолчанию. До 64 букв, цифр, ., _, / или -; первый символ — буква или цифра." },
+  "Enter a model of up to 64 letters, digits, ., _, /, or -, starting with a letter or digit.": { hy: "Մուտքագրեք մինչև 64 տառից, թվից, ., _, / կամ - նիշից կազմված մոդել՝ սկսելով տառով կամ թվով։", ru: "Введите модель длиной до 64 букв, цифр, ., _, / или -, начиная с буквы или цифры." },
+  "Default transcription language": { hy: "Խոսքի ճանաչման լռելյայն լեզու", ru: "Язык распознавания по умолчанию" },
+  "Automatic / multilingual (recommended)": { hy: "Ավտոմատ / բազմալեզու (առաջարկվող)", ru: "Автоматически / несколько языков (рекомендуется)" },
+  "Armenian": { hy: "Հայերեն", ru: "Армянский" },
+  "Russian": { hy: "Ռուսերեն", ru: "Русский" },
+  "English": { hy: "Անգլերեն", ru: "Английский" },
+  "Automatic mode supports multilingual calls. A language chosen on an individual upload can override this default.": { hy: "Ավտոմատ ռեժիմն աջակցում է բազմալեզու զանգերին։ Առանձին վերբեռնման ժամանակ ընտրված լեզուն կարող է փոխարինել այս լռելյայն արժեքը։", ru: "Автоматический режим поддерживает многоязычные звонки. Язык, выбранный при загрузке отдельной записи, может заменить это значение." },
+  "Automatic audio enhancement": { hy: "Ձայնի ավտոմատ բարելավում", ru: "Автоматическое улучшение звука" },
+  "Applies to the custom STT service. When enabled, poor-quality audio can be enhanced automatically. When disabled, the original audio is always used.": { hy: "Կիրառվում է սեփական խոսքի ճանաչման ծառայության համար։ Միացված լինելու դեպքում ցածրորակ ձայնը կարող է ավտոմատ բարելավվել։ Անջատված լինելու դեպքում միշտ օգտագործվում է սկզբնական ձայնը։", ru: "Применяется к собственному сервису распознавания речи. При включении звук низкого качества может улучшаться автоматически. При отключении всегда используется исходный звук." },
+  "Loading STT settings": { hy: "Խոսքի ճանաչման կարգավորումները բեռնվում են", ru: "Загрузка настроек распознавания речи" },
+  "Fetching your company transcription defaults.": { hy: "Բեռնվում են ձեր ընկերության խոսքի ճանաչման լռելյայն կարգավորումները։", ru: "Загружаются настройки распознавания речи вашей компании." },
+  "Refreshing settings…": { hy: "Կարգավորումները թարմացվում են…", ru: "Обновление настроек…" },
+  "Unsaved changes": { hy: "Չպահպանված փոփոխություններ", ru: "Несохраненные изменения" },
+  "Save STT settings": { hy: "Պահպանել խոսքի ճանաչման կարգավորումները", ru: "Сохранить настройки распознавания речи" },
+  "STT settings saved successfully.": { hy: "Խոսքի ճանաչման կարգավորումները հաջողությամբ պահպանվեցին։", ru: "Настройки распознавания речи успешно сохранены." },
+  "Unable to load STT settings.": { hy: "Չհաջողվեց բեռնել խոսքի ճանաչման կարգավորումները։", ru: "Не удалось загрузить настройки распознавания речи." },
+  "Unable to save STT settings.": { hy: "Չհաջողվեց պահպանել խոսքի ճանաչման կարգավորումները։", ru: "Не удалось сохранить настройки распознавания речи." },
+  "Your account is not allowed to manage STT settings.": { hy: "Ձեր հաշիվը չունի խոսքի ճանաչման կարգավորումները կառավարելու թույլտվություն։", ru: "У вашей учетной записи нет прав на управление настройками распознавания речи." },
+  "Administrator access is required to view or edit speech-to-text settings.": { hy: "Խոսքի ճանաչման կարգավորումները դիտելու կամ խմբագրելու համար անհրաժեշտ է ադմինիստրատորի հասանելիություն։", ru: "Для просмотра или изменения настроек распознавания речи требуются права администратора." },
+  "Company {{companyId}}": { hy: "Ընկերություն {{companyId}}", ru: "Компания {{companyId}}" },
   "Happy": { hy: "Ուրախ", ru: "Радость" },
   "Angry": { hy: "Զայրացած", ru: "Злость" },
   "Frustrated": { hy: "Հիասթափված", ru: "Раздражение" },
@@ -1292,6 +1324,7 @@ export function LanguageSelector({
               role="menuitemradio"
               className={`language-dropdown-option ${locale === option.code ? "is-active" : ""}`}
               aria-label={option.nativeName}
+              data-i18n-skip="true"
               aria-checked={locale === option.code}
               onClick={() => {
                 setIsOpen(false);

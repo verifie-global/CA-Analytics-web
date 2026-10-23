@@ -32,24 +32,32 @@ describe("company STT settings", () => {
 
     await expect(fetchCompanySttSettings(settings)).resolves.toEqual({
       companyId: 7,
+      provider: "custom",
+      model: null,
       defaultLanguage: "ru",
       enableAudioEnhancement: false,
     });
     await expect(fetchCompanySttSettings(settings)).resolves.toEqual({
       companyId: 7,
+      provider: "custom",
+      model: null,
       defaultLanguage: "auto",
       enableAudioEnhancement: true,
     });
     expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[0]).toBe(
       "https://api.example.test/api/companies/7/stt-settings",
     );
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers)
+      .toMatchObject({ Authorization: "Bearer jwt-token" });
   });
 
   it("updates settings with the backend contract", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ companyId: 7, defaultLanguage: "hy", enableAudioEnhancement: true }));
+    const fetchMock = vi.fn(async () => jsonResponse({ companyId: 7, provider: "openai", model: "gpt-transcribe", defaultLanguage: "hy", enableAudioEnhancement: true }));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await saveCompanySttSettings(settings, {
+      provider: "openai",
+      model: "gpt-transcribe",
       defaultLanguage: "hy",
       enableAudioEnhancement: true,
     });
@@ -63,6 +71,8 @@ describe("company STT settings", () => {
       },
     });
     expect(JSON.parse(String(init.body))).toEqual({
+      provider: "openai",
+      model: "gpt-transcribe",
       defaultLanguage: "hy",
       enableAudioEnhancement: true,
     });
@@ -77,9 +87,29 @@ describe("company STT settings", () => {
   it("surfaces validation messages from failed updates", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ errors: { defaultLanguage: ["Unsupported language."] } }, 400)));
     await expect(saveCompanySttSettings(settings, {
+      provider: "custom",
+      model: null,
       defaultLanguage: "bad",
       enableAudioEnhancement: true,
     })).rejects.toMatchObject({ status: 400, message: "Unsupported language." });
+  });
+
+  it.each(["custom", "gcp", "openai"] as const)("sends an explicit null default model for %s and trusts the effective response", async (provider) => {
+    const effective = { companyId: 7, provider, model: "effective-model", defaultLanguage: "ru", enableAudioEnhancement: false };
+    const fetchMock = vi.fn(async () => jsonResponse(effective));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(saveCompanySttSettings(settings, {
+      provider, model: null, defaultLanguage: "ru", enableAudioEnhancement: false,
+    })).resolves.toEqual(effective);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ provider, model: null, defaultLanguage: "ru", enableAudioEnhancement: false });
+  });
+
+  it("preserves a null model returned by the backend instead of the requested model", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ companyId: 7, provider: "openai", model: null, defaultLanguage: "en", enableAudioEnhancement: true })));
+    await expect(saveCompanySttSettings(settings, {
+      provider: "openai", model: "gpt-transcribe", defaultLanguage: "ru", enableAudioEnhancement: false,
+    })).resolves.toEqual({ companyId: 7, provider: "openai", model: null, defaultLanguage: "en", enableAudioEnhancement: true });
   });
 });
 
