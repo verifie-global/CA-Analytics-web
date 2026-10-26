@@ -49,6 +49,8 @@ import { VoiceConnectorsPage } from "./VoiceConnectorsPage";
 import { TextConnectorPocPage } from "./TextConnectorPocPage";
 import { SttDiagnostics } from "./SttDiagnostics";
 import { SttSettingsPage } from "./SttSettingsPage";
+import { DatasetStudioPage } from "./DatasetStudioPage";
+import { createDatasetWorkspace, type DatasetWorkspace } from "./datasetStudioTypes";
 import { useCompanySttSettings } from "./useCompanySttSettings";
 import {
   LanguageSelector,
@@ -94,7 +96,7 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-export type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "voice-connectors" | "text-connector-poc" | "demo-call" | "account";
+export type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "voice-connectors" | "text-connector-poc" | "demo-call" | "account" | "dataset-studio";
 type AppNavKey =
   | "dashboard"
   | "reports"
@@ -108,6 +110,7 @@ type AppNavKey =
   | "users"
   | "voice"
   | "text"
+  | "dataset"
   | "logout";
 
 type KeywordRule = {
@@ -464,6 +467,9 @@ const getDefaultFilters = (): CallFilters => {
 };
 
 export const getRouteFromPath = (pathName: string): AppRoute => {
+  if (pathName === "/dataset-studio" || pathName === "/dataset-studio/") {
+    return "dataset-studio";
+  }
   if (pathName === "/democall") {
     return "demo-call";
   }
@@ -1432,6 +1438,9 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
       {name === "text" && (
         <path d="M4 5h16v10H9l-5 4V5Zm4 4h8M8 12h5" {...common} />
       )}
+      {name === "dataset" && (
+        <path d="M4 4h16v16H4zM8 8h8M8 12h3M8 16h3m3-2 2 2 4-5" {...common} />
+      )}
       {name === "logout" && (
         <path d="M14 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2M9 12h12m0 0-4-4m4 4-4 4" {...common} />
       )}
@@ -1720,6 +1729,22 @@ function App() {
     }
   });
   const [draftSettings, setDraftSettings] = useState<AppSettings>(settings);
+  const datasetWorkspaces = useRef(new Map<string, DatasetWorkspace>());
+  const datasetWorkspaceKey = JSON.stringify([settings.baseUrl, settings.companyId,
+    settings.userId != null ? ["user", settings.userId] : ["credential", settings.apiToken || settings.accessToken]]);
+  if (!datasetWorkspaces.current.has(datasetWorkspaceKey)) {
+    datasetWorkspaces.current.set(datasetWorkspaceKey, createDatasetWorkspace());
+  }
+  useEffect(() => {
+    const protectDatasetDrafts = (event: BeforeUnloadEvent) => {
+      if ([...datasetWorkspaces.current.values()].some((workspace) => workspace.drafts.size > 0)) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", protectDatasetDrafts);
+    return () => window.removeEventListener("beforeunload", protectDatasetDrafts);
+  }, []);
   const [filters, setFilters] = useState<CallFilters>(() => getDefaultFilters());
   const [calls, setCalls] = useState<CallSummary[]>([]);
   const [callsTotal, setCallsTotal] = useState<number | null>(null);
@@ -1851,7 +1876,9 @@ function App() {
 
   const navigateTo = (route: AppRoute) => {
     const nextPath =
-      route === "qa-profile"
+      route === "dataset-studio"
+        ? "/dataset-studio"
+        : route === "qa-profile"
         ? "/settings/qa-profile"
         : route === "workflow-automations"
           ? "/settings/workflow-automations"
@@ -4116,6 +4143,12 @@ function App() {
       onClick: () => navigateTo("reports"),
     },
     {
+      key: "dataset",
+      label: "Dataset Studio",
+      active: currentRoute === "dataset-studio",
+      onClick: () => navigateTo("dataset-studio"),
+    },
+    {
       key: "demo",
       label: "Demo call",
       active: false,
@@ -4474,7 +4507,14 @@ function App() {
         ) : null}
 
       <main className="layout">
-        {currentRoute === "account" ? (
+        {currentRoute === "dataset-studio" ? (
+          <DatasetStudioPage
+            key={datasetWorkspaceKey}
+            settings={settings}
+            onUnauthorized={handleUnauthorizedSession}
+            workspace={datasetWorkspaces.current.get(datasetWorkspaceKey)!}
+          />
+        ) : currentRoute === "account" ? (
           settings.apiToken ? (
             <section className="panel permission-denied" role="alert">
               <h1>Account unavailable</h1>

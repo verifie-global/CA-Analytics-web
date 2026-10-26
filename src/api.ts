@@ -67,6 +67,11 @@ import {
   DEFAULT_QA_SCORE_MAXIMUM,
   DEFAULT_QA_SCORING_MODE,
 } from "./qaDisplay";
+import type {
+  AnnotationClip, AnnotationFilter, AnnotationPage, AnnotationSaveResult,
+  AnnotationSession, AnnotationSessionSummary, AnnotationSource,
+  CreateAnnotationSession, SaveAnnotationClip,
+} from "./datasetStudioTypes";
 
 export type RequestError = Error & {
   status?: number;
@@ -222,6 +227,67 @@ async function request<T>(
   }
 
   return (await response.json()) as T;
+}
+
+const annotationPath = (settings: AppSettings, sessionId?: string) =>
+  `/api/companies/${encodeURIComponent(settings.companyId)}/annotation-sessions${sessionId ? `/${encodeURIComponent(sessionId)}` : ""}`;
+
+export const fetchAnnotationSessions = (settings: AppSettings, signal?: AbortSignal) =>
+  request<AnnotationSessionSummary[]>(settings, annotationPath(settings), { signal });
+
+export const fetchAnnotationSources = (settings: AppSettings, search: string, page: number, signal?: AbortSignal) =>
+  request<AnnotationPage<AnnotationSource>>(settings, `${annotationPath(settings)}/sources`, { signal },
+    new URLSearchParams({ q: search, page: String(page) }));
+
+export const createAnnotationSession = (settings: AppSettings, input: CreateAnnotationSession) =>
+  request<{ id: string; name: string }>(settings, annotationPath(settings), {
+    method: "POST", headers: jsonHeaders(), body: JSON.stringify(input),
+  });
+
+export const fetchAnnotationSession = (settings: AppSettings, sessionId: string, signal?: AbortSignal) =>
+  request<AnnotationSession>(settings, annotationPath(settings, sessionId), { signal });
+
+export const retryAnnotationRecordings = (settings: AppSettings, sessionId: string) =>
+  request<{ retried: number }>(settings, `${annotationPath(settings, sessionId)}/retry`, { method: "POST" });
+
+export const fetchAnnotationClips = (settings: AppSettings, sessionId: string, status: AnnotationFilter, page: number, signal?: AbortSignal) =>
+  request<AnnotationPage<AnnotationClip>>(settings, `${annotationPath(settings, sessionId)}/clips`, { signal },
+    new URLSearchParams({ status, page: String(page) }));
+
+export const saveAnnotationClip = (settings: AppSettings, sessionId: string, clipId: string, input: SaveAnnotationClip) =>
+  request<AnnotationSaveResult>(settings, `${annotationPath(settings, sessionId)}/clips/${encodeURIComponent(clipId)}`, {
+    method: "PUT", headers: jsonHeaders(), body: JSON.stringify(input),
+  });
+
+async function annotationBinary(settings: AppSettings, path: string, query?: URLSearchParams, signal?: AbortSignal) {
+  const response = await fetch(buildUrl(settings, path, query), { headers: authHeaders(settings), signal });
+  if (!response.ok) {
+    const body = await response.text();
+    throw createRequestError(parseRequestErrorMessage(body, `Request failed with status ${response.status}`), response.status);
+  }
+  return response;
+}
+
+export async function fetchAnnotationAudio(
+  settings: AppSettings, sessionId: string, clipId: string,
+  start: number, end: number, signal?: AbortSignal,
+) {
+  const response = await annotationBinary(settings,
+    `${annotationPath(settings, sessionId)}/clips/${encodeURIComponent(clipId)}/audio`,
+    new URLSearchParams({ start: String(start), end: String(end) }), signal);
+  return response.blob();
+}
+
+export async function exportAnnotationDataset(settings: AppSettings, sessionId: string) {
+  const response = await annotationBinary(settings, `${annotationPath(settings, sessionId)}/export`);
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const encoded = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i);
+  let fileName = plain?.[1] ?? plain?.[2]?.trim() ?? "dataset.zip";
+  if (encoded) {
+    try { fileName = decodeURIComponent(encoded.trim()); } catch { /* Use the plain filename. */ }
+  }
+  return { blob: await response.blob(), fileName };
 }
 
 const unwrapArray = (payload: unknown, ...keys: string[]): unknown[] => {
