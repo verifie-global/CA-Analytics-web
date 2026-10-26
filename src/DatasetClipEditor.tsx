@@ -135,6 +135,7 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
     });
   const [listened, setListened] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [confirmedBoundaries, setConfirmedBoundaries] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [error, setError] = useState("");
@@ -166,11 +167,12 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
     if ("start" in change || "end" in change) {
       setPreview(null);
       setListened(false);
+      setConfirmedBoundaries(false);
     }
   };
 
   const save = async (status: AnnotationStatus) => {
-    if (signal.aborted || saving || reloading || invalid || hasConflict || (status === "verified" && (!listened || !preview || !confirmed || !draft.text.trim()))) return;
+    if (signal.aborted || saving || reloading || invalid || hasConflict || (status === "verified" && (!listened || !preview || !confirmed || (clip.boundaryReviewRequired && !confirmedBoundaries) || !draft.text.trim()))) return;
     setSaving(true);
     setError("");
     try {
@@ -178,14 +180,18 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
         text: draft.text, status, revision: clip.revision,
         startSeconds: Number(draft.start), endSeconds: Number(draft.end), note: draft.note || null,
         confirmedCorrect: status === "verified",
+        confirmedBoundaries: status === "verified",
       }, signal);
       if (signal.aborted) return;
       const saved: AnnotationClip = { ...clip, ...result, text: draft.text,
-        startSeconds: Number(draft.start), endSeconds: Number(draft.end), note: draft.note || null };
+        startSeconds: Number(draft.start), endSeconds: Number(draft.end), note: draft.note || null,
+        boundariesConfirmed: status === "verified" };
       // Notify the workspace even if navigation unmounted the editor during the request.
       onDraft(createAnnotationDraft(session.id, saved));
       if (!mounted.current) return;
       setDraft(createAnnotationDraft(session.id, saved));
+      setConfirmed(false);
+      setConfirmedBoundaries(false);
       setMessage(status === "pending" ? "Draft saved. Verification has been cleared." : status === "verified" ? "Clip verified." : "Clip rejected.");
       onSaved(saved, status === "verified");
     } catch (reason) {
@@ -222,6 +228,7 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
       setConflict(false);
       setListened(false);
       setConfirmed(false);
+      setConfirmedBoundaries(false);
       setPreview({ start: latest.startSeconds, end: latest.endSeconds, version: Date.now() });
       setMessage("Latest saved version loaded. Listen to the preview again before verifying.");
       onSaved(latest, false);
@@ -241,6 +248,8 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
     </div>
     <DatasetSourceCompany companyId={clip.sourceCompanyId} companyName={clip.sourceCompanyName} />
     <p className="dataset-muted">Source {formatClipTime(clip.startSeconds)} – {formatClipTime(clip.endSeconds)} · {(clip.endSeconds - clip.startSeconds).toFixed(2)}s</p>
+    {clip.boundaryMethod && <p className="dataset-muted">Boundary method: <span data-i18n-skip>{clip.boundaryMethod.replace(/[_-]+/g, " ")}</span>{clip.boundariesConfirmed ? " · Confirmed in the saved version" : ""}</p>}
+    {clip.boundaryReviewRequired && <p className="dataset-notice">Boundary review is required. Listen closely at the beginning and end for cut-off words.</p>}
     {dirty && <p className="dataset-notice" role="status">Unsaved edits are retained when you change clips or pages.</p>}
     {hasConflict && <div className="dataset-notice dataset-warning" role="alert">
       <strong>This clip has a conflicting saved version.</strong><p>Your local text and boundaries are retained. Reload the saved version to continue.</p>
@@ -257,12 +266,15 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
       {boundaryError ? <p className="dataset-error" role="alert">{boundaryError}</p> : <p className="dataset-muted">Preview duration: {duration.toFixed(2)}s. Word boundaries take priority over the {session.minClipSeconds}–{session.maxClipSeconds}s target.</p>}
       {outsideTarget && <p className="dataset-warning">Outside the session duration target. Check the word boundaries.</p>}
       {!preview && <button className="secondary-button" type="button" disabled={Boolean(boundaryError)} onClick={() => {
-        setListened(false); setConfirmed(false);
+        setListened(false); setConfirmed(false); setConfirmedBoundaries(false);
         setPreview({ start: Number(draft.start), end: Number(draft.end), version: Date.now() });
       }}>Prepare audio preview</button>}
     </fieldset>
     {preview && <ClipAudioPreview key={`${clip.id}/${preview.version}/${preview.start}/${preview.end}`} settings={settings}
-      sessionId={session.id} clipId={clip.id} start={preview.start} end={preview.end} signal={signal} onForbidden={onForbidden} onListened={setListened} onUnauthorized={onUnauthorized} />}
+      sessionId={session.id} clipId={clip.id} start={preview.start} end={preview.end} signal={signal} onForbidden={onForbidden} onListened={(value) => {
+        setListened(value);
+        if (!value) { setConfirmed(false); setConfirmedBoundaries(false); }
+      }} onUnauthorized={onUnauthorized} />}
     <p className={listened ? "dataset-listened" : "dataset-muted"} role="status">{listened ? "Complete preview listened to." : "Listen to the entire current preview to enable verification. Skipping audio does not count."}</p>
     <fieldset disabled={saving || reloading} className="dataset-fields">
       <legend>Review transcript</legend>
@@ -274,11 +286,14 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
       <label className="dataset-checkbox"><input type="checkbox" checked={confirmed} disabled={!listened || !preview} onChange={(event) => setConfirmed(event.target.checked)} />
         <span>I listened to the entire current preview and confirm the corrected transcript matches the audio.</span>
       </label>
+      {clip.boundaryReviewRequired && <label className="dataset-checkbox"><input type="checkbox" checked={confirmedBoundaries} disabled={!listened || !preview} onChange={(event) => setConfirmedBoundaries(event.target.checked)} />
+        <span>I checked both ends: no word is cut.</span>
+      </label>}
     </fieldset>
     <div className="dataset-actions">
       <button type="button" className="secondary-button" disabled={saving || reloading || invalid || hasConflict} onClick={() => void save("pending")}>Save draft</button>
       <button type="button" className="dataset-reject" disabled={saving || reloading || invalid || hasConflict} onClick={() => void save("rejected")}>Reject clip</button>
-      <button type="button" disabled={saving || reloading || invalid || hasConflict || !listened || !preview || !confirmed || !draft.text.trim()} onClick={() => void save("verified")}>{saving ? "Saving…" : "Verify & next"}</button>
+      <button type="button" disabled={saving || reloading || invalid || hasConflict || !listened || !preview || !confirmed || (clip.boundaryReviewRequired && !confirmedBoundaries) || !draft.text.trim()} onClick={() => void save("verified")}>{saving ? "Saving…" : "Verify & next"}</button>
     </div>
     {(dirty || hasConflict) && <button type="button" className="secondary-button small-button" disabled={saving || reloading} onClick={() => void reload()}>Discard edits and reload saved clip</button>}
   </section>;

@@ -72,6 +72,7 @@ import type {
   AnnotationSession, AnnotationSessionSummary, AnnotationSource,
   CreateAnnotationSession, SaveAnnotationClip, DatasetStudioIdentity,
   AnnotationSourceCompany, AnnotationSourceFilters, AnnotationSourceSelection, AnnotationSourceSelectionInput,
+  AnnotationOptions, AnnotationTranscriptionSettings,
 } from "./datasetStudioTypes";
 
 export type RequestError = Error & {
@@ -249,6 +250,24 @@ export async function fetchDatasetStudioIdentity(settings: AppSettings, signal?:
 export const fetchAnnotationSessions = (settings: AppSettings, signal?: AbortSignal) =>
   request<AnnotationSessionSummary[]>(settings, annotationPath(), { signal });
 
+export async function fetchAnnotationOptions(settings: AppSettings, signal?: AbortSignal): Promise<AnnotationOptions> {
+  const payload = asRecord(await request<unknown>(settings, `${annotationPath()}/options`, { signal }));
+  const providers: AnnotationOptions["providers"] = [];
+  for (const item of asArray(payload.providers)) {
+    const entry = asRecord(item);
+    const provider = readString(entry, "provider", "id")?.toLowerCase();
+    if (provider !== "gcp" && provider !== "openai" && provider !== "custom") continue;
+    const models = [...new Set(asArray(entry.models).filter((model): model is string => typeof model === "string" && Boolean(model.trim())))];
+    const defaultModel = readString(entry, "defaultModel") ?? null;
+    if ((provider !== "custom" && !models.length) || (models.length && defaultModel && !models.includes(defaultModel))) {
+      throw new Error("The transcription options are incomplete. Reload the provider options and try again.");
+    }
+    providers.push({ provider, models, defaultModel });
+  }
+  if (!providers.length) throw new Error("No transcription providers are available. Reload the provider options and try again.");
+  return { providers };
+}
+
 export const fetchAnnotationSourceCompanies = (settings: AppSettings, signal?: AbortSignal) =>
   request<AnnotationSourceCompany[]>(settings, `${annotationPath()}/sources/companies`, { signal });
 
@@ -273,8 +292,10 @@ export const createAnnotationSession = (settings: AppSettings, input: CreateAnno
 export const fetchAnnotationSession = (settings: AppSettings, sessionId: string, signal?: AbortSignal) =>
   request<AnnotationSession>(settings, annotationPath(sessionId), { signal });
 
-export const retryAnnotationRecordings = (settings: AppSettings, sessionId: string, signal?: AbortSignal) =>
-  request<{ retried: number }>(settings, `${annotationPath(sessionId)}/retry`, { method: "POST", signal });
+export const retryAnnotationRecordings = (settings: AppSettings, sessionId: string, input: AnnotationTranscriptionSettings, signal?: AbortSignal) =>
+  request<{ retried: number }>(settings, `${annotationPath(sessionId)}/retry`, {
+    method: "POST", headers: jsonHeaders(), body: JSON.stringify(input), signal,
+  });
 
 export const fetchAnnotationClips = (settings: AppSettings, sessionId: string, status: AnnotationFilter, page: number, signal?: AbortSignal) =>
   request<AnnotationPage<AnnotationClip>>(settings, `${annotationPath(sessionId)}/clips`, { signal },

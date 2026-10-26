@@ -126,6 +126,8 @@
 .dataset-source small { font-family: var(--font-sans); color: var(--ink-soft); }
 .dataset-source-company { display: block; color: var(--ink-soft); font-family: var(--font-sans); font-size: .75rem; font-weight: 400; overflow-wrap: anywhere; }
 .dataset-recording-selection { display: grid; gap: .9rem; min-width: 0; }
+.dataset-transcription-settings { display: grid; gap: .9rem; min-width: 0; }
+.dataset-transcription-settings + button { margin-top: .9rem; }
 .dataset-selection-toolbar { position: sticky; top: .5rem; z-index: 2; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .8rem; padding: .85rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--panel); box-shadow: var(--shadow-card); }
 .dataset-selection-toolbar > strong { font-size: .85rem; white-space: nowrap; }
 .dataset-selection-tools { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; }

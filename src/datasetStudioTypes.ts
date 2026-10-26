@@ -30,6 +30,13 @@ export type AnnotationSourceSelection = {
   truncated: boolean;
   limit: number;
 };
+export type AnnotationProviderOptions = {
+  provider: SttProvider;
+  models: string[];
+  defaultModel: string | null;
+};
+export type AnnotationOptions = { providers: AnnotationProviderOptions[] };
+export type AnnotationTranscriptionSettings = { provider: SttProvider; model: string | null };
 export type AnnotationSessionSummary = {
   id: string;
   name: string;
@@ -90,6 +97,9 @@ export type AnnotationClip = {
   recordingName: string;
   sourceCompanyId: number | string;
   sourceCompanyName: string | null;
+  boundaryMethod: string | null;
+  boundaryReviewRequired: boolean;
+  boundariesConfirmed: boolean;
 };
 export type SaveAnnotationClip = {
   text: string;
@@ -99,12 +109,13 @@ export type SaveAnnotationClip = {
   endSeconds: number;
   note: string | null;
   confirmedCorrect: boolean;
+  confirmedBoundaries: boolean;
 };
 export type AnnotationSaveResult = {
   revision: string;
   status: AnnotationStatus;
   reviewedAt: string | null;
-};
+} & Partial<Pick<AnnotationClip, "boundaryMethod" | "boundaryReviewRequired" | "boundariesConfirmed">>;
 
 export type AnnotationDraft = {
   sessionId: string;

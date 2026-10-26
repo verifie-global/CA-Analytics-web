@@ -4,6 +4,7 @@ import {
   fetchAnnotationSession, fetchAnnotationSessions, fetchAnnotationSources, retryAnnotationRecordings, saveAnnotationClip,
   fetchDatasetStudioIdentity,
   fetchAnnotationSourceCompanies, selectAnnotationSources,
+  fetchAnnotationOptions,
 } from "./api";
 import type { AppSettings } from "./types";
 
@@ -12,6 +13,17 @@ const base = "https://api.example.test/api/companies/1/annotation-sessions";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Dataset Studio API transport", () => {
+  it.each(["provider", "id"])("loads the authoritative model catalog and defaults using the provider %s field", async (key) => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ providers: [
+      { [key]: "openai", models: ["future-transcribe", "gpt-4o-transcribe", "whisper-1"], defaultModel: "future-transcribe" },
+      { [key]: "custom", models: [], defaultModel: null },
+    ] }), { headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await fetchAnnotationOptions(settings);
+    expect(result.providers[0]).toEqual({ provider: "openai", models: ["future-transcribe", "gpt-4o-transcribe", "whisper-1"], defaultModel: "future-transcribe" });
+    expect(fetchMock).toHaveBeenCalledWith(`${base}/options`, expect.objectContaining({ headers: { Authorization: "Bearer jwt" } }));
+  });
+
   it("loads source companies and uses the same ISO filter bounds for browsing and bulk selection", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({}), { headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -35,14 +47,14 @@ describe("Dataset Studio API transport", () => {
     await fetchAnnotationSessions(settings);
     await fetchAnnotationSession(settings, "session");
     await fetchAnnotationClips(settings, "session", "rejected", 3);
-    await retryAnnotationRecordings(settings, "session");
+    await retryAnnotationRecordings(settings, "session", { provider: "openai", model: "gpt-4o-transcribe" });
     const input = { name: "Armenian calls", conversationIds: [1, 51], provider: "gcp" as const, model: "chirp_3", language: "hy" as const, minClipSeconds: 10, maxClipSeconds: 15 };
     await createAnnotationSession(settings, input);
-    const update = { text: "Բարև", note: null, status: "verified" as const, revision: "revision-uuid", startSeconds: .12, endSeconds: 12.88, confirmedCorrect: true };
+    const update = { text: "Բարև", note: null, status: "verified" as const, revision: "revision-uuid", startSeconds: .12, endSeconds: 12.88, confirmedCorrect: true, confirmedBoundaries: true };
     await saveAnnotationClip(settings, "session", "clip", update);
     expect(fetchMock).toHaveBeenNthCalledWith(1, `${base}/sources?q=${encodeURIComponent("Հայերեն & calls").replace(/%20/g, "+")}&page=2`, expect.objectContaining({ signal: controller.signal, headers: { Authorization: "Bearer jwt" } }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, `${base}/session/clips?status=rejected&page=3`, expect.anything());
-    expect(fetchMock).toHaveBeenNthCalledWith(5, `${base}/session/retry`, expect.objectContaining({ method: "POST" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, `${base}/session/retry`, expect.objectContaining({ method: "POST", body: JSON.stringify({ provider: "openai", model: "gpt-4o-transcribe" }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(6, base, expect.objectContaining({ method: "POST", body: JSON.stringify(input) }));
     expect(fetchMock).toHaveBeenNthCalledWith(7, `${base}/session/clips/clip`, expect.objectContaining({ method: "PUT", body: JSON.stringify(update) }));
     for (const [, options] of fetchMock.mock.calls as unknown as [string, RequestInit][]) expect(options.headers).toMatchObject({ Authorization: "Bearer jwt" });
@@ -81,5 +93,6 @@ describe("Dataset Studio API transport", () => {
     await expect(exportAnnotationDataset(settings, "session")).rejects.toMatchObject({ status, message: "The server explains the problem." });
     await expect(fetchAnnotationSourceCompanies(settings)).rejects.toMatchObject({ status, message: "The server explains the problem." });
     await expect(selectAnnotationSources(settings, { q: "", sourceCompanyId: null, createdFrom: null, createdTo: null, limit: 200, excludeConversationIds: [] })).rejects.toMatchObject({ status, message: "The server explains the problem." });
+    await expect(fetchAnnotationOptions(settings)).rejects.toMatchObject({ status, message: "The server explains the problem." });
   });
 });

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App, { getRouteFromPath } from "./App";
 import { I18nProvider } from "./i18n";
+import { annotationOptionsFixture } from "./datasetStudio.testFixtures";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 type User = { id: number; companyId?: number | string | null; role: "Admin" | "User"; agentIds: number[] };
@@ -20,6 +21,7 @@ function setup(options: { companyId?: number | string | null; role?: "Admin" | "
     if (url.endsWith("/api/auth/login")) return json({ accessToken: `jwt-user-${user.id}`, companyId: user.companyId, userId: user.id, role: user.role });
     if (url.endsWith("/api/auth/me")) { await options.deferMe; return json({ ...user, preferredLocale: "en" }); }
     if (url.includes("/annotation-sessions") && annotationStatus !== 200) return json({ detail: "Annotation access denied." }, annotationStatus);
+    if (url.endsWith("/annotation-sessions/options")) return json(annotationOptionsFixture);
     if (url.endsWith("/annotation-sessions")) return json([{ id: "session", name: "Training calls", provider: "gcp", model: "chirp_3", language: "hy", createdAt: "2026-10-26T10:00:00Z", recordings: 1, readyRecordings: 1, failedRecordings: 0, clips: 1, verified: 0, rejected: 0 }]);
     if (url.includes("/annotation-sessions/session/clips?")) return json({ items: [clip], total: 1, page: 1, pageSize: 50 });
     if (url.includes("/annotation-sessions/session/clips/clip/audio?")) return new Response("wav", { headers: { "Content-Type": "audio/wav" } });

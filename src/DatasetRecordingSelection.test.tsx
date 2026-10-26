@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DatasetCreateSession } from "./DatasetCreateSession";
 import type { AnnotationSource, AnnotationSourceFilters, AnnotationSourceSelectionInput } from "./datasetStudioTypes";
 import type { AppSettings } from "./types";
+import { annotationOptionsFixture } from "./datasetStudio.testFixtures";
 
 const settings: AppSettings = { baseUrl: "https://api.example.test", companyId: "42", accessToken: "company-1-user", apiToken: "" };
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
@@ -35,6 +36,7 @@ function mockApi() {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     requests.push({ url, init });
+    if (url.pathname.endsWith("/options")) return json(annotationOptionsFixture);
     if (url.pathname.endsWith("/sources/companies")) return json(companyStatus === 200
       ? [{ id: 7, name: "Alpha", recordings: 125 }, { id: 42, name: "Beta", recordings: 125 }]
       : { detail: "Company options unavailable." }, companyStatus);

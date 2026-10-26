@@ -6,13 +6,14 @@ import {
 import type { AppSettings } from "./types";
 import type {
   AnnotationClip, AnnotationDraft, AnnotationFilter, AnnotationPage,
-  AnnotationSession, AnnotationSessionSummary, DatasetWorkspace,
+  AnnotationSession, AnnotationSessionSummary, AnnotationTranscriptionSettings, DatasetWorkspace,
 } from "./datasetStudioTypes";
 import { clearDatasetWorkspace, createDatasetWorkspace } from "./datasetStudioTypes";
 import { annotationExportBlocker, annotationSessionCounts, createAnnotationDraft, formatClipTime, isAnnotationDraftDirty } from "./datasetStudioModel";
 import { DatasetCreateSession } from "./DatasetCreateSession";
 import { DatasetClipEditor } from "./DatasetClipEditor";
 import { DatasetSourceCompany } from "./DatasetSourceCompany";
+import { DatasetRetrySettings } from "./DatasetRetrySettings";
 import { getIntlLocale } from "./i18n";
 
 type Props = { settings: AppSettings; onUnauthorized: () => void; onForbidden?: () => void; workspace?: DatasetWorkspace };
@@ -191,12 +192,12 @@ export function DatasetStudioPage({ settings, onUnauthorized, onForbidden, works
     setRefresh((value) => value + 1);
   };
 
-  const retry = async () => {
+  const retry = async (input: AnnotationTranscriptionSettings) => {
     if (retrying || workspace.revoked) return;
     setRetrying(true);
     setActionError("");
     try {
-      const result = await retryAnnotationRecordings(settings, sessionId, workspace.controller.signal);
+      const result = await retryAnnotationRecordings(settings, sessionId, input, workspace.controller.signal);
       if (!mounted.current || workspace.revoked) return;
       setNotice(`${result.retried} failed recording${result.retried === 1 ? "" : "s"} queued for another attempt.`);
       savingVersion.current++;
@@ -267,7 +268,9 @@ export function DatasetStudioPage({ settings, onUnauthorized, onForbidden, works
           <div className="dataset-stats"><span><strong>{counts!.ready} / {session.recordings.length}</strong> recordings ready</span><span><strong>{counts!.clips}</strong> clips</span><span><strong>{counts!.verified}</strong> verified</span><span><strong>{counts!.rejected}</strong> rejected</span><span><strong>{Math.max(0, counts!.clips - counts!.verified - counts!.rejected)}</strong> need review</span></div>
           <progress aria-label="Transcription progress" value={counts!.ready} max={Math.max(1, session.recordings.length)} />
           {counts!.active > 0 && <p role="status" className="dataset-muted">Transcribing {counts!.active} recording(s). Progress refreshes every five seconds while this page is visible. Ready clips can already be reviewed.</p>}
-          {counts!.failed > 0 && <div className="dataset-notice dataset-warning"><p>{counts!.failed} recording(s) failed. Review the errors below and retry.</p><button className="secondary-button" type="button" disabled={retrying} onClick={() => void retry()}>{retrying ? "Retrying…" : "Retry failed recordings"}</button></div>}
+          {counts!.failed > 0 && <DatasetRetrySettings key={session.id} settings={settings} signal={workspace.controller.signal}
+            initialProvider={session.provider} failed={counts!.failed} retrying={retrying} onRetry={retry}
+            onUnauthorized={onUnauthorized} onForbidden={denyAccess} />}
           <details className="dataset-recordings" open={counts!.failed > 0}><summary>Recordings and transcription status ({session.recordings.length})</summary><ul>{session.recordings.map((recording) => <li key={recording.id}><strong data-i18n-skip>{recording.name}</strong> <span className={`dataset-status dataset-status-${recording.status}`}>{recording.status}</span><DatasetSourceCompany companyId={recording.companyId} companyName={recording.companyName} /><small>{recording.clips} clips · {recording.verified} verified · {recording.rejected} rejected</small>{recording.error && <p className="dataset-error">{recording.error}</p>}</li>)}</ul></details>
         </section>
         <div className="dataset-review-layout">
