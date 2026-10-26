@@ -13,13 +13,15 @@ const makeClip = (index: number, status: AnnotationClip["status"] = "pending"): 
   id: `clip-${index}`, recordingId: "recording-1", index, startSeconds: (index - 1) * 12, endSeconds: index * 12,
   originalText: `Original ${index}`, text: `Transcript ${index}`, status, note: null, revision: `revision-${index}`,
   reviewedAt: null, reviewedByUserId: null, recordingDuration: 1000, recordingName: "Support call",
+  sourceCompanyId: 42, sourceCompanyName: "Customer company",
 });
-const recording: AnnotationRecording = { id: "recording-1", conversationId: 1, name: "Support call", status: "ready", error: null, durationSeconds: 1000, originalTranscript: "Original", clips: 2, verified: 0, rejected: 0 };
+const recording: AnnotationRecording = { id: "recording-1", conversationId: 1, name: "Support call", companyId: 42, companyName: "Customer company", status: "ready", error: null, durationSeconds: 1000, originalTranscript: "Original", clips: 2, verified: 0, rejected: 0 };
 
 function mockApi(options: { clips?: AnnotationClip[]; recordings?: AnnotationRecording[]; sourceCount?: number; sessionStatus?: number } = {}) {
   let clips = options.clips ?? [makeClip(1), makeClip(2)];
   let recordings = options.recordings ?? [{ ...recording }];
   let conflict = false;
+  let deniedPath = "";
   const requests: { url: URL; init?: RequestInit }[] = [];
   const sourceCount = options.sourceCount ?? 51;
   const detail = (): AnnotationSession => ({
@@ -31,10 +33,12 @@ function mockApi(options: { clips?: AnnotationClip[]; recordings?: AnnotationRec
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     requests.push({ url, init });
+    if (deniedPath && url.pathname.endsWith(deniedPath)) return json({ detail: "Annotation access revoked." }, 403);
+    if (url.pathname.endsWith("/sources/companies")) return json([{ id: 7, name: "Other company", recordings: 50 }, { id: 42, name: "Customer company", recordings: Math.max(0, sourceCount - 50) }]);
     if (url.pathname.endsWith("/sources")) {
       const page = Number(url.searchParams.get("page"));
       const q = url.searchParams.get("q");
-      const sources = Array.from({ length: sourceCount }, (_, index) => ({ id: index + 1, name: `Recording ${index + 1}`, createdAt: "2026-10-26T10:00:00Z", durationSeconds: index === 0 ? null : 120 })).filter((item) => !q || item.name.toLowerCase().includes(q.toLowerCase()));
+      const sources = Array.from({ length: sourceCount }, (_, index) => ({ id: index + 1, name: `Recording ${index + 1}`, companyId: index >= 50 ? 42 : 7, companyName: index >= 50 ? "Customer company" : "Other company", createdAt: "2026-10-26T10:00:00Z", durationSeconds: index === 0 ? null : 120 })).filter((item) => !q || item.name.toLowerCase().includes(q.toLowerCase()));
       return json({ items: sources.slice((page - 1) * 50, page * 50), total: sources.length, page, pageSize: 50 });
     }
     if (url.pathname.endsWith("/annotation-sessions")) {
@@ -70,7 +74,7 @@ function mockApi(options: { clips?: AnnotationClip[]; recordings?: AnnotationRec
     return json(detail());
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { requests, fetchMock, detail, setClips: (value: AnnotationClip[]) => { clips = value; }, setRecordings: (value: AnnotationRecording[]) => { recordings = value; }, setConflict: (value: boolean) => { conflict = value; } };
+  return { requests, fetchMock, detail, deny: (path: string) => { deniedPath = path; }, setClips: (value: AnnotationClip[]) => { clips = value; }, setRecordings: (value: AnnotationRecording[]) => { recordings = value; }, setConflict: (value: boolean) => { conflict = value; } };
 }
 
 function renderSession(onUnauthorized = vi.fn()) {
@@ -104,17 +108,19 @@ describe("Dataset Studio session creation", () => {
     await user.click(await screen.findByRole("button", { name: "Create session" }));
     await user.type(screen.getByLabelText("Session name"), "Training calls");
     await screen.findByText("Recording 1");
+    expect(screen.getAllByText("Other company · Company 7").length).toBe(50);
     expect(screen.getByText(/Duration unavailable/)).toBeTruthy();
     await user.click(screen.getByRole("checkbox", { name: "Recording 1" }));
     await user.click(screen.getByRole("button", { name: "Next recordings" }));
     await screen.findByText("Recording 51");
+    expect(screen.getByText("Customer company · Company 42")).toBeTruthy();
     await user.click(screen.getByRole("checkbox", { name: "Recording 51" }));
     await user.click(screen.getByRole("button", { name: "Previous recordings" }));
     await screen.findByRole("checkbox", { name: "Recording 1" });
     expect((screen.getByRole("checkbox", { name: "Recording 1" }) as HTMLInputElement).checked).toBe(true);
     await user.type(screen.getByLabelText("Search recordings"), "Recording 51");
-    await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(1));
-    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(true);
+    await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(2));
+    expect((screen.getByRole("checkbox", { name: "Recording 51" }) as HTMLInputElement).checked).toBe(true);
     await user.selectOptions(screen.getByLabelText("Language"), "hy");
     await user.click(screen.getByRole("button", { name: "Create & transcribe" }));
     await waitForEditor();
@@ -146,12 +152,12 @@ describe("Dataset Studio session creation", () => {
     await user.click(await screen.findByRole("button", { name: "Create session" }));
     for (let page = 1; page <= 4; page++) {
       await screen.findByText(`Recording ${(page - 1) * 50 + 1}`);
-      await user.click(screen.getByRole("button", { name: "Select this page" }));
+      await user.click(screen.getByRole("checkbox", { name: "Select this page" }));
       await user.click(screen.getByRole("button", { name: "Next recordings" }));
     }
     await screen.findByText("Recording 201");
     expect(screen.getByText("200 / 200 selected")).toBeTruthy();
-    expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "Recording 201" }) as HTMLInputElement).disabled).toBe(true);
   });
 });
 
@@ -310,6 +316,80 @@ describe("Dataset Studio clip review", () => {
 });
 
 describe("Dataset Studio progress, errors, and export", () => {
+  it.each(["sessions", "sources", "companies", "selection", "create", "audio", "save", "reload", "clips", "retry", "export"])("clears annotation state on a 403 from %s", async (operation) => {
+    const api = mockApi({
+      clips: operation === "export" ? [makeClip(1, "verified"), makeClip(2, "rejected")] : undefined,
+      recordings: operation === "retry" ? [{ ...recording, status: "failed", error: "Try again" }] : undefined,
+    });
+    const user = userEvent.setup();
+    const workspace = createDatasetWorkspace();
+    const onForbidden = vi.fn();
+    if (!["sessions", "sources", "companies", "selection", "create"].includes(operation)) workspace.sessionId = "session-1";
+    if (operation === "sessions") api.deny("/annotation-sessions");
+    if (operation === "audio") api.deny("/audio");
+    render(<DatasetStudioPage settings={settings} workspace={workspace} onUnauthorized={vi.fn()} onForbidden={onForbidden} />);
+    if (["sources", "companies", "selection", "create"].includes(operation)) {
+      if (operation === "sources") api.deny("/sources");
+      if (operation === "companies") api.deny("/sources/companies");
+      await user.click(await screen.findByRole("button", { name: "Create session" }));
+      if (operation === "selection") {
+        api.deny("/sources/selection");
+        await user.click(screen.getByRole("button", { name: "Select matching — up to 200" }));
+      }
+      if (operation === "create") {
+        await user.click(await screen.findByRole("checkbox", { name: "Recording 1" }));
+        fireEvent.change(screen.getByLabelText("Session name"), { target: { value: "All companies" } });
+        api.deny("/annotation-sessions");
+        await user.click(screen.getByRole("button", { name: "Create & transcribe" }));
+      }
+    } else if (operation === "export") {
+      const button = await screen.findByRole("button", { name: "Export dataset ZIP" });
+      await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+      api.deny("/export");
+      await user.click(button);
+    } else if (operation === "retry") {
+      const button = await screen.findByRole("button", { name: "Retry failed recordings" });
+      api.deny("/retry");
+      await user.click(button);
+    } else if (!["sessions", "audio"].includes(operation)) {
+      await waitForEditor();
+      fireEvent.change(screen.getByLabelText("Corrected transcript"), { target: { value: "Local private draft" } });
+      if (operation === "save") {
+        api.deny("/clips/clip-1");
+        await user.click(screen.getByRole("button", { name: "Save draft" }));
+      } else if (operation === "reload") {
+        vi.spyOn(window, "confirm").mockReturnValue(true);
+        api.deny("/clips");
+        await user.click(screen.getByRole("button", { name: "Discard edits and reload saved clip" }));
+      } else {
+        api.deny("/clips");
+        await user.click(screen.getByRole("button", { name: "Refresh clips" }));
+      }
+    }
+    await waitFor(() => expect(onForbidden).toHaveBeenCalledOnce());
+    expect(workspace.revoked).toBe(true);
+    expect(workspace.controller.signal.aborted).toBe(true);
+    expect(workspace.drafts.size).toBe(0);
+    expect(workspace.sessionId).toBe("");
+    expect(screen.queryByRole("heading", { name: "Dataset Studio" })).toBeNull();
+    expect(screen.queryByLabelText("Clip audio preview")).toBeNull();
+  });
+
+  it("stops active transcription polling after a 403", async () => {
+    vi.useFakeTimers();
+    const api = mockApi({ recordings: [{ ...recording, status: "transcribing" }] });
+    const { workspace } = renderSession();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    fireEvent.change(screen.getByLabelText("Corrected transcript"), { target: { value: "Do not retain revoked data" } });
+    api.deny("/session-1");
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(workspace.revoked).toBe(true);
+    const count = api.requests.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
+    expect(api.requests).toHaveLength(count);
+    expect(workspace.drafts.size).toBe(0);
+  });
+
   it("shows per-recording errors and retries failed recordings only", async () => {
     const api = mockApi({ recordings: [{ ...recording, status: "failed", error: "STT quota exceeded" }] });
     const user = userEvent.setup();
@@ -322,7 +402,7 @@ describe("Dataset Studio progress, errors, and export", () => {
     expect(api.requests.filter(({ url }) => url.pathname.endsWith("/retry"))).toHaveLength(1);
   });
 
-  it.each([403, 404])("displays backend HTTP %i errors without losing the session workspace", async (status) => {
+  it.each([404])("displays backend HTTP %i errors without losing the session workspace", async (status) => {
     mockApi({ sessionStatus: status });
     renderSession();
     expect(await screen.findByText("This session is unavailable.")).toBeTruthy();

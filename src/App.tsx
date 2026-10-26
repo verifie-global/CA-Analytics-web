@@ -50,7 +50,8 @@ import { TextConnectorPocPage } from "./TextConnectorPocPage";
 import { SttDiagnostics } from "./SttDiagnostics";
 import { SttSettingsPage } from "./SttSettingsPage";
 import { DatasetStudioPage } from "./DatasetStudioPage";
-import { createDatasetWorkspace, type DatasetWorkspace } from "./datasetStudioTypes";
+import type { DatasetWorkspace } from "./datasetStudioTypes";
+import { useDatasetStudioAccess } from "./useDatasetStudioAccess";
 import { useCompanySttSettings } from "./useCompanySttSettings";
 import {
   LanguageSelector,
@@ -1729,15 +1730,10 @@ function App() {
     }
   });
   const [draftSettings, setDraftSettings] = useState<AppSettings>(settings);
-  const datasetWorkspaces = useRef(new Map<string, DatasetWorkspace>());
-  const datasetWorkspaceKey = JSON.stringify([settings.baseUrl, settings.companyId,
-    settings.userId != null ? ["user", settings.userId] : ["credential", settings.apiToken || settings.accessToken]]);
-  if (!datasetWorkspaces.current.has(datasetWorkspaceKey)) {
-    datasetWorkspaces.current.set(datasetWorkspaceKey, createDatasetWorkspace());
-  }
+  const datasetWorkspaceRef = useRef<DatasetWorkspace | null>(null);
   useEffect(() => {
     const protectDatasetDrafts = (event: BeforeUnloadEvent) => {
-      if ([...datasetWorkspaces.current.values()].some((workspace) => workspace.drafts.size > 0)) {
+      if (datasetWorkspaceRef.current?.drafts.size) {
         event.preventDefault();
         event.returnValue = "";
       }
@@ -3417,6 +3413,7 @@ function App() {
   };
 
   const handleLogout = () => {
+    datasetAccess.revoke();
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
     }
@@ -3467,6 +3464,7 @@ function App() {
   };
 
   const handleUnauthorizedSession = () => {
+    datasetAccess.revoke();
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
     }
@@ -3566,6 +3564,16 @@ function App() {
     currentRoute === "qa-profile",
     handleUnauthorizedSession,
   );
+
+  const datasetAccess = useDatasetStudioAccess(settings, isAuthorized, handleUnauthorizedSession);
+  datasetWorkspaceRef.current = datasetAccess.workspace;
+  const hasDatasetStudioAccess = datasetAccess.status === "allowed" && !datasetAccess.workspace?.revoked;
+  useEffect(() => {
+    if (isAuthorized && currentRoute === "dataset-studio" && datasetAccess.status === "denied") {
+      window.history.replaceState({}, "", "/");
+      setCurrentRoute("dashboard");
+    }
+  }, [isAuthorized, currentRoute, datasetAccess.status]);
 
   const addKeywordRule = () => {
     setKeywordRules((current) => [...current, defaultKeywordRule()]);
@@ -4142,12 +4150,12 @@ function App() {
       active: currentRoute === "reports",
       onClick: () => navigateTo("reports"),
     },
-    {
-      key: "dataset",
+    ...(hasDatasetStudioAccess ? [{
+      key: "dataset" as const,
       label: "Dataset Studio",
       active: currentRoute === "dataset-studio",
       onClick: () => navigateTo("dataset-studio"),
-    },
+    }] : []),
     {
       key: "demo",
       label: "Demo call",
@@ -4508,12 +4516,12 @@ function App() {
 
       <main className="layout">
         {currentRoute === "dataset-studio" ? (
-          <DatasetStudioPage
-            key={datasetWorkspaceKey}
+          hasDatasetStudioAccess && datasetAccess.workspace ? <DatasetStudioPage
             settings={settings}
             onUnauthorized={handleUnauthorizedSession}
-            workspace={datasetWorkspaces.current.get(datasetWorkspaceKey)!}
-          />
+            onForbidden={datasetAccess.revoke}
+            workspace={datasetAccess.workspace}
+          /> : datasetAccess.status === "loading" ? <p role="status">Checking annotation access…</p> : null
         ) : currentRoute === "account" ? (
           settings.apiToken ? (
             <section className="panel permission-denied" role="alert">

@@ -6,8 +6,29 @@ export type AnnotationPage<T> = { items: T[]; total: number; page: number; pageS
 export type AnnotationSource = {
   id: number;
   name: string;
+  companyId: number | string;
+  companyName: string | null;
   createdAt: string;
   durationSeconds: number | null;
+};
+export type AnnotationSourceCompany = { id: number; name: string; recordings: number };
+export type AnnotationSourceFilters = {
+  q: string;
+  sourceCompanyId: number | null;
+  createdFrom: string | null;
+  createdTo: string | null;
+};
+export type AnnotationSourceSelectionInput = AnnotationSourceFilters & {
+  limit: number;
+  excludeConversationIds: number[];
+};
+export type AnnotationSourceSelection = {
+  conversationIds: number[];
+  totalMatching: number;
+  totalAvailable: number;
+  selected: number;
+  truncated: boolean;
+  limit: number;
 };
 export type AnnotationSessionSummary = {
   id: string;
@@ -27,6 +48,8 @@ export type AnnotationRecording = {
   id: string;
   conversationId: number;
   name: string;
+  companyId: number | string;
+  companyName: string | null;
   status: "pending" | "transcribing" | "ready" | "failed";
   error: string | null;
   durationSeconds: number | null;
@@ -65,6 +88,8 @@ export type AnnotationClip = {
   reviewedByUserId: string | null;
   recordingDuration: number | null;
   recordingName: string;
+  sourceCompanyId: number | string;
+  sourceCompanyName: string | null;
 };
 export type SaveAnnotationClip = {
   text: string;
@@ -94,5 +119,18 @@ export type AnnotationDraft = {
 export type DatasetWorkspace = {
   sessionId: string;
   drafts: Map<string, AnnotationDraft>;
+  controller: AbortController;
+  revoked: boolean;
 };
-export const createDatasetWorkspace = (): DatasetWorkspace => ({ sessionId: "", drafts: new Map() });
+export const createDatasetWorkspace = (): DatasetWorkspace => ({
+  sessionId: "", drafts: new Map(), controller: new AbortController(), revoked: false,
+});
+
+export function clearDatasetWorkspace(workspace: DatasetWorkspace) {
+  workspace.revoked = true;
+  workspace.controller.abort();
+  workspace.drafts.clear();
+  workspace.sessionId = "";
+}
+
+export type DatasetStudioIdentity = { companyId: string | null; userId: string | null };

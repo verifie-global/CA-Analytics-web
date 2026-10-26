@@ -70,7 +70,8 @@ import {
 import type {
   AnnotationClip, AnnotationFilter, AnnotationPage, AnnotationSaveResult,
   AnnotationSession, AnnotationSessionSummary, AnnotationSource,
-  CreateAnnotationSession, SaveAnnotationClip,
+  CreateAnnotationSession, SaveAnnotationClip, DatasetStudioIdentity,
+  AnnotationSourceCompany, AnnotationSourceFilters, AnnotationSourceSelection, AnnotationSourceSelectionInput,
 } from "./datasetStudioTypes";
 
 export type RequestError = Error & {
@@ -229,34 +230,59 @@ async function request<T>(
   return (await response.json()) as T;
 }
 
-const annotationPath = (settings: AppSettings, sessionId?: string) =>
-  `/api/companies/${encodeURIComponent(settings.companyId)}/annotation-sessions${sessionId ? `/${encodeURIComponent(sessionId)}` : ""}`;
+// Dataset Studio is owned by company 1, independently of the selected company.
+const annotationPath = (sessionId?: string) =>
+  `/api/companies/1/annotation-sessions${sessionId ? `/${encodeURIComponent(sessionId)}` : ""}`;
+
+export async function fetchDatasetStudioIdentity(settings: AppSettings, signal?: AbortSignal): Promise<DatasetStudioIdentity> {
+  const payload = await request<unknown>(settings, "/api/auth/me", { signal });
+  const root = asRecord(payload);
+  const record = Object.keys(asRecord(root.data)).length ? asRecord(root.data) : root;
+  // Never infer Dataset Studio membership from settings, token claims, or roles.
+  const companyId = record.companyId;
+  return {
+    companyId: typeof companyId === "string" ? companyId : typeof companyId === "number" && Number.isFinite(companyId) ? String(companyId) : null,
+    userId: readStringLike(record, "userId", "id") ?? null,
+  };
+}
 
 export const fetchAnnotationSessions = (settings: AppSettings, signal?: AbortSignal) =>
-  request<AnnotationSessionSummary[]>(settings, annotationPath(settings), { signal });
+  request<AnnotationSessionSummary[]>(settings, annotationPath(), { signal });
 
-export const fetchAnnotationSources = (settings: AppSettings, search: string, page: number, signal?: AbortSignal) =>
-  request<AnnotationPage<AnnotationSource>>(settings, `${annotationPath(settings)}/sources`, { signal },
-    new URLSearchParams({ q: search, page: String(page) }));
+export const fetchAnnotationSourceCompanies = (settings: AppSettings, signal?: AbortSignal) =>
+  request<AnnotationSourceCompany[]>(settings, `${annotationPath()}/sources/companies`, { signal });
 
-export const createAnnotationSession = (settings: AppSettings, input: CreateAnnotationSession) =>
-  request<{ id: string; name: string }>(settings, annotationPath(settings), {
-    method: "POST", headers: jsonHeaders(), body: JSON.stringify(input),
+export const fetchAnnotationSources = (settings: AppSettings, filters: AnnotationSourceFilters, page: number, signal?: AbortSignal) => {
+  const query = new URLSearchParams({ q: filters.q, page: String(page) });
+  if (filters.sourceCompanyId !== null) query.set("sourceCompanyId", String(filters.sourceCompanyId));
+  if (filters.createdFrom !== null) query.set("createdFrom", filters.createdFrom);
+  if (filters.createdTo !== null) query.set("createdTo", filters.createdTo);
+  return request<AnnotationPage<AnnotationSource>>(settings, `${annotationPath()}/sources`, { signal }, query);
+};
+
+export const selectAnnotationSources = (settings: AppSettings, input: AnnotationSourceSelectionInput, signal?: AbortSignal) =>
+  request<AnnotationSourceSelection>(settings, `${annotationPath()}/sources/selection`, {
+    method: "POST", headers: jsonHeaders(), body: JSON.stringify(input), signal,
+  });
+
+export const createAnnotationSession = (settings: AppSettings, input: CreateAnnotationSession, signal?: AbortSignal) =>
+  request<{ id: string; name: string }>(settings, annotationPath(), {
+    method: "POST", headers: jsonHeaders(), body: JSON.stringify(input), signal,
   });
 
 export const fetchAnnotationSession = (settings: AppSettings, sessionId: string, signal?: AbortSignal) =>
-  request<AnnotationSession>(settings, annotationPath(settings, sessionId), { signal });
+  request<AnnotationSession>(settings, annotationPath(sessionId), { signal });
 
-export const retryAnnotationRecordings = (settings: AppSettings, sessionId: string) =>
-  request<{ retried: number }>(settings, `${annotationPath(settings, sessionId)}/retry`, { method: "POST" });
+export const retryAnnotationRecordings = (settings: AppSettings, sessionId: string, signal?: AbortSignal) =>
+  request<{ retried: number }>(settings, `${annotationPath(sessionId)}/retry`, { method: "POST", signal });
 
 export const fetchAnnotationClips = (settings: AppSettings, sessionId: string, status: AnnotationFilter, page: number, signal?: AbortSignal) =>
-  request<AnnotationPage<AnnotationClip>>(settings, `${annotationPath(settings, sessionId)}/clips`, { signal },
+  request<AnnotationPage<AnnotationClip>>(settings, `${annotationPath(sessionId)}/clips`, { signal },
     new URLSearchParams({ status, page: String(page) }));
 
-export const saveAnnotationClip = (settings: AppSettings, sessionId: string, clipId: string, input: SaveAnnotationClip) =>
-  request<AnnotationSaveResult>(settings, `${annotationPath(settings, sessionId)}/clips/${encodeURIComponent(clipId)}`, {
-    method: "PUT", headers: jsonHeaders(), body: JSON.stringify(input),
+export const saveAnnotationClip = (settings: AppSettings, sessionId: string, clipId: string, input: SaveAnnotationClip, signal?: AbortSignal) =>
+  request<AnnotationSaveResult>(settings, `${annotationPath(sessionId)}/clips/${encodeURIComponent(clipId)}`, {
+    method: "PUT", headers: jsonHeaders(), body: JSON.stringify(input), signal,
   });
 
 async function annotationBinary(settings: AppSettings, path: string, query?: URLSearchParams, signal?: AbortSignal) {
@@ -273,13 +299,13 @@ export async function fetchAnnotationAudio(
   start: number, end: number, signal?: AbortSignal,
 ) {
   const response = await annotationBinary(settings,
-    `${annotationPath(settings, sessionId)}/clips/${encodeURIComponent(clipId)}/audio`,
+    `${annotationPath(sessionId)}/clips/${encodeURIComponent(clipId)}/audio`,
     new URLSearchParams({ start: String(start), end: String(end) }), signal);
   return response.blob();
 }
 
-export async function exportAnnotationDataset(settings: AppSettings, sessionId: string) {
-  const response = await annotationBinary(settings, `${annotationPath(settings, sessionId)}/export`);
+export async function exportAnnotationDataset(settings: AppSettings, sessionId: string, signal?: AbortSignal) {
+  const response = await annotationBinary(settings, `${annotationPath(sessionId)}/export`, undefined, signal);
   const disposition = response.headers.get("content-disposition") ?? "";
   const encoded = disposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)?.[1];
   const plain = disposition.match(/filename\s*=\s*(?:"([^"]+)"|([^;]+))/i);

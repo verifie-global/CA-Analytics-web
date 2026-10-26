@@ -4,6 +4,7 @@ import type { RequestError } from "./api";
 import type { AppSettings } from "./types";
 import type { AnnotationClip, AnnotationDraft, AnnotationSession, AnnotationStatus } from "./datasetStudioTypes";
 import { annotationBoundaryError, createAnnotationDraft, formatClipTime, hasListenedToPreview, isAnnotationDraftDirty } from "./datasetStudioModel";
+import { DatasetSourceCompany } from "./DatasetSourceCompany";
 
 type AudioProps = {
   settings: AppSettings;
@@ -13,17 +14,19 @@ type AudioProps = {
   end: number;
   onListened: (value: boolean) => void;
   onUnauthorized: () => void;
+  onForbidden: () => void;
+  signal: AbortSignal;
 };
 
-function ClipAudioPreview({ settings, sessionId, clipId, start, end, onListened, onUnauthorized }: AudioProps) {
+function ClipAudioPreview({ settings, sessionId, clipId, start, end, onListened, onUnauthorized, onForbidden, signal: accessSignal }: AudioProps) {
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [peaks, setPeaks] = useState<number[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const callbacks = useRef({ onListened, onUnauthorized });
-  callbacks.current = { onListened, onUnauthorized };
+  const callbacks = useRef({ onListened, onUnauthorized, onForbidden });
+  callbacks.current = { onListened, onUnauthorized, onForbidden };
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -34,14 +37,22 @@ function ClipAudioPreview({ settings, sessionId, clipId, start, end, onListened,
 
   useEffect(() => {
     const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, accessSignal]);
     let objectUrl = "";
     let decoder: AudioContext | undefined;
     setUrl("");
     setError("");
     setPeaks([]);
     callbacks.current.onListened(false);
-    void fetchAnnotationAudio(settings, sessionId, clipId, start, end, controller.signal).then(async (blob) => {
-      if (controller.signal.aborted) return;
+    const releaseAudio = () => {
+      const audio = audioRef.current;
+      if (audio) { audio.pause(); audio.removeAttribute("src"); audio.load(); }
+      if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = ""; }
+    };
+    signal.addEventListener("abort", releaseAudio, { once: true });
+    if (signal.aborted) return;
+    void fetchAnnotationAudio(settings, sessionId, clipId, start, end, signal).then(async (blob) => {
+      if (signal.aborted) return;
       objectUrl = URL.createObjectURL(blob);
       setUrl(objectUrl);
       // A waveform is optional: audio still works if decoding is unsupported.
@@ -49,7 +60,7 @@ function ClipAudioPreview({ settings, sessionId, clipId, start, end, onListened,
       try {
         decoder = new AudioContext();
         const buffer = await decoder.decodeAudioData(await blob.arrayBuffer());
-        if (controller.signal.aborted) return;
+        if (signal.aborted) return;
         const samples = buffer.getChannelData(0);
         const values = Array.from({ length: 100 }, (_, index) => {
           const from = Math.floor(index * samples.length / 100);
@@ -63,16 +74,18 @@ function ClipAudioPreview({ settings, sessionId, clipId, start, end, onListened,
       } catch { /* The native player remains available. */ }
       finally { if (decoder?.state !== "closed") void decoder?.close().catch(() => undefined); }
     }).catch((reason: unknown) => {
-      if (controller.signal.aborted) return;
+      if (signal.aborted) return;
+      if ((reason as RequestError).status === 403) { callbacks.current.onForbidden(); return; }
       if ((reason as RequestError).status === 401) callbacks.current.onUnauthorized();
       setError(reason instanceof Error ? reason.message : "Unable to prepare audio.");
     });
     return () => {
       controller.abort();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      signal.removeEventListener("abort", releaseAudio);
+      releaseAudio();
       if (decoder && decoder.state !== "closed") void decoder.close().catch(() => undefined);
     };
-  }, [settings.baseUrl, settings.companyId, settings.accessToken, sessionId, clipId, start, end, attempt]);
+  }, [settings.baseUrl, settings.accessToken, sessionId, clipId, start, end, attempt, accessSignal]);
 
   const checkPlayback = () => {
     const audio = audioRef.current;
@@ -110,9 +123,11 @@ type Props = {
   onSaved: (clip: AnnotationClip, next: boolean) => void;
   onBusyChange: (busy: boolean) => void;
   onUnauthorized: () => void;
+  onForbidden: () => void;
+  signal: AbortSignal;
 };
 
-export function DatasetClipEditor({ settings, session, initialDraft, remoteRevision, onDraft, onSaved, onBusyChange, onUnauthorized }: Props) {
+export function DatasetClipEditor({ settings, session, initialDraft, remoteRevision, onDraft, onSaved, onBusyChange, onUnauthorized, onForbidden, signal }: Props) {
   const [draft, setDraft] = useState(initialDraft);
   const [preview, setPreview] = useState<{ start: number; end: number; version: number } | null>(() =>
     annotationBoundaryError(initialDraft.start, initialDraft.end, initialDraft.clip.recordingDuration) ? null : {
@@ -155,7 +170,7 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
   };
 
   const save = async (status: AnnotationStatus) => {
-    if (saving || reloading || invalid || hasConflict || (status === "verified" && (!listened || !preview || !confirmed || !draft.text.trim()))) return;
+    if (signal.aborted || saving || reloading || invalid || hasConflict || (status === "verified" && (!listened || !preview || !confirmed || !draft.text.trim()))) return;
     setSaving(true);
     setError("");
     try {
@@ -163,7 +178,8 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
         text: draft.text, status, revision: clip.revision,
         startSeconds: Number(draft.start), endSeconds: Number(draft.end), note: draft.note || null,
         confirmedCorrect: status === "verified",
-      });
+      }, signal);
+      if (signal.aborted) return;
       const saved: AnnotationClip = { ...clip, ...result, text: draft.text,
         startSeconds: Number(draft.start), endSeconds: Number(draft.end), note: draft.note || null };
       // Notify the workspace even if navigation unmounted the editor during the request.
@@ -173,6 +189,8 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
       setMessage(status === "pending" ? "Draft saved. Verification has been cleared." : status === "verified" ? "Clip verified." : "Clip rejected.");
       onSaved(saved, status === "verified");
     } catch (reason) {
+      if (signal.aborted) return;
+      if ((reason as RequestError).status === 403) { onForbidden(); return; }
       if (!mounted.current) return;
       if ((reason as RequestError).status === 401) onUnauthorized();
       if ((reason as RequestError).status === 409) setConflict(true);
@@ -181,6 +199,7 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
   };
 
   const reload = async () => {
+    if (signal.aborted) return;
     if (dirty && !window.confirm("Replace your local transcript, note, and boundaries with the latest saved version?")) return;
     setReloading(true);
     setError("");
@@ -189,7 +208,8 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
       let latest: AnnotationClip | undefined;
       // The contract has no single-clip GET; search the unfiltered pages.
       while (!latest) {
-        const result = await fetchAnnotationClips(settings, session.id, "all", page);
+        const result = await fetchAnnotationClips(settings, session.id, "all", page, signal);
+        if (signal.aborted) return;
         latest = result.items.find((item) => item.id === clip.id);
         if (latest || !result.items.length || page * result.pageSize >= result.total) break;
         page++;
@@ -206,6 +226,8 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
       setMessage("Latest saved version loaded. Listen to the preview again before verifying.");
       onSaved(latest, false);
     } catch (reason) {
+      if (signal.aborted) return;
+      if ((reason as RequestError).status === 403) { onForbidden(); return; }
       if (!mounted.current) return;
       if ((reason as RequestError).status === 401) onUnauthorized();
       setError(reason instanceof Error ? reason.message : "Unable to reload the clip.");
@@ -217,6 +239,7 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
       <div><p className="eyebrow">Clip {clip.index}</p><h2 data-i18n-skip>{clip.recordingName}</h2></div>
       <span className={`dataset-status dataset-status-${clip.status}`}>{clip.status === "pending" ? "Needs review" : clip.status}</span>
     </div>
+    <DatasetSourceCompany companyId={clip.sourceCompanyId} companyName={clip.sourceCompanyName} />
     <p className="dataset-muted">Source {formatClipTime(clip.startSeconds)} – {formatClipTime(clip.endSeconds)} · {(clip.endSeconds - clip.startSeconds).toFixed(2)}s</p>
     {dirty && <p className="dataset-notice" role="status">Unsaved edits are retained when you change clips or pages.</p>}
     {hasConflict && <div className="dataset-notice dataset-warning" role="alert">
@@ -239,7 +262,7 @@ export function DatasetClipEditor({ settings, session, initialDraft, remoteRevis
       }}>Prepare audio preview</button>}
     </fieldset>
     {preview && <ClipAudioPreview key={`${clip.id}/${preview.version}/${preview.start}/${preview.end}`} settings={settings}
-      sessionId={session.id} clipId={clip.id} start={preview.start} end={preview.end} onListened={setListened} onUnauthorized={onUnauthorized} />}
+      sessionId={session.id} clipId={clip.id} start={preview.start} end={preview.end} signal={signal} onForbidden={onForbidden} onListened={setListened} onUnauthorized={onUnauthorized} />}
     <p className={listened ? "dataset-listened" : "dataset-muted"} role="status">{listened ? "Complete preview listened to." : "Listen to the entire current preview to enable verification. Skipping audio does not count."}</p>
     <fieldset disabled={saving || reloading} className="dataset-fields">
       <legend>Review transcript</legend>

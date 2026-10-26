@@ -8,23 +8,25 @@ import type {
   AnnotationClip, AnnotationDraft, AnnotationFilter, AnnotationPage,
   AnnotationSession, AnnotationSessionSummary, DatasetWorkspace,
 } from "./datasetStudioTypes";
-import { createDatasetWorkspace } from "./datasetStudioTypes";
+import { clearDatasetWorkspace, createDatasetWorkspace } from "./datasetStudioTypes";
 import { annotationExportBlocker, annotationSessionCounts, createAnnotationDraft, formatClipTime, isAnnotationDraftDirty } from "./datasetStudioModel";
 import { DatasetCreateSession } from "./DatasetCreateSession";
 import { DatasetClipEditor } from "./DatasetClipEditor";
+import { DatasetSourceCompany } from "./DatasetSourceCompany";
 import { getIntlLocale } from "./i18n";
 
-type Props = { settings: AppSettings; onUnauthorized: () => void; workspace?: DatasetWorkspace };
+type Props = { settings: AppSettings; onUnauthorized: () => void; onForbidden?: () => void; workspace?: DatasetWorkspace };
 const filters: { value: AnnotationFilter; label: string }[] = [
   { value: "pending", label: "Needs review" }, { value: "verified", label: "Verified" },
   { value: "rejected", label: "Rejected" }, { value: "all", label: "All clips" },
 ];
 const pageIsVisible = () => document.visibilityState !== "hidden";
 
-export function DatasetStudioPage({ settings, onUnauthorized, workspace: suppliedWorkspace }: Props) {
+export function DatasetStudioPage({ settings, onUnauthorized, onForbidden, workspace: suppliedWorkspace }: Props) {
   const ownWorkspace = useRef<DatasetWorkspace>(createDatasetWorkspace());
   const workspace = suppliedWorkspace ?? ownWorkspace.current;
   const [sessionId, setSessionId] = useState(workspace.sessionId);
+  const [revoked, setRevoked] = useState(workspace.revoked);
   const [creating, setCreating] = useState(false);
   const [sessions, setSessions] = useState<AnnotationSessionSummary[]>([]);
   const [session, setSession] = useState<AnnotationSession | null>(null);
@@ -41,32 +43,48 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
   const [editorBusy, setEditorBusy] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [, renderDrafts] = useState(0);
-  const callbacks = useRef({ onUnauthorized });
-  callbacks.current = { onUnauthorized };
+  const callbacks = useRef({ onUnauthorized, onForbidden });
+  callbacks.current = { onUnauthorized, onForbidden };
   const mounted = useRef(true);
   const savingVersion = useRef(0);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
+  const denyAccess = useCallback(() => {
+    if (workspace.revoked) return;
+    clearDatasetWorkspace(workspace);
+    if (mounted.current) {
+      setRevoked(true);
+      setSessions([]);
+      setSession(null);
+      setClips(null);
+      setSelectedClip(null);
+      setCreating(false);
+    }
+    callbacks.current.onForbidden?.();
+  }, [workspace]);
+
   const reportError = useCallback((reason: unknown) => {
+    if ((reason as RequestError).status === 403) denyAccess();
     if ((reason as RequestError).status === 401) callbacks.current.onUnauthorized();
     return reason instanceof Error ? reason.message : "Dataset Studio could not reach the service. Please try again.";
-  }, []);
+  }, [denyAccess]);
 
   useEffect(() => {
-    if (sessionId || creating) return;
+    if (sessionId || creating || revoked) return;
     const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, workspace.controller.signal]);
     setLoading(true);
     setError("");
-    void fetchAnnotationSessions(settings, controller.signal).then((result) => {
-      if (!controller.signal.aborted) setSessions(result);
+    void fetchAnnotationSessions(settings, signal).then((result) => {
+      if (!signal.aborted) setSessions(result);
     }).catch((reason: unknown) => {
-      if (!controller.signal.aborted) setError(reportError(reason));
-    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      if (!signal.aborted) setError(reportError(reason));
+    }).finally(() => { if (!signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [settings.baseUrl, settings.companyId, settings.accessToken, sessionId, creating, refresh, reportError]);
+  }, [settings.baseUrl, settings.accessToken, sessionId, creating, refresh, reportError, revoked, workspace]);
 
   useEffect(() => {
-    if (!sessionId || creating) return;
+    if (!sessionId || creating || revoked) return;
     let cancelled = false;
     let inFlight = false;
     let controller: AbortController | undefined;
@@ -75,14 +93,15 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
     setLoading(true);
     setError("");
     const load = async () => {
-      if (cancelled || inFlight || document.visibilityState === "hidden") return;
+      if (cancelled || workspace.revoked || inFlight || document.visibilityState === "hidden") return;
       inFlight = true;
       controller = new AbortController();
-      const signal = controller.signal;
+      const signal = AbortSignal.any([controller.signal, workspace.controller.signal]);
       const version = savingVersion.current;
       try {
         // A single sequential loop prevents overlapping polls and stale save responses.
         const detail = await fetchAnnotationSession(settings, sessionId, signal);
+        if (signal.aborted) return;
         const result = await fetchAnnotationClips(settings, sessionId, filter, page, signal);
         if (cancelled || signal.aborted || version !== savingVersion.current) return;
         setSession(detail);
@@ -98,7 +117,7 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
         shouldPoll = (reason as RequestError).status !== 401 && (reason as RequestError).status !== 403 && (reason as RequestError).status !== 404;
       } finally {
         inFlight = false;
-        if (!cancelled && signal.aborted && pageIsVisible()) timer = window.setTimeout(() => void load(), 0);
+        if (!cancelled && !workspace.revoked && signal.aborted && pageIsVisible()) timer = window.setTimeout(() => void load(), 0);
         if (!cancelled && !signal.aborted) {
           setLoading(false);
           if (shouldPoll && pageIsVisible()) timer = window.setTimeout(() => void load(), 5000);
@@ -118,7 +137,7 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", visibilityChanged);
     };
-  }, [settings.baseUrl, settings.companyId, settings.accessToken, sessionId, creating, filter, page, refresh, reportError]);
+  }, [settings.baseUrl, settings.accessToken, sessionId, creating, filter, page, refresh, reportError, revoked, workspace]);
 
   // Standalone use gets the same reload protection as the App-owned workspace.
   useEffect(() => {
@@ -144,6 +163,7 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
   };
 
   const updateDraft = (draft: AnnotationDraft, discard = false) => {
+    if (workspace.revoked) return;
     if (isAnnotationDraftDirty(draft)) workspace.drafts.set(draft.clip.id, draft);
     else {
       const existing = workspace.drafts.get(draft.clip.id);
@@ -172,16 +192,16 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
   };
 
   const retry = async () => {
-    if (retrying) return;
+    if (retrying || workspace.revoked) return;
     setRetrying(true);
     setActionError("");
     try {
-      const result = await retryAnnotationRecordings(settings, sessionId);
-      if (!mounted.current) return;
+      const result = await retryAnnotationRecordings(settings, sessionId, workspace.controller.signal);
+      if (!mounted.current || workspace.revoked) return;
       setNotice(`${result.retried} failed recording${result.retried === 1 ? "" : "s"} queued for another attempt.`);
       savingVersion.current++;
       setRefresh((value) => value + 1);
-    } catch (reason) { if (mounted.current) setActionError(reportError(reason)); }
+    } catch (reason) { if (!workspace.revoked) { const message = reportError(reason); if (mounted.current) setActionError(message); } }
     finally { if (mounted.current) setRetrying(false); }
   };
 
@@ -190,13 +210,14 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
   const exportBlocker = session ? annotationExportBlocker(session, drafts.length > 0) : "Load the session before exporting.";
 
   const download = async () => {
-    if (!session || exportBlocker || loading || exporting || editorBusy) return;
+    if (!session || workspace.revoked || exportBlocker || loading || exporting || editorBusy) return;
     setExporting(true);
     setActionError("");
     try {
       // Recheck local edits immediately before making the request.
       if ([...workspace.drafts.values()].some((draft) => draft.sessionId === session.id)) return;
-      const result = await exportAnnotationDataset(settings, session.id);
+      const result = await exportAnnotationDataset(settings, session.id, workspace.controller.signal);
+      if (workspace.revoked) return;
       const url = URL.createObjectURL(result.blob);
       const link = document.createElement("a");
       link.href = url;
@@ -207,9 +228,11 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
       // Let the browser start the download before releasing the object URL.
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       if (mounted.current) setNotice("Dataset ZIP downloaded: verified WAV/TXT pairs, manifest.jsonl, and README.txt. Rejected clips are excluded.");
-    } catch (reason) { if (mounted.current) setActionError(reportError(reason)); }
+    } catch (reason) { if (!workspace.revoked) { const message = reportError(reason); if (mounted.current) setActionError(message); } }
     finally { if (mounted.current) setExporting(false); }
   };
+
+  if (revoked || workspace.revoked) return null;
 
   return <section className="panel dataset-studio">
     <div className="dataset-heading-row dataset-page-heading">
@@ -217,7 +240,7 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
       {!creating && !sessionId && <button type="button" onClick={() => setCreating(true)}>Create session</button>}
       {!creating && sessionId && <button className="secondary-button" type="button" onClick={() => openSession("")}>All sessions</button>}
     </div>
-    {creating ? <DatasetCreateSession settings={settings} onUnauthorized={onUnauthorized} onCancel={() => setCreating(false)} onCreated={openSession} /> : <>
+    {creating ? <DatasetCreateSession settings={settings} signal={workspace.controller.signal} onForbidden={denyAccess} onUnauthorized={onUnauthorized} onCancel={() => setCreating(false)} onCreated={openSession} /> : <>
       {error && <div className="form-message error-message" role="alert">{error} <button className="secondary-button small-button" type="button" onClick={() => setRefresh((value) => value + 1)}>Refresh Dataset Studio</button></div>}
       {actionError && <div className="form-message error-message" role="alert">{actionError}</div>}
       {notice && <p className="dataset-notice" role="status">{notice}</p>}
@@ -245,19 +268,19 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
           <progress aria-label="Transcription progress" value={counts!.ready} max={Math.max(1, session.recordings.length)} />
           {counts!.active > 0 && <p role="status" className="dataset-muted">Transcribing {counts!.active} recording(s). Progress refreshes every five seconds while this page is visible. Ready clips can already be reviewed.</p>}
           {counts!.failed > 0 && <div className="dataset-notice dataset-warning"><p>{counts!.failed} recording(s) failed. Review the errors below and retry.</p><button className="secondary-button" type="button" disabled={retrying} onClick={() => void retry()}>{retrying ? "Retrying…" : "Retry failed recordings"}</button></div>}
-          <details className="dataset-recordings" open={counts!.failed > 0}><summary>Recordings and transcription status ({session.recordings.length})</summary><ul>{session.recordings.map((recording) => <li key={recording.id}><strong>{recording.name}</strong> <span className={`dataset-status dataset-status-${recording.status}`}>{recording.status}</span><small>{recording.clips} clips · {recording.verified} verified · {recording.rejected} rejected</small>{recording.error && <p className="dataset-error">{recording.error}</p>}</li>)}</ul></details>
+          <details className="dataset-recordings" open={counts!.failed > 0}><summary>Recordings and transcription status ({session.recordings.length})</summary><ul>{session.recordings.map((recording) => <li key={recording.id}><strong data-i18n-skip>{recording.name}</strong> <span className={`dataset-status dataset-status-${recording.status}`}>{recording.status}</span><DatasetSourceCompany companyId={recording.companyId} companyName={recording.companyName} /><small>{recording.clips} clips · {recording.verified} verified · {recording.rejected} rejected</small>{recording.error && <p className="dataset-error">{recording.error}</p>}</li>)}</ul></details>
         </section>
         <div className="dataset-review-layout">
           <aside className="dataset-card dataset-queue" aria-label="Clip review queue">
             <div className="dataset-heading-row"><h2>Review queue</h2><button type="button" className="secondary-button small-button" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>Refresh clips</button></div>
             <label>Clip filter<select value={filter} onChange={(event) => { setFilter(event.target.value as AnnotationFilter); setPage(1); setClips(null); setSelectedClip(null); }}>{filters.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-            {drafts.length > 0 && <details className="dataset-unsaved" open><summary>Unsaved edits ({drafts.length})</summary>{drafts.map((draft) => <button className="secondary-button small-button" key={draft.clip.id} type="button" onClick={() => setSelectedClip(draft.clip)}>{draft.clip.recordingName} · Clip {draft.clip.index}</button>)}</details>}
+            {drafts.length > 0 && <details className="dataset-unsaved" open><summary>Unsaved edits ({drafts.length})</summary>{drafts.map((draft) => <button className="secondary-button small-button" key={draft.clip.id} type="button" onClick={() => setSelectedClip(draft.clip)}><span data-i18n-skip>{draft.clip.recordingName}</span> · Clip {draft.clip.index}<DatasetSourceCompany companyId={draft.clip.sourceCompanyId} companyName={draft.clip.sourceCompanyName} /></button>)}</details>}
             <div className="dataset-queue-items" aria-busy={loading}>
               {!clips ? <p role="status">Loading clips…</p> : !clips.items.length ? <div className="empty-state"><h3>{counts!.active ? "Clips are being prepared" : "Queue is clear"}</h3><p>{counts!.active ? "Clips appear here as recordings finish transcription." : "No clips match this filter. Choose another filter to inspect reviewed clips."}</p></div> : clips.items.map((clip) => {
                 const duration = clip.endSeconds - clip.startSeconds;
                 return <button className={`dataset-queue-item ${selectedClip?.id === clip.id ? "is-active" : ""}`} type="button" key={clip.id} aria-label={`${clip.recordingName}, clip ${clip.index}, ${clip.status === "pending" ? "Needs review" : clip.status}`} aria-pressed={selectedClip?.id === clip.id} onClick={() => setSelectedClip(clip)}>
                   <span className="dataset-heading-row"><strong>Clip {clip.index}</strong><span className={`dataset-status dataset-status-${clip.status}`}>{clip.status === "pending" ? "Needs review" : clip.status}</span></span>
-                  <span className="dataset-clip-name" data-i18n-skip>{clip.recordingName}</span><small>{formatClipTime(clip.startSeconds)} – {formatClipTime(clip.endSeconds)} · {duration.toFixed(2)}s</small>
+                  <span className="dataset-clip-name" data-i18n-skip>{clip.recordingName}</span><DatasetSourceCompany companyId={clip.sourceCompanyId} companyName={clip.sourceCompanyName} /><small>{formatClipTime(clip.startSeconds)} – {formatClipTime(clip.endSeconds)} · {duration.toFixed(2)}s</small>
                   {(duration < session.minClipSeconds || duration > session.maxClipSeconds) && <small className="dataset-warning">Outside duration target</small>}
                   {workspace.drafts.has(clip.id) && <small className="dataset-listened">Unsaved edits</small>}
                 </button>;
@@ -268,7 +291,7 @@ export function DatasetStudioPage({ settings, onUnauthorized, workspace: supplie
           {selectedClip ? <DatasetClipEditor key={selectedClip.id} settings={settings} session={session}
             initialDraft={workspace.drafts.get(selectedClip.id) ?? createAnnotationDraft(session.id, selectedClip)}
             remoteRevision={clips?.items.find((clip) => clip.id === selectedClip.id)?.revision}
-            onDraft={updateDraft} onSaved={clipSaved} onBusyChange={setEditorBusy} onUnauthorized={onUnauthorized} /> : <div className="dataset-card empty-state"><h2>Select a clip to review</h2><p>Listen to the full preview, correct the transcript, then verify or reject the clip.</p></div>}
+            signal={workspace.controller.signal} onForbidden={denyAccess} onDraft={updateDraft} onSaved={clipSaved} onBusyChange={setEditorBusy} onUnauthorized={onUnauthorized} /> : <div className="dataset-card empty-state"><h2>Select a clip to review</h2><p>Listen to the full preview, correct the transcript, then verify or reject the clip.</p></div>}
         </div>
       </>}
     </>}
