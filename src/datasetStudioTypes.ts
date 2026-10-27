@@ -50,6 +50,8 @@ export type AnnotationSessionSummary = {
   clips: number;
   verified: number;
   rejected: number;
+  totalDurationSeconds: number;
+  verifiedDurationSeconds: number;
 };
 export type AnnotationRecording = {
   id: string;

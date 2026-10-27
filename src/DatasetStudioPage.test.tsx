@@ -26,10 +26,12 @@ function mockApi(options: { clips?: AnnotationClip[]; recordings?: AnnotationRec
   let deniedPath = "";
   let optionValues = annotationOptionsFixture;
   let optionStatus = 200;
+  let durationTotals = { totalDurationSeconds: 2530, verifiedDurationSeconds: 0 };
   const requests: { url: URL; init?: RequestInit }[] = [];
   const sourceCount = options.sourceCount ?? 51;
   const detail = (): AnnotationSession => ({
     id: "session-1", name: "Armenian support calls", provider: "gcp", model: "chirp_3", language: "hy", createdAt: "2026-10-26T10:00:00Z", minClipSeconds: 10, maxClipSeconds: 15,
+    ...durationTotals,
     recordings: recordings.map((item) => ({ ...item, clips: clips.filter((clip) => clip.recordingId === item.id).length,
       verified: clips.filter((clip) => clip.recordingId === item.id && clip.status === "verified").length,
       rejected: clips.filter((clip) => clip.recordingId === item.id && clip.status === "rejected").length })),
@@ -79,7 +81,7 @@ function mockApi(options: { clips?: AnnotationClip[]; recordings?: AnnotationRec
     return json(detail());
   });
   vi.stubGlobal("fetch", fetchMock);
-  return { requests, fetchMock, detail, setOptions: (value: AnnotationOptions) => { optionValues = value; }, setOptionsStatus: (value: number) => { optionStatus = value; }, deny: (path: string) => { deniedPath = path; }, setClips: (value: AnnotationClip[]) => { clips = value; }, setRecordings: (value: AnnotationRecording[]) => { recordings = value; }, setConflict: (value: boolean) => { conflict = value; } };
+  return { requests, fetchMock, detail, setDurationTotals: (value: typeof durationTotals) => { durationTotals = value; }, setOptions: (value: AnnotationOptions) => { optionValues = value; }, setOptionsStatus: (value: number) => { optionStatus = value; }, deny: (path: string) => { deniedPath = path; }, setClips: (value: AnnotationClip[]) => { clips = value; }, setRecordings: (value: AnnotationRecording[]) => { recordings = value; }, setConflict: (value: boolean) => { conflict = value; } };
 }
 
 function renderSession(onUnauthorized = vi.fn()) {
@@ -448,6 +450,109 @@ describe("Dataset Studio clip review", () => {
 });
 
 describe("Dataset Studio progress, errors, and export", () => {
+  it("shows server audio totals on every session card and in detail without using the visible clip page", async () => {
+    const api = mockApi({ clips: Array.from({ length: 51 }, (_, index) => makeClip(index + 1)) });
+    api.setDurationTotals({ totalDurationSeconds: 5100, verifiedDurationSeconds: 2530 });
+    const fetchApi = api.fetchMock.getMockImplementation()!;
+    api.fetchMock.mockImplementation(async (input, init) => {
+      const response = await fetchApi(input, init);
+      if (new URL(String(input)).pathname.endsWith("/annotation-sessions")) {
+        const [session] = await response.json();
+        return json([session, { ...session, id: "empty-session", name: "No generated clips", recordings: 0, readyRecordings: 0, clips: 0, verified: 0, rejected: 0, totalDurationSeconds: 0, verifiedDurationSeconds: 0 }]);
+      }
+      return response;
+    });
+    const user = userEvent.setup();
+    render(<DatasetStudioPage settings={settings} onUnauthorized={vi.fn()} />);
+    await screen.findByRole("heading", { name: "No generated clips" });
+    const cards = screen.getAllByRole("article");
+    expect(within(cards[0]).getByText("Total audio").textContent).toBe("1h 25m 0s Total audio");
+    expect(within(cards[0]).getByText("Verified audio").textContent).toBe("42m 10s Verified audio");
+    expect(within(cards[1]).getByText("Total audio").textContent).toBe("0m 0s Total audio");
+    expect(within(cards[1]).getByText("Verified audio").textContent).toBe("0m 0s Verified audio");
+    expect(within(cards[0]).getByText("clips").textContent).toBe("51 clips");
+    await user.click(within(cards[0]).getByRole("button", { name: "Open session" }));
+    await waitForEditor();
+    const progress = within(screen.getByRole("region", { name: "Session progress" }));
+    expect(progress.getByText("Total audio").textContent).toBe("1h 25m 0s Total audio");
+    expect(progress.getByText("Verified audio").textContent).toBe("42m 10s Verified audio");
+    await user.click(screen.getByRole("button", { name: "Next clips" }));
+    await waitFor(() => expect((screen.getByLabelText("Corrected transcript") as HTMLTextAreaElement).value).toBe("Transcript 51"));
+    expect(progress.getByText("Total audio").textContent).toBe("1h 25m 0s Total audio");
+    expect(progress.getByText("Verified audio").textContent).toBe("42m 10s Verified audio");
+  });
+
+  it.each(["verification", "rejection", "draft save", "boundary edit"])("reloads server duration totals after %s and when returning to session cards", async (operation) => {
+    const api = mockApi();
+    const user = userEvent.setup();
+    renderSession();
+    await waitForEditor();
+    expect(screen.getByText("Total audio").textContent).toBe("42m 10s Total audio");
+    expect(screen.getByText("Verified audio").textContent).toBe("0m 0s Verified audio");
+    api.setDurationTotals({ totalDurationSeconds: 5100, verifiedDurationSeconds: 1270 });
+    if (operation === "verification") {
+      playRanges([[0, 12]]);
+      await user.click(screen.getByRole("checkbox", { name: /I listened/ }));
+      await user.click(screen.getByRole("button", { name: "Verify & next" }));
+    } else {
+      if (operation === "boundary edit") fireEvent.change(screen.getByLabelText("End (seconds)"), { target: { value: "11" } });
+      else if (operation === "draft save") fireEvent.change(screen.getByLabelText("Corrected transcript"), { target: { value: "Corrected words" } });
+      await user.click(screen.getByRole("button", { name: operation === "rejection" ? "Reject clip" : "Save draft" }));
+    }
+    await waitFor(() => expect(screen.getByText("Total audio").textContent).toBe("1h 25m 0s Total audio"));
+    expect(screen.getByText("Verified audio").textContent).toBe("21m 10s Verified audio");
+    expect(api.requests.filter(({ url }) => url.pathname.endsWith("/session-1")).length).toBeGreaterThanOrEqual(2);
+    await user.click(screen.getByRole("button", { name: "All sessions" }));
+    await screen.findByRole("article");
+    expect(screen.getByText("Total audio").textContent).toBe("1h 25m 0s Total audio");
+    expect(screen.getByText("Verified audio").textContent).toBe("21m 10s Verified audio");
+  });
+
+  it.each(["session cards", "session detail"])("refreshes server audio totals during transcription on %s", async (view) => {
+    vi.useFakeTimers();
+    const api = mockApi({ recordings: [{ ...recording, status: "transcribing" }] });
+    if (view === "session detail") renderSession();
+    else render(<DatasetStudioPage settings={settings} onUnauthorized={vi.fn()} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.getByText("Total audio").textContent).toBe("42m 10s Total audio");
+    api.setDurationTotals({ totalDurationSeconds: 5100, verifiedDurationSeconds: 2530 });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(screen.getByText("Total audio").textContent).toBe("1h 25m 0s Total audio");
+    expect(screen.getByText("Verified audio").textContent).toBe("42m 10s Verified audio");
+    api.setDurationTotals({ totalDurationSeconds: 5200, verifiedDurationSeconds: 2540 });
+    api.setRecordings([{ ...recording, status: "ready" }]);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(screen.getByText("Total audio").textContent).toBe("1h 26m 40s Total audio");
+    expect(screen.getByText("Verified audio").textContent).toBe("42m 20s Verified audio");
+    const completedRequests = api.requests.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(api.requests).toHaveLength(completedRequests);
+  });
+
+  it("pauses session-card polling while hidden and revokes access when a later poll is forbidden", async () => {
+    vi.useFakeTimers();
+    const api = mockApi({ recordings: [{ ...recording, status: "transcribing" }] });
+    const workspace = createDatasetWorkspace();
+    const onForbidden = vi.fn();
+    render(<DatasetStudioPage settings={settings} workspace={workspace} onUnauthorized={vi.fn()} onForbidden={onForbidden} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const callsBefore = api.requests.length;
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    fireEvent(document, new Event("visibilitychange"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(api.requests).toHaveLength(callsBefore);
+    visibility.mockReturnValue("visible");
+    api.deny("/annotation-sessions");
+    fireEvent(document, new Event("visibilitychange"));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(onForbidden).toHaveBeenCalledOnce();
+    expect(workspace.controller.signal.aborted).toBe(true);
+    expect(screen.queryByText("Total audio")).toBeNull();
+    const revokedCalls = api.requests.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(api.requests).toHaveLength(revokedCalls);
+  });
+
   it.each(["sessions", "sources", "companies", "selection", "options", "create", "audio", "save", "reload", "clips", "retry", "retry-options", "export"])("clears annotation state on a 403 from %s", async (operation) => {
     const api = mockApi({
       clips: operation === "export" ? [makeClip(1, "verified"), makeClip(2, "rejected")] : undefined,

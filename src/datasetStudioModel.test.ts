@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { annotationBoundaryError, annotationExportBlocker, hasListenedToPreview } from "./datasetStudioModel";
+import { annotationBoundaryError, annotationExportBlocker, formatAnnotationDuration, hasListenedToPreview } from "./datasetStudioModel";
 import type { AnnotationSession } from "./datasetStudioTypes";
 
 const ranges = (...intervals: number[][]): TimeRanges => ({
   length: intervals.length, start: (index) => intervals[index][0], end: (index) => intervals[index][1],
+});
+
+describe("session audio duration formatting", () => {
+  it.each([
+    [0, "0m 0s"], [12, "0m 12s"], [60, "1m 0s"], [2530, "42m 10s"],
+    [3600, "1h 0m 0s"], [5100, "1h 25m 0s"], [90061, "25h 1m 1s"],
+    [59.6, "1m 0s"], [3599.6, "1h 0m 0s"],
+  ] as const)("formats %s seconds as %s", (seconds, expected) => {
+    expect(formatAnnotationDuration(seconds)).toBe(expected);
+  });
 });
 
 describe("complete audio listening", () => {

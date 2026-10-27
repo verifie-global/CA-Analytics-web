@@ -9,7 +9,7 @@ import type {
   AnnotationSession, AnnotationSessionSummary, AnnotationTranscriptionSettings, DatasetWorkspace,
 } from "./datasetStudioTypes";
 import { clearDatasetWorkspace, createDatasetWorkspace } from "./datasetStudioTypes";
-import { annotationExportBlocker, annotationSessionCounts, createAnnotationDraft, formatClipTime, isAnnotationDraftDirty } from "./datasetStudioModel";
+import { annotationExportBlocker, annotationSessionCounts, createAnnotationDraft, formatAnnotationDuration, formatClipTime, isAnnotationDraftDirty } from "./datasetStudioModel";
 import { DatasetCreateSession } from "./DatasetCreateSession";
 import { DatasetClipEditor } from "./DatasetClipEditor";
 import { DatasetSourceCompany } from "./DatasetSourceCompany";
@@ -22,6 +22,13 @@ const filters: { value: AnnotationFilter; label: string }[] = [
   { value: "rejected", label: "Rejected" }, { value: "all", label: "All clips" },
 ];
 const pageIsVisible = () => document.visibilityState !== "hidden";
+
+function SessionAudioDurations({ session }: { session: Pick<AnnotationSessionSummary, "totalDurationSeconds" | "verifiedDurationSeconds"> }) {
+  return <>
+    <span title="Duration of all generated clips"><strong>{formatAnnotationDuration(session.totalDurationSeconds)}</strong> Total audio</span>
+    <span title="Duration of verified clips"><strong>{formatAnnotationDuration(session.verifiedDurationSeconds)}</strong> Verified audio</span>
+  </>;
+}
 
 export function DatasetStudioPage({ settings, onUnauthorized, onForbidden, workspace: suppliedWorkspace }: Props) {
   const ownWorkspace = useRef<DatasetWorkspace>(createDatasetWorkspace());
@@ -72,16 +79,52 @@ export function DatasetStudioPage({ settings, onUnauthorized, onForbidden, works
 
   useEffect(() => {
     if (sessionId || creating || revoked) return;
-    const controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, workspace.controller.signal]);
+    let cancelled = false;
+    let inFlight = false;
+    let controller: AbortController | undefined;
+    let timer: number | undefined;
     setLoading(true);
     setError("");
-    void fetchAnnotationSessions(settings, signal).then((result) => {
-      if (!signal.aborted) setSessions(result);
-    }).catch((reason: unknown) => {
-      if (!signal.aborted) setError(reportError(reason));
-    }).finally(() => { if (!signal.aborted) setLoading(false); });
-    return () => controller.abort();
+    const load = async () => {
+      if (cancelled || workspace.revoked || inFlight || !pageIsVisible()) return;
+      inFlight = true;
+      controller = new AbortController();
+      const signal = AbortSignal.any([controller.signal, workspace.controller.signal]);
+      let shouldPoll = false;
+      try {
+        const result = await fetchAnnotationSessions(settings, signal);
+        if (cancelled || signal.aborted) return;
+        setSessions(result);
+        setError("");
+        shouldPoll = result.some((item) => item.recordings > item.readyRecordings + item.failedRecordings);
+      } catch (reason) {
+        if (cancelled || signal.aborted) return;
+        setError(reportError(reason));
+        shouldPoll = ![401, 403, 404].includes((reason as RequestError).status ?? 0);
+      } finally {
+        inFlight = false;
+        if (!cancelled && !workspace.revoked && pageIsVisible()) {
+          if (signal.aborted) timer = window.setTimeout(() => void load(), 0);
+          else {
+            setLoading(false);
+            if (shouldPoll) timer = window.setTimeout(() => void load(), 5000);
+          }
+        }
+      }
+    };
+    const visibilityChanged = () => {
+      window.clearTimeout(timer);
+      if (!pageIsVisible()) controller?.abort();
+      else void load();
+    };
+    void load();
+    document.addEventListener("visibilitychange", visibilityChanged);
+    return () => {
+      cancelled = true;
+      controller?.abort();
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", visibilityChanged);
+    };
   }, [settings.baseUrl, settings.accessToken, sessionId, creating, refresh, reportError, revoked, workspace]);
 
   useEffect(() => {
@@ -254,7 +297,7 @@ export function DatasetStudioPage({ settings, onUnauthorized, onForbidden, works
             const completed = item.recordings > 0 && item.readyRecordings === item.recordings && item.clips > 0 && item.verified + item.rejected === item.clips;
             return <article key={item.id} className="dataset-card">
               <div className="dataset-heading-row"><div><h2 data-i18n-skip>{item.name}</h2><p className="dataset-muted">{item.provider.toUpperCase()} · <span data-i18n-skip>{item.model || "Provider default"}</span> · {item.language.toUpperCase()} · {new Date(item.createdAt).toLocaleDateString(getIntlLocale())}</p></div><span className={`dataset-status dataset-status-${completed ? "verified" : "pending"}`}>{completed ? "Review complete" : item.failedRecordings ? "Needs attention" : item.readyRecordings < item.recordings ? "Transcribing" : "Needs review"}</span></div>
-              <div className="dataset-stats"><span><strong>{item.recordings}</strong> recordings</span><span><strong>{item.clips}</strong> clips</span><span><strong>{item.verified}</strong> verified</span><span><strong>{item.rejected}</strong> rejected</span></div>
+              <div className="dataset-stats"><span><strong>{item.recordings}</strong> recordings</span><span><strong>{item.clips}</strong> clips</span><span><strong>{item.verified}</strong> verified</span><span><strong>{item.rejected}</strong> rejected</span><SessionAudioDurations session={item} /></div>
               <label className="dataset-progress-label">{item.readyRecordings} / {item.recordings} recordings ready<progress value={item.readyRecordings} max={Math.max(1, item.recordings)} /></label>
               <div className="dataset-heading-row"><p className="dataset-muted">{item.failedRecordings ? `${item.failedRecordings} recording(s) failed. ` : ""}{dirtyCount ? `${dirtyCount} unsaved draft(s).` : ""}</p><button type="button" className="secondary-button" onClick={() => openSession(item.id)}>Open session</button></div>
             </article>;
@@ -265,7 +308,7 @@ export function DatasetStudioPage({ settings, onUnauthorized, onForbidden, works
           <div className="dataset-heading-row"><div><h2 data-i18n-skip>{session.name}</h2><p className="dataset-muted">{session.provider.toUpperCase()} · <span data-i18n-skip>{session.model || "Provider default"}</span> · {session.language.toUpperCase()} · Target {session.minClipSeconds}–{session.maxClipSeconds}s</p></div>
             <button type="button" disabled={Boolean(exportBlocker) || exporting || loading || retrying || editorBusy} aria-describedby="dataset-export-help" onClick={() => void download()}>{exporting ? "Preparing ZIP…" : "Export dataset ZIP"}</button></div>
           <p id="dataset-export-help" className="dataset-muted">{exportBlocker || "Ready to export verified WAV/TXT pairs, manifest.jsonl, and README.txt. Rejected clips are excluded."}</p>
-          <div className="dataset-stats"><span><strong>{counts!.ready} / {session.recordings.length}</strong> recordings ready</span><span><strong>{counts!.clips}</strong> clips</span><span><strong>{counts!.verified}</strong> verified</span><span><strong>{counts!.rejected}</strong> rejected</span><span><strong>{Math.max(0, counts!.clips - counts!.verified - counts!.rejected)}</strong> need review</span></div>
+          <div className="dataset-stats"><span><strong>{counts!.ready} / {session.recordings.length}</strong> recordings ready</span><span><strong>{counts!.clips}</strong> clips</span><span><strong>{counts!.verified}</strong> verified</span><span><strong>{counts!.rejected}</strong> rejected</span><span><strong>{Math.max(0, counts!.clips - counts!.verified - counts!.rejected)}</strong> need review</span><SessionAudioDurations session={session} /></div>
           <progress aria-label="Transcription progress" value={counts!.ready} max={Math.max(1, session.recordings.length)} />
           {counts!.active > 0 && <p role="status" className="dataset-muted">Transcribing {counts!.active} recording(s). Progress refreshes every five seconds while this page is visible. Ready clips can already be reviewed.</p>}
           {counts!.failed > 0 && <DatasetRetrySettings key={session.id} settings={settings} signal={workspace.controller.signal}

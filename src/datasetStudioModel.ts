@@ -59,3 +59,12 @@ export const formatClipTime = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${(seconds % 60).toFixed(2).padStart(5, "0")}`;
 };
+
+export function formatAnnotationDuration(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const wholeSeconds = Math.round(seconds);
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const remainingSeconds = wholeSeconds % 60;
+  return `${hours ? `${hours}h ` : ""}${minutes}m ${remainingSeconds}s`;
+}
