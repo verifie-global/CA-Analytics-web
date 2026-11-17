@@ -219,6 +219,31 @@ const getSubmissionStage = (status?: string | null): SubmissionStage => {
   }
 };
 
+const updateSubmissionProgress = (current: SubmissionProgress, detail: CallDetail) => {
+  if (
+    current.conversationId !== detail.conversationId ||
+    current.stage === "uploading" ||
+    detail.status === "Unknown"
+  ) {
+    return current;
+  }
+
+  const stage = getSubmissionStage(detail.status);
+  const language = detail.language ?? current.language;
+  const source = detail.source ?? current.source;
+  const error = stage === "failed" ? detail.error?.trim() || "Analysis failed." : "";
+  if (
+    current.stage === stage &&
+    current.language === language &&
+    current.source === source &&
+    current.error === error
+  ) {
+    return current;
+  }
+
+  return { ...current, stage, language, source, error };
+};
+
 const getAnalysisLanguageLabel = (language?: string | null) => {
   switch (language?.trim().toLowerCase()) {
     case "en":
@@ -824,8 +849,33 @@ const getFriendlinessLabel = (value?: number | null) => {
 };
 
 const isInProgressStatus = (value?: string | null) => {
-  const normalized = value?.toLowerCase();
-  return normalized === "collecting" || normalized === "queued" || normalized === "processing" || normalized === "inprogress";
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "collecting" || normalized === "queued" || normalized === "processing" ||
+    normalized === "inprogress" || normalized === "in_progress";
+};
+
+const updateProcessingCall = (call: CallSummary, detail: CallDetail) => {
+  const qa = detail.qa;
+  const updates = {
+    status: detail.status,
+    language: detail.language ?? call.language,
+    completedUtc: detail.completedUtc ?? call.completedUtc,
+    error: detail.error ?? call.error,
+    sentiment: detail.sentiment ?? call.sentiment,
+    satisfactionScore: detail.satisfactionScore ?? call.satisfactionScore,
+    friendlinessScore: detail.friendlinessScore ?? call.friendlinessScore,
+    qaScore: qa ? qa.score ?? null : call.qaScore,
+    qaIsApplicable: qa ? qa.isApplicable ?? null : call.qaIsApplicable,
+    qaStatus: qa ? qa.status ?? null : call.qaStatus,
+    qaNotApplicableReason: qa ? qa.notApplicableReason ?? null : call.qaNotApplicableReason,
+    qaEarnedPoints: qa ? qa.earnedPoints ?? null : call.qaEarnedPoints,
+    qaPossiblePoints: qa ? qa.possiblePoints ?? null : call.qaPossiblePoints,
+  } satisfies Partial<CallSummary>;
+
+  const changed = (Object.keys(updates) as Array<keyof typeof updates>).some(
+    (key) => updates[key] !== call[key],
+  );
+  return changed ? { ...call, ...updates } : call;
 };
 
 const isCompletedStatus = (value?: string | null) => value?.toLowerCase() === "completed";
@@ -2272,90 +2322,126 @@ function App() {
       return;
     }
 
-    const hasInProgressConversation = calls.some((call) => isInProgressStatus(call.status));
-    const selectedNeedsRefresh = isInProgressStatus(detail?.status);
-    const submissionNeedsRefresh =
-      submissionProgress.stage === "queued" || submissionProgress.stage === "processing";
+    const conversationIds = new Set<string>();
+    if (currentRoute === "dashboard") {
+      for (const call of calls) {
+        if (isInProgressStatus(call.status)) conversationIds.add(call.conversationId);
+      }
+      if (detail?.conversationId === selectedId && isInProgressStatus(detail.status)) {
+        conversationIds.add(selectedId);
+      }
+    }
+    const submissionId = submissionProgress.conversationId;
+    if (submissionId && isInProgressStatus(submissionProgress.stage)) {
+      conversationIds.add(submissionId);
+    }
 
-    if (!hasInProgressConversation && !selectedNeedsRefresh && !submissionNeedsRefresh) {
+    if (conversationIds.size === 0) {
       return;
     }
 
-    const timer = window.setInterval(() => {
-      void refreshCalls(settings, { silent: true });
-      const conversationIdToPoll = submissionNeedsRefresh
-        ? submissionProgress.conversationId
-        : selectedNeedsRefresh
-          ? selectedId
-          : "";
-      if (conversationIdToPoll) {
-        void handleLoadDetail(conversationIdToPoll, { silent: true });
+    let cancelled = false;
+    const poll = async () => {
+      const results = await Promise.allSettled(
+        Array.from(conversationIds, (conversationId) => fetchCallDetail(settings, conversationId)),
+      );
+      if (cancelled) return;
+
+      const updates = new Map<string, CallDetail>();
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          const nextDetail = result.value;
+          if (conversationIds.has(nextDetail.conversationId) && nextDetail.status !== "Unknown") {
+            updates.set(nextDetail.conversationId, nextDetail);
+          }
+        } else if (isUnauthorizedError(result.reason)) {
+          handleUnauthorizedSession();
+          return;
+        }
       }
-    }, 5000);
+
+      if (updates.size > 0) {
+        setCalls((current) => {
+          const next = current.map((call) => {
+            const update = updates.get(call.conversationId);
+            return update && isInProgressStatus(call.status)
+              ? updateProcessingCall(call, update)
+              : call;
+          });
+          return next.some((call, index) => call !== current[index]) ? next : current;
+        });
+
+        const selectedUpdate = updates.get(selectedId);
+        if (selectedUpdate) {
+          setDetail((current) => {
+            if (current?.conversationId !== selectedId || !isInProgressStatus(current.status)) {
+              return current;
+            }
+
+            const changed = current.status !== selectedUpdate.status ||
+              current.language !== selectedUpdate.language ||
+              current.source !== selectedUpdate.source ||
+              current.error !== selectedUpdate.error ||
+              current.transcript !== selectedUpdate.transcript ||
+              current.textLastMessageAt !== selectedUpdate.textLastMessageAt;
+            return changed ? selectedUpdate : current;
+          });
+        }
+
+        setTranscriptCache((current) => {
+          let next = current;
+          for (const [conversationId, update] of updates) {
+            if (conversationId !== selectedId && current[conversationId] == null) continue;
+            const transcript = update.transcript?.trim() ?? "";
+            if (current[conversationId] !== transcript) {
+              if (next === current) next = { ...current };
+              next[conversationId] = transcript;
+            }
+          }
+          return next;
+        });
+
+        const submissionUpdate = updates.get(submissionId);
+        if (submissionUpdate) {
+          setSubmissionProgress((current) => updateSubmissionProgress(current, submissionUpdate));
+        }
+      }
+
+      timer = window.setTimeout(poll, 5000);
+    };
+    let timer = window.setTimeout(poll, 5000);
 
     return () => {
-      window.clearInterval(timer);
+      cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [
     isAuthorized,
+    currentRoute,
     calls,
+    detail?.conversationId,
     detail?.status,
     selectedId,
     settings,
-    filters,
     submissionProgress.conversationId,
     submissionProgress.stage,
   ]);
 
   useEffect(() => {
-    if (
-      !detail ||
-      !submissionProgress.conversationId ||
-      detail.conversationId !== submissionProgress.conversationId
-    ) {
-      return;
-    }
-
-    const stage = getSubmissionStage(detail.status);
-    const language = detail.language ?? submissionProgress.language;
-    const source = detail.source ?? submissionProgress.source;
-    const error = stage === "failed" ? detail.error?.trim() || "Analysis failed." : "";
-
-    setSubmissionProgress((current) => {
-      if (
-        current.stage === stage &&
-        current.language === language &&
-        current.source === source &&
-        current.error === error
-      ) {
-        return current;
-      }
-
-      return { ...current, stage, language, source, error };
-    });
-
+    const { conversationId, stage } = submissionProgress;
     if (stage === "processing") {
-      setStatusMessage(`Analysis is processing for ${detail.conversationId}.`);
+      setStatusMessage(`Analysis is processing for ${conversationId}.`);
     } else if (stage === "completed") {
-      setStatusMessage(`Analysis completed for ${detail.conversationId}.`);
+      setStatusMessage(`Analysis completed for ${conversationId}.`);
     } else if (stage === "failed") {
-      setStatusMessage(`Analysis failed for ${detail.conversationId}.`);
+      setStatusMessage(`Analysis failed for ${conversationId}.`);
     }
-  }, [
-    detail?.conversationId,
-    detail?.error,
-    detail?.language,
-    detail?.source,
-    detail?.status,
-    submissionProgress.conversationId,
-    submissionProgress.language,
-    submissionProgress.source,
-  ]);
+  }, [submissionProgress.conversationId, submissionProgress.stage]);
 
   useEffect(() => {
     if (
       !selectedId ||
-      !detail ||
+      detail?.conversationId !== selectedId ||
       detail.status !== "Completed" ||
       isTextConversation(detail) ||
       (submissionProgress.conversationId === selectedId &&
@@ -2584,6 +2670,7 @@ function App() {
     try {
       const nextDetail = await fetchCallDetail(settings, conversationId);
       setDetail(nextDetail);
+      setSubmissionProgress((current) => updateSubmissionProgress(current, nextDetail));
       setTranscriptCache((current) => ({
         ...current,
         [conversationId]: nextDetail.transcript?.trim() ?? "",
