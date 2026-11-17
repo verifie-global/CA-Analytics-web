@@ -93,7 +93,7 @@ describe("Processing settings navigation and access", () => {
 
     render(<I18nProvider><App /></I18nProvider>);
     const nav = await screen.findByRole("navigation", undefined, { timeout: 5000 });
-    const processing = await within(nav).findByRole("button", { name: /^Processing settings$/i }, { timeout: 5000 });
+    const processing = await within(nav).findByRole("button", { name: /^Settings$/i }, { timeout: 5000 });
     await user.click(processing);
     expect(processing.classList.contains("nav-item-active")).toBe(true);
 
@@ -120,7 +120,7 @@ describe("Processing settings navigation and access", () => {
     render(<I18nProvider><App /></I18nProvider>);
 
     expect(await screen.findByRole("heading", { name: /^Permission denied$/i }, { timeout: 5000 })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /^Processing settings$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Settings$/i })).toBeNull();
     expect(fetchMock.mock.calls.some(([request]) => String(request).split("?")[0] === settingsEndpoint)).toBe(false);
   });
 });

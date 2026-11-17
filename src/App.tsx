@@ -4294,7 +4294,7 @@ function App() {
     ...(canManageProcessing
       ? [{
           key: "processing" as const,
-          label: t("Processing settings"),
+          label: t("Settings"),
           active: currentRoute === "processing-settings",
           onClick: () => navigateTo("processing-settings"),
         }]
