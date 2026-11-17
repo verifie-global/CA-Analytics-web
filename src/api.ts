@@ -1353,6 +1353,7 @@ const normalizeWorkflowPayloadOptions = (value: unknown): WorkflowDestinationPay
   const record = asRecord(value);
   const jiraRecord = asOptionalRecord(record.jiraIssue);
   const bitrixRecord = asOptionalRecord(record.bitrix24Lead);
+  const amoCrmRecord = asOptionalRecord(record.amoCrmLead);
   return {
     includeTranscript: readBoolean(record, "includeTranscript") ?? false,
     includeRedactedTranscript: readBoolean(record, "includeRedactedTranscript") ?? true,
@@ -1391,6 +1392,22 @@ const normalizeWorkflowPayloadOptions = (value: unknown): WorkflowDestinationPay
           },
         }
       : {}),
+    ...(amoCrmRecord
+      ? {
+          amoCrmLead: {
+            name: readString(amoCrmRecord, "name") ?? null,
+            pipelineId: readNullableNumber(amoCrmRecord, "pipelineId") ?? null,
+            statusId: readNullableNumber(amoCrmRecord, "statusId") ?? null,
+            responsibleUserId: readNullableNumber(amoCrmRecord, "responsibleUserId") ?? null,
+            price: readNullableNumber(amoCrmRecord, "price") ?? null,
+            tags: normalizeStringList(amoCrmRecord.tags),
+            analysisSummaryFieldId: readNullableNumber(amoCrmRecord, "analysisSummaryFieldId") ?? null,
+            transcriptFieldId: readNullableNumber(amoCrmRecord, "transcriptFieldId") ?? null,
+            createCustomerContact: readBoolean(amoCrmRecord, "createCustomerContact") ?? false,
+            customFields: Array.isArray(amoCrmRecord.customFields) ? amoCrmRecord.customFields : undefined,
+          },
+        }
+      : {}),
   };
 };
 
@@ -1405,26 +1422,35 @@ const normalizeWorkflowPlatform = (value: unknown): WorkflowPlatform => {
     "Custom Webhook",
     "jira",
     "bitrix24",
+    "amocrm",
   ];
   return knownPlatforms.find((item) => item.toLowerCase() === platform.toLowerCase()) ?? "Custom Webhook";
 };
 
 const normalizeWorkflowDestination = (value: unknown): WorkflowDestination => {
   const record = asRecord(value);
+  const platform = normalizeWorkflowPlatform(record.platform);
+  const headers = normalizeStringRecord(record.headers);
+  if (platform === "amocrm") {
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === "authorization") delete headers[key];
+    }
+  }
   return {
     id: readStringLike(record, "id", "destinationId", "workflowDestinationId") ?? "",
     name: readString(record, "name") ?? "",
-    platform: normalizeWorkflowPlatform(record.platform),
+    platform,
     eventType: readString(record, "eventType") ?? "analysis.completed",
     isEnabled: readBoolean(record, "isEnabled", "enabled") ?? true,
     webhookUrl: readString(record, "webhookUrl", "url") ?? "",
-    headers: normalizeStringRecord(record.headers),
+    headers,
+    hasAuthorization: readBoolean(record, "hasAuthorization"),
     filters: normalizeWorkflowFilters(record.filters),
     payloadOptions: normalizeWorkflowPayloadOptions(record.payloadOptions),
     metadata: normalizeStringRecord(record.metadata),
     createdAt: readString(record, "createdAt", "createdAtUtc") ?? null,
     updatedAt: readString(record, "updatedAt", "updatedAtUtc") ?? null,
-    raw: value,
+    raw: platform === "amocrm" ? { ...record, headers } : value,
   };
 };
 

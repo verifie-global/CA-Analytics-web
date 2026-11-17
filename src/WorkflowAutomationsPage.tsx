@@ -8,6 +8,7 @@ import {
   updateWorkflowDestination,
 } from "./api";
 import type {
+  AmoCrmLeadOptions,
   AppSettings,
   WorkflowDelivery,
   WorkflowDestination,
@@ -18,9 +19,11 @@ import type {
 import { getIntlLocale, useI18n } from "./i18n";
 import {
   buildWorkflowDestinationRequest,
+  emptyAmoCrmLead,
   emptyBitrix24Lead,
   emptyJiraIssue,
   emptyWebhookOptions,
+  getAmoCrmAccountOrigin,
   isWebhookPlatform,
   platformLabel,
 } from "./workflowDestinationModel";
@@ -47,7 +50,23 @@ const platformPresets: { value: WorkflowPlatform; label: string }[] = [
   { value: "Custom Webhook", label: "Custom Webhook" },
   { value: "jira", label: "Jira" },
   { value: "bitrix24", label: "Bitrix24" },
+  { value: "amocrm", label: "amoCRM" },
 ];
+
+const platformUrlFields: Partial<Record<WorkflowPlatform, { label: string; placeholder: string }>> = {
+  jira: { label: "Jira site URL", placeholder: "https://company.atlassian.net" },
+  bitrix24: { label: "Incoming webhook URL", placeholder: "https://company.bitrix24.com/rest/7/secret/" },
+  amocrm: { label: "amoCRM account URL", placeholder: "https://company.amocrm.ru" },
+};
+
+const amoCrmNumberFields = [
+  { key: "pipelineId", label: "Pipeline ID", min: 1 },
+  { key: "statusId", label: "Stage ID", min: 1 },
+  { key: "responsibleUserId", label: "Responsible user ID", min: 1 },
+  { key: "price", label: "Deal value", min: 0 },
+  { key: "analysisSummaryFieldId", label: "Analysis summary field ID", min: 1 },
+  { key: "transcriptFieldId", label: "Full transcript field ID", min: 1 },
+] as const;
 
 const sentimentOptions = ["positive", "neutral", "negative"];
 const urgencyOptions = ["low", "medium", "high", "critical"];
@@ -79,6 +98,7 @@ const emptyDraft = (): WorkflowDraft => ({
     ...emptyWebhookOptions(),
     jiraIssue: emptyJiraIssue(),
     bitrix24Lead: emptyBitrix24Lead(),
+    amoCrmLead: emptyAmoCrmLead(),
   },
   metadata: {},
 });
@@ -248,6 +268,8 @@ export function WorkflowAutomationsPage({
   const [jiraEmail, setJiraEmail] = useState("");
   const [jiraApiToken, setJiraApiToken] = useState("");
   const [jiraLabels, setJiraLabels] = useState("");
+  const [amoCrmAccessToken, setAmoCrmAccessToken] = useState("");
+  const [amoCrmTags, setAmoCrmTags] = useState("");
   const [showBitrixUrl, setShowBitrixUrl] = useState(false);
   const [departmentInput, setDepartmentInput] = useState("");
   const [testingDestination, setTestingDestination] = useState<WorkflowDestination | null>(null);
@@ -259,12 +281,21 @@ export function WorkflowAutomationsPage({
   const [deliveriesLoading, setDeliveriesLoading] = useState(false);
   const [deliveriesError, setDeliveriesError] = useState("");
 
+  const amoCrmToken = amoCrmAccessToken.trim();
+  const amoCrmLead = draft.payloadOptions.amoCrmLead ?? emptyAmoCrmLead();
+  const platformUrlField = platformUrlFields[draft.platform] ?? {
+    label: "Webhook URL",
+    placeholder: "https://example.com/hooks/call-analysis",
+  };
+
   const requestBody = useMemo(() => {
     const jiraIssue = draft.payloadOptions.jiraIssue ?? emptyJiraIssue();
     const bitrix24Lead = draft.payloadOptions.bitrix24Lead ?? emptyBitrix24Lead();
     const payloadOptions = {
       ...draft.payloadOptions,
-      customFields: fromKeyValueRows(customFieldRows),
+      customFields: draft.platform === "amocrm"
+        ? editingDestination?.payloadOptions.customFields
+        : fromKeyValueRows(customFieldRows),
       jiraIssue: {
         ...jiraIssue,
         labels: jiraLabels.split(",").map((item) => item.trim()).filter(Boolean),
@@ -280,23 +311,49 @@ export function WorkflowAutomationsPage({
             ? fromKeyValueRows(integrationFieldRows)
             : bitrix24Lead.additionalFields,
       },
+      amoCrmLead: {
+        ...(draft.payloadOptions.amoCrmLead ?? emptyAmoCrmLead()),
+        tags: amoCrmTags.split(",").map((item) => item.trim()).filter(Boolean),
+      },
     };
 
-    return buildWorkflowDestinationRequest({
-      ...draft,
-      headers: fromKeyValueRows(headersRows),
-      payloadOptions,
-    }, { email: jiraEmail, apiToken: jiraApiToken });
-  }, [customFieldRows, draft, headersRows, integrationFieldRows, jiraApiToken, jiraEmail, jiraLabels]);
+    return buildWorkflowDestinationRequest(
+      { ...draft, headers: fromKeyValueRows(headersRows), payloadOptions },
+      { email: jiraEmail, apiToken: jiraApiToken },
+      amoCrmToken,
+    );
+  }, [
+    amoCrmTags, amoCrmToken, customFieldRows, draft, editingDestination,
+    headersRows, integrationFieldRows, jiraApiToken, jiraEmail, jiraLabels,
+  ]);
 
   const hasConfiguredJiraAuth = Boolean(
     editingDestination &&
       Object.keys(editingDestination.headers).some((key) => key.toLowerCase() === "authorization"),
   );
+  const amoCrmAccountOrigin =
+    draft.platform === "amocrm" ? getAmoCrmAccountOrigin(requestBody.webhookUrl) : null;
+  const hasSavedAmoCrmToken =
+    editingDestination?.platform === "amocrm" && editingDestination.hasAuthorization === true;
+  const canReuseAmoCrmToken = Boolean(
+    hasSavedAmoCrmToken && amoCrmAccountOrigin &&
+      amoCrmAccountOrigin === getAmoCrmAccountOrigin(editingDestination.webhookUrl),
+  );
 
   const validationError = useMemo(() => {
     if (!requestBody.name.trim()) {
       return "Name is required.";
+    }
+
+    if (requestBody.platform === "amocrm") {
+      if (!amoCrmAccountOrigin) return "Enter an HTTPS amoCRM account URL without embedded credentials.";
+      if (!amoCrmToken && !canReuseAmoCrmToken) {
+        return hasSavedAmoCrmToken
+          ? "Enter a new access token for the changed amoCRM account."
+          : "amoCRM access token is required.";
+      }
+      if (/\s/.test(amoCrmToken)) return "Enter the amoCRM access token without spaces or a Bearer prefix.";
+      return "";
     }
 
     if (requestBody.platform === "jira") {
@@ -317,11 +374,14 @@ export function WorkflowAutomationsPage({
         return "URL must start with http:// or https://.";
       }
     } catch {
-      return `Enter a valid ${requestBody.platform === "jira" ? "Jira site" : requestBody.platform === "bitrix24" ? "Bitrix24 webhook" : "webhook"} URL.`;
+      return `Enter a valid ${platformUrlField.label}.`;
     }
 
     return "";
-  }, [hasConfiguredJiraAuth, jiraApiToken, jiraEmail, requestBody]);
+  }, [
+    amoCrmAccountOrigin, amoCrmToken, canReuseAmoCrmToken, hasSavedAmoCrmToken,
+    hasConfiguredJiraAuth, jiraApiToken, jiraEmail, platformUrlField.label, requestBody,
+  ]);
 
   const loadDestinations = async () => {
     setLoading(true);
@@ -357,6 +417,8 @@ export function WorkflowAutomationsPage({
     setJiraEmail("");
     setJiraApiToken("");
     setJiraLabels("");
+    setAmoCrmAccessToken("");
+    setAmoCrmTags("");
     setShowBitrixUrl(false);
     setDepartmentInput("");
     setIsFormOpen(true);
@@ -391,11 +453,18 @@ export function WorkflowAutomationsPage({
     setJiraEmail("");
     setJiraApiToken("");
     setJiraLabels(destination.payloadOptions.jiraIssue?.labels.join(", ") ?? "");
+    setAmoCrmAccessToken("");
+    setAmoCrmTags(destination.payloadOptions.amoCrmLead?.tags.join(", ") ?? "");
     setShowBitrixUrl(false);
     setDepartmentInput(destination.filters.departments.join(", "));
     setIsFormOpen(true);
     setErrorMessage("");
     setSuccessMessage("");
+  };
+
+  const closeForm = () => {
+    setAmoCrmAccessToken("");
+    setIsFormOpen(false);
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -411,12 +480,14 @@ export function WorkflowAutomationsPage({
     try {
       const shouldPreserveJiraHeaders =
         editingDestination && requestBody.platform === "jira" && !jiraEmail.trim() && !jiraApiToken;
+      const shouldPreserveAmoCrmHeaders =
+        requestBody.platform === "amocrm" && canReuseAmoCrmToken && !amoCrmToken;
       const { headers: _preservedHeaders, ...requestWithoutHeaders } = requestBody;
       const saved = editingDestination
         ? await updateWorkflowDestination(
             settings,
             editingDestination.id,
-            shouldPreserveJiraHeaders ? requestWithoutHeaders : requestBody,
+            shouldPreserveJiraHeaders || shouldPreserveAmoCrmHeaders ? requestWithoutHeaders : requestBody,
           )
         : await createWorkflowDestination(settings, requestBody);
 
@@ -430,14 +501,17 @@ export function WorkflowAutomationsPage({
       setSuccessMessage(
         editingDestination ? "Workflow automation updated." : "Workflow automation created.",
       );
-      setIsFormOpen(false);
+      closeForm();
     } catch (error) {
       if (isUnauthorizedError(error)) {
         onUnauthorized();
         return;
       }
 
-      setErrorMessage(error instanceof Error ? error.message : "Unable to save workflow automation.");
+      const message = error instanceof Error ? error.message : "Unable to save workflow automation.";
+      setErrorMessage(requestBody.platform === "amocrm" && amoCrmToken
+        ? message.replaceAll(amoCrmToken, "[redacted]")
+        : message);
     } finally {
       setSaving(false);
     }
@@ -599,8 +673,13 @@ export function WorkflowAutomationsPage({
     }));
   };
 
+  const updateAmoCrmLead = (patch: Partial<AmoCrmLeadOptions>) => {
+    updatePayloadOption("amoCrmLead", { ...amoCrmLead, ...patch });
+  };
+
   const handlePlatformChange = (platform: WorkflowPlatform) => {
     setDraft((current) => ({ ...current, platform }));
+    if (platform !== "amocrm") setAmoCrmAccessToken("");
     setIntegrationFieldRows(
       toKeyValueRows(
         platform === "jira"
@@ -628,7 +707,7 @@ export function WorkflowAutomationsPage({
       <div className="workflow-page-head">
         <div className="section-heading">
           <h2>Workflow Automations</h2>
-          <p>Send completed call analyses to Webhook, Jira, and Bitrix24 destinations.</p>
+          <p>Send completed call analyses to a webhook, Jira, Bitrix24, or amoCRM.</p>
         </div>
         <button type="button" onClick={openCreateForm}>
           Create workflow
@@ -646,7 +725,7 @@ export function WorkflowAutomationsPage({
       ) : destinations.length === 0 ? (
         <div className="empty-state">
           <h3>No workflow automations</h3>
-          <p>Create a workflow to deliver completed analyses to a webhook, Jira project, or Bitrix24 CRM.</p>
+          <p>Create a workflow to deliver completed analyses to a connected destination.</p>
           <button type="button" onClick={openCreateForm}>
             Create workflow
           </button>
@@ -658,7 +737,7 @@ export function WorkflowAutomationsPage({
             <span>Platform</span>
             <span>Event</span>
             <span>Status</span>
-            <span>Webhook URL</span>
+            <span>Destination URL</span>
             <span>Updated</span>
             <span>Actions</span>
           </div>
@@ -712,7 +791,7 @@ export function WorkflowAutomationsPage({
       )}
 
       {isFormOpen ? (
-        <div className="modal-backdrop" onClick={() => setIsFormOpen(false)}>
+        <div className="modal-backdrop" onClick={closeForm}>
           <form className="modal-card workflow-modal-card" onSubmit={handleSubmit} onClick={(event) => event.stopPropagation()}>
             <div className="section-heading">
               <h2>{editingDestination ? "Edit workflow" : "Create workflow"}</h2>
@@ -760,13 +839,13 @@ export function WorkflowAutomationsPage({
               </label>
               <label className="full-width">
                 <span className="qa-field-label">
-                  {draft.platform === "jira" ? "Jira site URL" : draft.platform === "bitrix24" ? "Incoming webhook URL" : "Webhook URL"}
+                  {platformUrlField.label}
                 </span>
                 <input
                   type={draft.platform === "bitrix24" && !showBitrixUrl ? "password" : "url"}
                   value={draft.webhookUrl}
                   onChange={(event) => setDraft((current) => ({ ...current, webhookUrl: event.target.value }))}
-                  placeholder={draft.platform === "jira" ? "https://company.atlassian.net" : draft.platform === "bitrix24" ? "https://company.bitrix24.com/rest/7/secret/" : "https://example.com/hooks/call-analysis"}
+                  placeholder={platformUrlField.placeholder}
                 />
                 {draft.platform === "bitrix24" ? (
                   <button type="button" className="workflow-inline-reveal" onClick={() => setShowBitrixUrl((value) => !value)}>
@@ -852,6 +931,71 @@ export function WorkflowAutomationsPage({
                 <div className="workflow-checkbox-grid"><label className="selection-toggle"><input type="checkbox" checked={draft.payloadOptions.bitrix24Lead?.includeAnalysisSummaryInComments ?? true} onChange={(event) => updateBitrix24Lead({ includeAnalysisSummaryInComments: event.target.checked })} /><span>Include analysis summary in comments</span></label></div>
                 <div className="editor-group-head"><h3>Additional lead fields</h3></div>
                 <KeyValueEditor rows={integrationFieldRows} onChange={setIntegrationFieldRows} keyPlaceholder="UF_CRM_CALL_ID" valuePlaceholder="external-value" />
+              </div>
+            ) : null}
+
+            {draft.platform === "amocrm" ? (
+              <div className="editor-group workflow-form-section" data-testid="amocrm-fields">
+                <div className="editor-group-head"><h3>amoCRM deal</h3></div>
+                <div className="workflow-form-grid">
+                  <label className="full-width">
+                    <span className="qa-field-label">amoCRM access token</span>
+                    <input
+                      type="password"
+                      value={amoCrmAccessToken}
+                      onChange={(event) => setAmoCrmAccessToken(event.target.value)}
+                      placeholder={canReuseAmoCrmToken ? "Saved token" : "Long-lived access token"}
+                      autoComplete="new-password"
+                      aria-describedby={canReuseAmoCrmToken ? "amocrm-token-help" : undefined}
+                    />
+                  </label>
+                  {canReuseAmoCrmToken ? (
+                    <small id="amocrm-token-help" className="qa-field-helper full-width">
+                      Leave blank to keep the saved token.
+                    </small>
+                  ) : null}
+                  <label className="full-width">
+                    <span className="qa-field-label">Deal title</span>
+                    <input
+                      value={amoCrmLead.name ?? ""}
+                      onChange={(event) => updateAmoCrmLead({ name: event.target.value || null })}
+                      placeholder="Optional"
+                    />
+                  </label>
+                  {amoCrmNumberFields.map(({ key, label, min }) => (
+                    <label key={key}>
+                      <span className="qa-field-label">{label}</span>
+                      <input
+                        type="number"
+                        min={min}
+                        max={Number.MAX_SAFE_INTEGER}
+                        step="1"
+                        value={numberInputValue(amoCrmLead[key])}
+                        onChange={(event) => updateAmoCrmLead({ [key]: parseNullableNumber(event.target.value) })}
+                        placeholder="Optional"
+                      />
+                    </label>
+                  ))}
+                  <label className="full-width">
+                    <span className="qa-field-label">Tags</span>
+                    <input
+                      value={amoCrmTags}
+                      onChange={(event) => setAmoCrmTags(event.target.value)}
+                      placeholder="call-analytics, support"
+                    />
+                    <small className="qa-field-helper">Separate tags with commas.</small>
+                  </label>
+                </div>
+                <div className="workflow-checkbox-grid">
+                  <label className="selection-toggle">
+                    <input
+                      type="checkbox"
+                      checked={amoCrmLead.createCustomerContact}
+                      onChange={(event) => updateAmoCrmLead({ createCustomerContact: event.target.checked })}
+                    />
+                    <span>Create a contact from the customer's name and phone</span>
+                  </label>
+                </div>
               </div>
             ) : null}
 
@@ -981,7 +1125,7 @@ export function WorkflowAutomationsPage({
             {validationError ? <p className="field-error">{validationError}</p> : null}
 
             <div className="modal-actions full-width">
-              <button type="button" className="secondary-button" onClick={() => setIsFormOpen(false)}>
+              <button type="button" className="secondary-button" onClick={closeForm}>
                 Cancel
               </button>
               <button type="submit" disabled={saving || Boolean(validationError)}>
@@ -998,6 +1142,9 @@ export function WorkflowAutomationsPage({
             <div className="section-heading">
               <h2>Send test</h2>
               <p>Leave conversation ID empty to use the latest completed call.</p>
+              {testingDestination.platform === "amocrm" ? (
+                <p>Sending a test can create or update a real amoCRM deal.</p>
+              ) : null}
             </div>
             <div className="grid-form">
               <label className="full-width">

@@ -1,4 +1,5 @@
 import type {
+  AmoCrmLeadOptions,
   Bitrix24LeadOptions,
   JiraIssueOptions,
   WebhookPayloadOptions,
@@ -43,11 +44,36 @@ export const emptyBitrix24Lead = (): Bitrix24LeadOptions => ({
   additionalFields: {},
 });
 
-export const platformLabel = (platform: WorkflowPlatform) =>
-  platform === "jira" ? "Jira" : platform === "bitrix24" ? "Bitrix24" : platform;
+export const emptyAmoCrmLead = (): AmoCrmLeadOptions => ({
+  name: null,
+  pipelineId: null,
+  statusId: null,
+  responsibleUserId: null,
+  price: null,
+  tags: [],
+  analysisSummaryFieldId: null,
+  transcriptFieldId: null,
+  createCustomerContact: false,
+});
 
-export const isWebhookPlatform = (platform: WorkflowPlatform) =>
-  platform !== "jira" && platform !== "bitrix24";
+const nativePlatformLabels: Partial<Record<WorkflowPlatform, string>> = {
+  jira: "Jira",
+  bitrix24: "Bitrix24",
+  amocrm: "amoCRM",
+};
+
+export const platformLabel = (platform: WorkflowPlatform) => nativePlatformLabels[platform] ?? platform;
+
+export const isWebhookPlatform = (platform: WorkflowPlatform) => !(platform in nativePlatformLabels);
+
+export const getAmoCrmAccountOrigin = (value: string) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.origin : null;
+  } catch {
+    return null;
+  }
+};
 
 const base64Utf8 = (value: string) => {
   const bytes = new TextEncoder().encode(value);
@@ -71,6 +97,12 @@ export const payloadForPlatform = (
   if (platform === "bitrix24") {
     return { bitrix24Lead: payloadOptions.bitrix24Lead ?? emptyBitrix24Lead() };
   }
+  if (platform === "amocrm") {
+    return {
+      amoCrmLead: payloadOptions.amoCrmLead ?? emptyAmoCrmLead(),
+      ...(payloadOptions.customFields ? { customFields: payloadOptions.customFields } : {}),
+    };
+  }
   const defaults = emptyWebhookOptions();
   return {
     includeTranscript: payloadOptions.includeTranscript ?? defaults.includeTranscript,
@@ -87,17 +119,23 @@ export const payloadForPlatform = (
 export const buildWorkflowDestinationRequest = (
   draft: WorkflowDestinationInput,
   jiraCredentials: JiraCredentials,
+  amoCrmAccessToken = "",
 ): WorkflowDestinationInput => {
-  const headers = { ...draft.headers };
+  const headers =
+    isWebhookPlatform(draft.platform) || draft.platform === "jira" ? { ...draft.headers } : {};
   if (draft.platform === "jira" && jiraCredentials.email.trim() && jiraCredentials.apiToken) {
     headers.Authorization = createJiraAuthorization(jiraCredentials);
+  }
+  const token = amoCrmAccessToken.trim();
+  if (draft.platform === "amocrm" && token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   return {
     ...draft,
     name: draft.name.trim(),
     webhookUrl: draft.webhookUrl.trim(),
-    headers: draft.platform === "bitrix24" ? {} : headers,
+    headers,
     payloadOptions: payloadForPlatform(draft.platform, draft.payloadOptions),
   };
 };

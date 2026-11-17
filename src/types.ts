@@ -788,9 +788,23 @@ export type Bitrix24LeadOptions = {
   additionalFields: Record<string, string>;
 };
 
+export type AmoCrmLeadOptions = {
+  name: string | null;
+  pipelineId: number | null;
+  statusId: number | null;
+  responsibleUserId: number | null;
+  price: number | null;
+  tags: string[];
+  analysisSummaryFieldId: number | null;
+  transcriptFieldId: number | null;
+  createCustomerContact: boolean;
+  customFields?: { fieldId: number; value: unknown; enumCode?: string | null }[];
+};
+
 export type WorkflowDestinationPayloadOptions = Partial<WebhookPayloadOptions> & {
   jiraIssue?: JiraIssueOptions;
   bitrix24Lead?: Bitrix24LeadOptions;
+  amoCrmLead?: AmoCrmLeadOptions;
 };
 
 export type WorkflowPlatform =
@@ -801,7 +815,8 @@ export type WorkflowPlatform =
   | "Power Automate"
   | "Custom Webhook"
   | "jira"
-  | "bitrix24";
+  | "bitrix24"
+  | "amocrm";
 
 export type WorkflowDestination = {
   id: string;
@@ -811,6 +826,7 @@ export type WorkflowDestination = {
   isEnabled: boolean;
   webhookUrl: string;
   headers: Record<string, string>;
+  hasAuthorization?: boolean;
   filters: WorkflowDestinationFilters;
   payloadOptions: WorkflowDestinationPayloadOptions;
   metadata: Record<string, string>;
@@ -821,7 +837,7 @@ export type WorkflowDestination = {
 
 export type WorkflowDestinationInput = Omit<
   WorkflowDestination,
-  "id" | "createdAt" | "updatedAt" | "raw"
+  "id" | "hasAuthorization" | "createdAt" | "updatedAt" | "raw"
 >;
 
 export type WorkflowDelivery = {

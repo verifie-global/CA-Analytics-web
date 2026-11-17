@@ -91,4 +91,14 @@ describe("workflow destination request mapping", () => {
     expect(request.payloadOptions).toEqual({ bitrix24Lead: draft.payloadOptions.bitrix24Lead });
     expect(sanitizeWorkflowRequest(request).webhookUrl).toBe("Configured webhook URL");
   });
+
+  it("uses only the new amoCRM credential and redacts it in previews", () => {
+    const draft = baseDraft("amocrm");
+    draft.headers = { authorization: "Bearer old-token", "X-Source": "legacy-header" };
+
+    const request = buildWorkflowDestinationRequest(draft, { email: "", apiToken: "" }, " new-token ");
+
+    expect(request.headers).toEqual({ Authorization: "Bearer new-token" });
+    expect(sanitizeWorkflowRequest(request).headers).toEqual({ Authorization: "Configured" });
+  });
 });
