@@ -9,6 +9,8 @@ import type {
   CallFilters,
   CallUploadPayload,
   CallUploadResult,
+  CompanyProcessingSettings,
+  CompanyProcessingSettingsUpdate,
   CompanySttSettings,
   CompanySttSettingsUpdate,
   CallsListResult,
@@ -35,6 +37,7 @@ import type {
   SttAudioQualityMetadata,
   SttAudioSampleMetadata,
   SttMetadata,
+  SttProvider,
   SttRoutingMetadata,
   SttSidonMetadata,
   TextConnectorNormalizeResult,
@@ -1952,6 +1955,38 @@ export async function saveCompanySttSettings(
     },
   );
   return normalizeCompanySttSettings(response, settings.companyId, update);
+}
+
+export function fetchCompanyProcessingSettings(
+  settings: AppSettings,
+  sttProvider?: SttProvider,
+  signal?: AbortSignal,
+): Promise<CompanyProcessingSettings> {
+  return request<CompanyProcessingSettings>(
+    settings,
+    `/api/companies/${encodeURIComponent(settings.companyId)}/processing-settings`,
+    { signal, cache: "no-store", redirect: "error" },
+    sttProvider ? new URLSearchParams({ sttProvider }) : undefined,
+  );
+}
+
+export function updateCompanyProcessingSettings(
+  settings: AppSettings,
+  input: CompanyProcessingSettingsUpdate,
+  signal?: AbortSignal,
+): Promise<CompanyProcessingSettings> {
+  return request<CompanyProcessingSettings>(
+    settings,
+    `/api/companies/${encodeURIComponent(settings.companyId)}/processing-settings`,
+    {
+      method: "PUT",
+      headers: jsonHeaders(),
+      body: JSON.stringify(input),
+      signal,
+      cache: "no-store",
+      redirect: "error",
+    },
+  );
 }
 
 export async function fetchWorkflowDestinations(settings: AppSettings) {

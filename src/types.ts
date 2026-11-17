@@ -170,6 +170,49 @@ export type CompanySttSettingsUpdate = Pick<
   "provider" | "model" | "defaultLanguage" | "enableAudioEnhancement"
 >;
 
+export type ProcessingStageName =
+  | "stt"
+  | "diarization"
+  | "redaction"
+  | "asrCorrection"
+  | "qaEvaluation"
+  | "analysis";
+
+export type ProcessingRedactionEngine = "builtin" | "external";
+
+export type ProcessingStageSettings = {
+  url: string | null;
+  model: string | null;
+  engine: ProcessingRedactionEngine | null;
+  hasApiKey: boolean;
+  apiKeyConfigured: boolean;
+  apiKeyDisabled: boolean;
+  defaultUrl: string | null;
+  defaultModel: string | null;
+  defaultEngine: ProcessingRedactionEngine | null;
+};
+
+export type ProcessingStageSettingsUpdate = {
+  // Omit or pass null to preserve the override. Pass an empty string to inherit.
+  url?: string | null;
+  model?: string | null;
+  engine?: ProcessingRedactionEngine | "" | null;
+  // A provided credential replaces the stored value. It is never returned.
+  apiKey?: string | null;
+  apiKeyMode?: "inherit" | "none" | null;
+};
+
+export type CompanyProcessingSettings = Record<ProcessingStageName, ProcessingStageSettings> & {
+  companyId: number;
+  version: number;
+  sttProvider: SttProvider;
+};
+
+export type CompanyProcessingSettingsUpdate = Partial<Record<ProcessingStageName, ProcessingStageSettingsUpdate | null>> & {
+  version: number;
+  sttProvider?: SttProvider | null;
+};
+
 export type SttRoutingMetadata = {
   requestedLanguage?: string | null;
   selectedEngine?: string | null;
