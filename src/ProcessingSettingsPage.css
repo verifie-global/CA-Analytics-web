@@ -1,16 +1,12 @@
-.processing-settings-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: .75rem 1.5rem;
-}
-
 .processing-settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
   margin-top: 1rem;
+}
+
+.processing-stage[aria-labelledby="processing-stt-heading"] {
+  align-self: start;
 }
 
 .processing-stage {

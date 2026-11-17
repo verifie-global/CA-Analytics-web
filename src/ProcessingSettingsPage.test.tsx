@@ -50,6 +50,15 @@ const getSettings = vi.mocked(fetchCompanyProcessingSettings);
 const putSettings = vi.mocked(updateCompanyProcessingSettings);
 const form = (name: string) => within(screen.getByRole("form", { name }));
 const save = (name: string) => fireEvent.click(form(name).getByRole("button", { name: "Save settings" }));
+const sttSettings = {
+  value: { companyId: 42, provider: "custom" as const, model: null, defaultLanguage: "hy", enableAudioEnhancement: true },
+  forbidden: false,
+  loading: false,
+  saving: false,
+  errorMessage: "",
+  successMessage: "",
+  save: vi.fn(),
+};
 
 describe("ProcessingSettingsPage", () => {
   beforeEach(() => {
@@ -59,17 +68,17 @@ describe("ProcessingSettingsPage", () => {
 
   afterEach(cleanup);
 
-  it("shows the processing stages and links to the existing STT configuration", async () => {
-    const openStt = vi.fn();
-    render(<ProcessingSettingsPage settings={settings} onOpenSttSettings={openStt} />);
+  it("shows the STT configuration alongside the processing stages", async () => {
+    render(<ProcessingSettingsPage settings={settings} sttSettings={sttSettings} />);
 
     expect(await screen.findAllByRole("form")).toHaveLength(6);
     expect(form("STT endpoint").getByText("SatisfAI STT service")).toBeTruthy();
     expect(form("STT endpoint").getByPlaceholderText("https://stt.example.com/transcribe")).toBeTruthy();
     expect(form("QA evaluation").getByPlaceholderText("default-qa")).toBeTruthy();
     expect(form("Text redaction").queryByLabelText("Endpoint URL")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Open STT settings" }));
-    expect(openStt).toHaveBeenCalledOnce();
+    const stt = within(screen.getByRole("region", { name: "STT Settings" }));
+    expect((stt.getByLabelText("Transcription provider") as HTMLSelectElement).value).toBe("custom");
+    expect((stt.getByLabelText("Default transcription language") as HTMLSelectElement).value).toBe("hy");
   });
 
   it("saves an isolated stage patch and preserves drafts in other stages", async () => {
@@ -80,7 +89,7 @@ describe("ProcessingSettingsPage", () => {
     };
     putSettings.mockResolvedValue(next);
 
-    render(<ProcessingSettingsPage settings={settings} onOpenSttSettings={() => {}} />);
+    render(<ProcessingSettingsPage settings={settings} sttSettings={sttSettings} />);
     await screen.findByRole("form", { name: "QA evaluation" });
 
     fireEvent.change(form("Speaker diarization").getByLabelText("Endpoint URL"), {
@@ -107,7 +116,7 @@ describe("ProcessingSettingsPage", () => {
       analysis: { ...snapshot.analysis, url: replacementUrl },
     });
 
-    render(<ProcessingSettingsPage settings={settings} onOpenSttSettings={() => {}} />);
+    render(<ProcessingSettingsPage settings={settings} sttSettings={sttSettings} />);
     await screen.findByRole("form", { name: "Satisfaction and call analysis" });
 
     const analysis = form("Satisfaction and call analysis");
@@ -138,7 +147,7 @@ describe("ProcessingSettingsPage", () => {
       sttProvider: "gcp",
       redaction: { ...snapshot.redaction, engine: "external", url: endpoint, apiKeyDisabled: true },
     });
-    render(<ProcessingSettingsPage settings={settings} onOpenSttSettings={() => {}} />);
+    render(<ProcessingSettingsPage settings={settings} sttSettings={sttSettings} />);
     await screen.findByRole("form", { name: "STT endpoint" });
     expect(form("STT endpoint").queryByLabelText("Endpoint URL")).toBeNull();
     expect(form("STT endpoint").getByText("Google Cloud")).toBeTruthy();
@@ -162,7 +171,7 @@ describe("ProcessingSettingsPage", () => {
     putSettings.mockRejectedValueOnce(Object.assign(new Error("Conflict"), { status: 409 }));
     putSettings.mockResolvedValueOnce({ ...snapshot, version: 9 });
 
-    render(<ProcessingSettingsPage settings={settings} onOpenSttSettings={() => {}} />);
+    render(<ProcessingSettingsPage settings={settings} sttSettings={sttSettings} />);
     await screen.findByRole("form", { name: "STT endpoint" });
     const endpoint = "https://custom-stt.example.com/transcribe";
     fireEvent.change(form("STT endpoint").getByLabelText("Endpoint URL"), { target: { value: endpoint } });
@@ -189,7 +198,7 @@ describe("ProcessingSettingsPage", () => {
       sttProvider: "openai",
       stt: { ...emptyStage, url: "https://openai.example.com/v1/audio/transcriptions" },
     });
-    render(<ProcessingSettingsPage settings={settings} onOpenSttSettings={() => {}} />);
+    render(<ProcessingSettingsPage settings={settings} sttSettings={sttSettings} />);
     await screen.findByRole("form", { name: "STT endpoint" });
 
     const stt = form("STT endpoint");
@@ -212,9 +221,8 @@ describe("ProcessingSettingsPage", () => {
     }));
     getSettings.mockResolvedValueOnce({ ...snapshot, companyId: 84, sttProvider: "gcp" });
 
-    const onOpenSttSettings = () => {};
-    const { rerender } = render(<ProcessingSettingsPage settings={settings} onOpenSttSettings={onOpenSttSettings} />);
-    rerender(<ProcessingSettingsPage settings={{ ...settings, companyId: "84" }} onOpenSttSettings={onOpenSttSettings} />);
+    const { rerender } = render(<ProcessingSettingsPage settings={settings} sttSettings={sttSettings} />);
+    rerender(<ProcessingSettingsPage settings={{ ...settings, companyId: "84" }} sttSettings={sttSettings} />);
     await screen.findByRole("form", { name: "STT endpoint" });
 
     await act(async () => resolvePrevious(snapshot));

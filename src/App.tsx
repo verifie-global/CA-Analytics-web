@@ -48,7 +48,6 @@ import { AccountPage } from "./AccountPage";
 import { VoiceConnectorsPage } from "./VoiceConnectorsPage";
 import { TextConnectorPocPage } from "./TextConnectorPocPage";
 import { SttDiagnostics } from "./SttDiagnostics";
-import { SttSettingsPage } from "./SttSettingsPage";
 import { ProcessingSettingsPage } from "./ProcessingSettingsPage";
 import { DatasetStudioPage } from "./DatasetStudioPage";
 import type { DatasetWorkspace } from "./datasetStudioTypes";
@@ -505,7 +504,7 @@ const getDefaultFilters = (): CallFilters => {
   };
 };
 
-export const getRouteFromPath = (pathName: string): AppRoute => {
+export const getRouteFromPath = (pathName: string, hash = ""): AppRoute => {
   if (pathName === "/dataset-studio" || pathName === "/dataset-studio/") {
     return "dataset-studio";
   }
@@ -514,15 +513,15 @@ export const getRouteFromPath = (pathName: string): AppRoute => {
   }
 
   if (pathName === "/settings/qa-profile") {
-    return "qa-profile";
+    return hash === "#company-stt-settings" ? "processing-settings" : "qa-profile";
   }
 
   if (pathName === "/admin/processing-settings" || pathName === "/admin/processing-settings/") {
     return "processing-settings";
   }
 
-  if (pathName === "/admin/stt-settings") {
-    return "qa-profile";
+  if (pathName === "/admin/stt-settings" || pathName === "/admin/stt-settings/") {
+    return "processing-settings";
   }
 
   if (pathName === "/settings/workflow-automations") {
@@ -1781,7 +1780,7 @@ function App() {
     enumLabel,
   } = useI18n();
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() =>
-    getRouteFromPath(window.location.pathname),
+    getRouteFromPath(window.location.pathname, window.location.hash),
   );
   const [settings, setSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -1940,7 +1939,7 @@ function App() {
         (error as { status?: number }).status === 401,
     );
 
-  const navigateTo = (route: AppRoute, anchor = "") => {
+  const navigateTo = (route: AppRoute) => {
     const nextPath =
       route === "dataset-studio"
         ? "/dataset-studio"
@@ -1963,7 +1962,7 @@ function App() {
             : route === "reports"
               ? "/reports"
             : "/";
-    window.history.pushState({}, "", nextPath + anchor);
+    window.history.pushState({}, "", nextPath);
     setCurrentRoute(route);
   };
 
@@ -2007,7 +2006,7 @@ function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      setCurrentRoute(getRouteFromPath(window.location.pathname));
+      setCurrentRoute(getRouteFromPath(window.location.pathname, window.location.hash));
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -3660,26 +3659,13 @@ function App() {
     };
   }, [isAuthorized, settings]);
 
-  const {
-    value: companySttSettings,
-    loading: companySttSettingsLoading,
-    saving: companySttSettingsSaving,
-    forbidden: companySttSettingsForbidden,
-    errorMessage: companySttSettingsError,
-    successMessage: companySttSettingsSuccess,
-    save: handleSaveCompanySttSettings,
-  } = useCompanySttSettings(
+  const sttSettings = useCompanySttSettings(
     settings,
     isAuthorized && hasAdminAccess,
-    currentRoute === "qa-profile",
+    currentRoute === "processing-settings" && canManageProcessing,
     handleUnauthorizedSession,
   );
-
-  useEffect(() => {
-    if (currentRoute === "qa-profile" && window.location.hash === "#company-stt-settings") {
-      document.getElementById("company-stt-settings")?.scrollIntoView?.();
-    }
-  }, [currentRoute, hasAdminAccess]);
+  const companySttSettings = sttSettings.value;
 
   const datasetAccess = useDatasetStudioAccess(settings, isAuthorized, handleUnauthorizedSession);
   datasetWorkspaceRef.current = datasetAccess.workspace;
@@ -4660,8 +4646,8 @@ function App() {
           canManageProcessing ? (
             <ProcessingSettingsPage
               settings={settings}
+              sttSettings={sttSettings}
               onUnauthorized={handleUnauthorizedSession}
-              onOpenSttSettings={() => navigateTo("qa-profile", "#company-stt-settings")}
             />
           ) : (
             <section className="panel permission-denied" role="alert">
@@ -4704,37 +4690,20 @@ function App() {
             </section>
           )
         ) : currentRoute === "qa-profile" ? (
-          <div className="qa-settings-page-stack">
-            <QaProfilePage
-              profile={qaProfile}
-              qaScoringSettings={qaScoringSettings}
-              loading={qaProfileLoading}
-              saving={qaProfileSaving}
-              qaScoringSettingsLoading={qaScoringSettingsLoading}
-              qaScoringSettingsSaving={qaScoringSettingsSaving}
-              errorMessage={qaProfileError}
-              successMessage={qaProfileSuccess}
-              qaScoringSettingsErrorMessage={qaScoringSettingsError}
-              qaScoringSettingsSuccessMessage={qaScoringSettingsSuccess}
-              onSave={handleSaveQaProfile}
-              onSaveQaScoringSettings={handleSaveQaScoringSettings}
-            />
-            {hasAdminAccess ? (
-              <div id="company-stt-settings">
-                <SttSettingsPage
-                  key={`${settings.baseUrl}/${settings.companyId}/${settings.accessToken}`}
-                  companyId={settings.companyId}
-                  isAdministrator={!companySttSettingsForbidden}
-                  value={companySttSettings}
-                  loading={companySttSettingsLoading}
-                  saving={companySttSettingsSaving}
-                  errorMessage={companySttSettingsError}
-                  successMessage={companySttSettingsSuccess}
-                  onSave={handleSaveCompanySttSettings}
-                />
-              </div>
-            ) : null}
-          </div>
+          <QaProfilePage
+            profile={qaProfile}
+            qaScoringSettings={qaScoringSettings}
+            loading={qaProfileLoading}
+            saving={qaProfileSaving}
+            qaScoringSettingsLoading={qaScoringSettingsLoading}
+            qaScoringSettingsSaving={qaScoringSettingsSaving}
+            errorMessage={qaProfileError}
+            successMessage={qaProfileSuccess}
+            qaScoringSettingsErrorMessage={qaScoringSettingsError}
+            qaScoringSettingsSuccessMessage={qaScoringSettingsSuccess}
+            onSave={handleSaveQaProfile}
+            onSaveQaScoringSettings={handleSaveQaScoringSettings}
+          />
         ) : currentRoute === "workflow-automations" ? (
           <WorkflowAutomationsPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
         ) : currentRoute === "reports" ? (

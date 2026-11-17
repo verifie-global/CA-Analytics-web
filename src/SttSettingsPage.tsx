@@ -8,6 +8,7 @@ type SttSettingsPageProps = {
   value: CompanySttSettings | null;
   loading: boolean;
   saving: boolean;
+  locked?: boolean;
   errorMessage: string;
   successMessage: string;
   onSave: (update: CompanySttSettingsUpdate) => Promise<void>;
@@ -45,6 +46,7 @@ export function SttSettingsPage({
   value,
   loading,
   saving,
+  locked = false,
   errorMessage,
   successMessage,
   onSave,
@@ -66,14 +68,14 @@ export function SttSettingsPage({
   const hasUnlistedLanguage = !languageOptions.some((option) => option.value === defaultLanguage);
   const invalidModel = provider === "custom" && model !== null &&
     !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/.test(model);
-  const disabled = loading || saving || !currentValue;
+  const disabled = loading || saving || locked || !currentValue;
   const update = (change: Partial<CompanySttSettingsUpdate>) =>
     setDraft((previous) => ({ ...previous, ...change }));
 
   if (!isAdministrator) {
     return (
-      <section className="panel permission-denied" role="alert">
-        <h1>{t("Permission denied")}</h1>
+      <section className="processing-stage permission-denied" role="alert">
+        <h2>{t("Permission denied")}</h2>
         <p>{t((errorMessage || "Administrator access is required to view or edit speech-to-text settings.") as TranslationKey)}</p>
       </section>
     );
@@ -92,11 +94,11 @@ export function SttSettingsPage({
   };
 
   return (
-    <section className="panel stt-settings-page" aria-busy={loading || saving}>
-      <div className="section-heading">
-        <h1>{t("STT Settings")}</h1>
-        <p>{t("Choose how new audio is transcribed and prepared for analysis.")}</p>
-      </div>
+    <section className="processing-stage" aria-labelledby="stt-settings-heading" aria-busy={loading || saving}>
+      <header className="processing-stage-heading">
+        <h2 id="stt-settings-heading">{t("STT Settings")}</h2>
+      </header>
+      <p className="processing-stage-help">{t("Choose how new audio is transcribed and prepared for analysis.")}</p>
 
       {loading && !currentValue ? (
         <div className="empty-state" aria-live="polite">
@@ -220,7 +222,7 @@ export function SttSettingsPage({
             <div className="form-message success-message" role="status">{t(successMessage as TranslationKey)}</div>
           ) : null}
 
-          <div className="modal-actions">
+          <div className="processing-stage-actions">
             <button
               type="button"
               className="secondary-button"

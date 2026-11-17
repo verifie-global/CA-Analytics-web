@@ -5,9 +5,12 @@ import {
   type RequestError,
 } from "./api";
 import { useI18n, type TranslationKey } from "./i18n";
+import { SttSettingsPage } from "./SttSettingsPage";
+import type { useCompanySttSettings } from "./useCompanySttSettings";
 import type {
   AppSettings,
   CompanyProcessingSettings,
+  CompanySttSettingsUpdate,
   ProcessingRedactionEngine,
   ProcessingStageName,
   ProcessingStageSettings,
@@ -18,7 +21,7 @@ import "./ProcessingSettingsPage.css";
 
 type Props = {
   settings: AppSettings;
-  onOpenSttSettings: () => void;
+  sttSettings: ReturnType<typeof useCompanySttSettings>;
   onUnauthorized?: () => void;
 };
 
@@ -54,6 +57,7 @@ type RequestScope = { settings: AppSettings; reload: number };
 type LoadedState = {
   scope: RequestScope;
   value: CompanyProcessingSettings | null;
+  drafts?: Drafts;
   error?: string;
   forbidden?: boolean;
 };
@@ -305,24 +309,25 @@ function ProcessingStageForm({
   );
 }
 
-export function ProcessingSettingsPage({ settings, onOpenSttSettings, onUnauthorized }: Props) {
+export function ProcessingSettingsPage({ settings, sttSettings, onUnauthorized }: Props) {
   const { t } = useI18n();
   const { baseUrl, companyId, accessToken } = settings;
   const [reload, setReload] = useState(0);
-  const scope = useMemo<RequestScope>(
-    () => ({ settings: { baseUrl, companyId, accessToken, apiToken: "" }, reload }),
-    [baseUrl, companyId, accessToken, reload],
+  const apiSettings = useMemo<AppSettings>(
+    () => ({ baseUrl, companyId, accessToken, apiToken: "" }),
+    [baseUrl, companyId, accessToken],
   );
+  const scope = useMemo<RequestScope>(() => ({ settings: apiSettings, reload }), [apiSettings, reload]);
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const unauthorized = useRef(onUnauthorized);
   unauthorized.current = onUnauthorized;
   const saveInFlight = useRef<AbortController | null>(null);
   const [data, setData] = useState<LoadedState | null>(null);
-  const [drafts, setDrafts] = useState<Drafts | null>(null);
   const [saveResult, setSaveState] = useState<SaveState | null>(null);
   const saveState = saveResult?.scope === scope ? saveResult : null;
   const loaded = data?.scope === scope ? data : null;
+  const { value: processingSettings, drafts } = loaded ?? {};
 
   useEffect(() => {
     const controller = new AbortController();
@@ -335,8 +340,20 @@ export function ProcessingSettingsPage({ settings, onOpenSttSettings, onUnauthor
           setData({ scope, value: null, error: "Unable to load processing settings." });
           return;
         }
-        setDrafts(createDrafts(value));
-        setData({ scope, value });
+        setData((previous) => {
+          const drafts = createDrafts(value);
+          if (previous?.scope.settings === scope.settings && previous.value && previous.drafts) {
+            // Keep edits where the saved stage still matches the draft's starting values.
+            for (const { name } of stages) {
+              if (name === "stt" && previous.value.sttProvider !== value.sttProvider) continue;
+              const previousStage = previous.value[name];
+              const stageUnchanged = (Object.keys(previousStage) as (keyof ProcessingStageSettings)[])
+                .every((key) => previousStage[key] === value[name][key]);
+              if (stageUnchanged) drafts[name] = previous.drafts[name];
+            }
+          }
+          return { scope, value, drafts };
+        });
       },
       (error: unknown) => {
         if (!isCurrent()) return;
@@ -361,7 +378,7 @@ export function ProcessingSettingsPage({ settings, onOpenSttSettings, onUnauthor
   }, [scope]);
 
   async function save(stage: ProcessingStageName, update: ProcessingStageSettingsUpdate) {
-    if (!loaded?.value || saveState?.conflict || saveInFlight.current) return;
+    if (!loaded?.value || !loaded.drafts || saveState?.conflict || saveInFlight.current || sttSettings.saving) return;
     const controller = new AbortController();
     saveInFlight.current = controller;
     const isCurrent = () => currentScope.current === scope && !controller.signal.aborted;
@@ -380,12 +397,15 @@ export function ProcessingSettingsPage({ settings, onOpenSttSettings, onUnauthor
         return;
       }
       const providerChanged = value.sttProvider !== loaded.value.sttProvider;
-      setData({ scope, value });
-      setDrafts((previous) => previous ? {
-        ...previous,
-        ...(providerChanged ? { stt: createDraft(value.stt) } : {}),
-        [stage]: createDraft(value[stage]),
-      } : previous);
+      setData({
+        scope,
+        value,
+        drafts: {
+          ...loaded.drafts,
+          ...(providerChanged ? { stt: createDraft(value.stt) } : {}),
+          [stage]: createDraft(value[stage]),
+        },
+      });
       setSaveState({ scope, stage, success: true });
     } catch (error) {
       if (!isCurrent()) return;
@@ -393,7 +413,6 @@ export function ProcessingSettingsPage({ settings, onOpenSttSettings, onUnauthor
       if (status === 401) unauthorized.current?.();
       if (status === 403) {
         setData({ scope, value: null, forbidden: true, error: "Administrator access is required to manage processing settings." });
-        setDrafts(null);
       }
       setSaveState({
         scope,
@@ -408,22 +427,23 @@ export function ProcessingSettingsPage({ settings, onOpenSttSettings, onUnauthor
 
   const reloadSettings = () => {
     setSaveState(null);
-    setDrafts(null);
+    setData(null);
+    setReload((previous) => previous + 1);
+  };
+
+  const saveSttSettings = async (update: CompanySttSettingsUpdate) => {
+    if (saveInFlight.current) return;
+    await sttSettings.save(update);
+    if (currentScope.current !== scope) return;
+    setSaveState(null);
     setReload((previous) => previous + 1);
   };
 
   return (
-    <section className="panel processing-settings-page" aria-busy={!loaded || Boolean(saveState?.pending)}>
-      <header className="section-heading processing-settings-heading">
-        <div>
-          <h1>{t("Processing Settings")}</h1>
-          <p>{t("Configure the endpoints, models, and credentials used to process calls.")}</p>
-        </div>
-        {!loaded?.forbidden ? (
-          <button className="secondary-button" type="button" onClick={onOpenSttSettings}>
-            {t("Open STT settings")}
-          </button>
-        ) : null}
+    <section className="panel processing-settings-page">
+      <header className="section-heading">
+        <h1>{t("Processing Settings")}</h1>
+        <p>{t("Configure the endpoints, models, and credentials used to process calls.")}</p>
       </header>
 
       {!loaded ? (
@@ -438,39 +458,50 @@ export function ProcessingSettingsPage({ settings, onOpenSttSettings, onUnauthor
         </div>
       ) : null}
       {(loaded?.error && !loaded.forbidden) || saveState?.conflict ? (
-        <button className="secondary-button" type="button" onClick={reloadSettings}>
+        <button className="secondary-button" type="button" disabled={sttSettings.saving} onClick={reloadSettings}>
           {t("Reload settings")}
         </button>
       ) : null}
 
-      {loaded?.value && drafts ? (
-        <>
-          <p className="processing-stage-help">
-            {t("Enter full endpoint URLs. Blank URL and model fields use deployment defaults.")}
-          </p>
-          <div className="processing-settings-grid">
-            {stages.map((stage) => {
-              const value = loaded.value!;
-              return (
-                <ProcessingStageForm
-                  key={stage.name}
-                  stage={stage}
-                  value={value[stage.name]}
-                  provider={value.sttProvider}
-                  draft={drafts[stage.name]}
-                  state={saveState?.stage === stage.name ? saveState : null}
-                  locked={Boolean(saveState?.pending || saveState?.conflict)}
-                  onChange={(draft) => {
-                    setDrafts((previous) => previous ? { ...previous, [stage.name]: draft } : previous);
-                    if (saveState?.stage === stage.name) setSaveState(null);
-                  }}
-                  onSave={(update) => void save(stage.name, update)}
-                />
-              );
-            })}
-          </div>
-        </>
+      {processingSettings ? (
+        <p className="processing-stage-help">
+          {t("Enter full endpoint URLs. Blank URL and model fields use deployment defaults.")}
+        </p>
       ) : null}
+
+      <div className="processing-settings-grid">
+        <SttSettingsPage
+          key={`${baseUrl}/${companyId}/${accessToken}`}
+          companyId={companyId}
+          isAdministrator={!sttSettings.forbidden}
+          value={sttSettings.value}
+          loading={sttSettings.loading}
+          saving={sttSettings.saving}
+          locked={Boolean(saveState?.pending)}
+          errorMessage={sttSettings.errorMessage}
+          successMessage={sttSettings.successMessage}
+          onSave={saveSttSettings}
+        />
+        {processingSettings && drafts ? stages.map((stage) => (
+          <ProcessingStageForm
+            key={stage.name}
+            stage={stage}
+            value={processingSettings[stage.name]}
+            provider={processingSettings.sttProvider}
+            draft={drafts[stage.name]}
+            state={saveState?.stage === stage.name ? saveState : null}
+            locked={Boolean(sttSettings.saving || saveState?.pending || saveState?.conflict)}
+            onChange={(draft) => {
+              setData((previous) => previous?.scope === scope && previous.drafts ? {
+                ...previous,
+                drafts: { ...previous.drafts, [stage.name]: draft },
+              } : previous);
+              if (saveState?.stage === stage.name) setSaveState(null);
+            }}
+            onSave={(update) => void save(stage.name, update)}
+          />
+        )) : null}
+      </div>
     </section>
   );
 }
