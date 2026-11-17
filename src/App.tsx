@@ -49,6 +49,7 @@ import { VoiceConnectorsPage } from "./VoiceConnectorsPage";
 import { TextConnectorPocPage } from "./TextConnectorPocPage";
 import { SttDiagnostics } from "./SttDiagnostics";
 import { SttSettingsPage } from "./SttSettingsPage";
+import { ProcessingSettingsPage } from "./ProcessingSettingsPage";
 import { DatasetStudioPage } from "./DatasetStudioPage";
 import type { DatasetWorkspace } from "./datasetStudioTypes";
 import { useDatasetStudioAccess } from "./useDatasetStudioAccess";
@@ -97,7 +98,18 @@ const HEADER_GRAPHIC_STORAGE_KEY = "ca-analytics-header-graphic";
 const HEADER_GRAPHIC_COLLAPSED_STORAGE_KEY = "ca-analytics-header-graphic-collapsed";
 const KEYWORD_RULES_STORAGE_KEY = "ca-analytics-keyword-rules";
 
-export type AppRoute = "dashboard" | "reports" | "qa-profile" | "workflow-automations" | "user-management" | "voice-connectors" | "text-connector-poc" | "demo-call" | "account" | "dataset-studio";
+export type AppRoute =
+  | "dashboard"
+  | "reports"
+  | "qa-profile"
+  | "workflow-automations"
+  | "user-management"
+  | "voice-connectors"
+  | "text-connector-poc"
+  | "demo-call"
+  | "account"
+  | "dataset-studio"
+  | "processing-settings";
 type AppNavKey =
   | "dashboard"
   | "reports"
@@ -107,6 +119,7 @@ type AppNavKey =
   | "grid"
   | "demo"
   | "qa"
+  | "processing"
   | "workflow"
   | "users"
   | "voice"
@@ -502,6 +515,10 @@ export const getRouteFromPath = (pathName: string): AppRoute => {
 
   if (pathName === "/settings/qa-profile") {
     return "qa-profile";
+  }
+
+  if (pathName === "/admin/processing-settings" || pathName === "/admin/processing-settings/") {
+    return "processing-settings";
   }
 
   if (pathName === "/admin/stt-settings") {
@@ -1474,6 +1491,9 @@ const NavIcon = ({ name }: { name: AppNavKey }) => {
           {...common}
         />
       )}
+      {name === "processing" && (
+        <path d="M4 6h5m4 0h7M4 12h10m4 0h2M4 18h2m4 0h10M9 4v4m5 2v4m-8 2v4" {...common} />
+      )}
       {name === "workflow" && (
         <path
           d="M5 7h5m4 0h5M5 17h5m4 0h5M10 7a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM10 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM12 9v6"
@@ -1920,10 +1940,12 @@ function App() {
         (error as { status?: number }).status === 401,
     );
 
-  const navigateTo = (route: AppRoute) => {
+  const navigateTo = (route: AppRoute, anchor = "") => {
     const nextPath =
       route === "dataset-studio"
         ? "/dataset-studio"
+        : route === "processing-settings"
+        ? "/admin/processing-settings"
         : route === "qa-profile"
         ? "/settings/qa-profile"
         : route === "workflow-automations"
@@ -1941,7 +1963,7 @@ function App() {
             : route === "reports"
               ? "/reports"
             : "/";
-    window.history.pushState({}, "", nextPath);
+    window.history.pushState({}, "", nextPath + anchor);
     setCurrentRoute(route);
   };
 
@@ -2470,6 +2492,7 @@ function App() {
     [settings],
   );
   const canManageQaScore = hasAdminAccess;
+  const canManageProcessing = hasAdminAccess && !settings.apiToken && settings.userId != null;
   const activeQaScoreMaximum =
     qaScoringSettings?.qaScoreMaximum ??
     qaProfile?.qaScoreMaximum ??
@@ -3652,6 +3675,12 @@ function App() {
     handleUnauthorizedSession,
   );
 
+  useEffect(() => {
+    if (currentRoute === "qa-profile" && window.location.hash === "#company-stt-settings") {
+      document.getElementById("company-stt-settings")?.scrollIntoView?.();
+    }
+  }, [currentRoute, hasAdminAccess]);
+
   const datasetAccess = useDatasetStudioAccess(settings, isAuthorized, handleUnauthorizedSession);
   datasetWorkspaceRef.current = datasetAccess.workspace;
   const hasDatasetStudioAccess = datasetAccess.status === "allowed" && !datasetAccess.workspace?.revoked;
@@ -4276,6 +4305,14 @@ function App() {
       active: currentRoute === "workflow-automations",
       onClick: () => navigateTo("workflow-automations"),
     },
+    ...(canManageProcessing
+      ? [{
+          key: "processing" as const,
+          label: t("Processing settings"),
+          active: currentRoute === "processing-settings",
+          onClick: () => navigateTo("processing-settings"),
+        }]
+      : []),
     ...(hasAdminAccess
       ? [
           {
@@ -4619,6 +4656,20 @@ function App() {
           ) : (
             <AccountPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
           )
+        ) : currentRoute === "processing-settings" ? (
+          canManageProcessing ? (
+            <ProcessingSettingsPage
+              settings={settings}
+              onUnauthorized={handleUnauthorizedSession}
+              onOpenSttSettings={() => navigateTo("qa-profile", "#company-stt-settings")}
+            />
+          ) : (
+            <section className="panel permission-denied" role="alert">
+              <h1>{t("Permission denied")}</h1>
+              <p>{t("Sign in as a company administrator to manage processing settings.")}</p>
+              <button type="button" onClick={() => navigateTo("dashboard")}>{t("Return to dashboard")}</button>
+            </section>
+          )
         ) : currentRoute === "text-connector-poc" ? (
           hasAdminAccess ? (
             <TextConnectorPocPage settings={settings} onUnauthorized={handleUnauthorizedSession} />
@@ -4669,17 +4720,19 @@ function App() {
               onSaveQaScoringSettings={handleSaveQaScoringSettings}
             />
             {hasAdminAccess ? (
-              <SttSettingsPage
-                key={`${settings.baseUrl}/${settings.companyId}/${settings.accessToken}`}
-                companyId={settings.companyId}
-                isAdministrator={!companySttSettingsForbidden}
-                value={companySttSettings}
-                loading={companySttSettingsLoading}
-                saving={companySttSettingsSaving}
-                errorMessage={companySttSettingsError}
-                successMessage={companySttSettingsSuccess}
-                onSave={handleSaveCompanySttSettings}
-              />
+              <div id="company-stt-settings">
+                <SttSettingsPage
+                  key={`${settings.baseUrl}/${settings.companyId}/${settings.accessToken}`}
+                  companyId={settings.companyId}
+                  isAdministrator={!companySttSettingsForbidden}
+                  value={companySttSettings}
+                  loading={companySttSettingsLoading}
+                  saving={companySttSettingsSaving}
+                  errorMessage={companySttSettingsError}
+                  successMessage={companySttSettingsSuccess}
+                  onSave={handleSaveCompanySttSettings}
+                />
+              </div>
             ) : null}
           </div>
         ) : currentRoute === "workflow-automations" ? (
