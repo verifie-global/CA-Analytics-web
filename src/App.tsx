@@ -5880,7 +5880,7 @@ function App() {
                   <audio controls src={recordedAudioUrl} className="audio-player" />
                 ) : null}
                 {recordingErrorMessage ? <p className="upload-error">{recordingErrorMessage}</p> : null}
-                <div className="modal-actions full-width">
+                <div className="recording-preview-actions">
                   <button type="button" className="secondary-button" onClick={closeRecordingModal}>
                     Cancel
                   </button>

@@ -4765,9 +4765,27 @@ details.scroll-toggle > summary {
 .recording-bars span:nth-child(5) { height: 20px; animation-delay: 0.4s; }
 
 .recording-preview {
+  grid-template-columns: minmax(0, 1fr);
   background: var(--surface);
   border-radius: var(--radius-md);
   padding: 1rem;
+}
+
+.recording-preview .audio-player {
+  margin-bottom: 0;
+}
+
+.recording-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.recording-preview-actions > button {
+  flex: 1 0 auto;
+  max-width: 100%;
+  padding-inline: 0.75rem;
+  overflow-wrap: normal;
 }
 
 .qa-applicability-backdrop {
